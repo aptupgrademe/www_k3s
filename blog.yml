@@ -26,14 +26,26 @@
 # 7. All subsequent runs:
 #      ansible-playbook blog.yml --limit <host> --ask-vault-pass
 #
-# HOSTS
+# Usage:
 # -----------------------------------------------------------------------------
-# test              – test server (82.165.165.230), used for both blog and
-#                     Nextcloud scenarios; only one playbook at a time
-# www.apt-upgrade.me – production WordPress server (fill in IP first)
 #
-# To target a single host:
-#   ansible-playbook blog.yml --limit test --ask-vault-pass
+#   # First-time setup (fresh server, ansible_port: 22):
+#   ansible-playbook blog.yml --limit <host> --ask-vault-pass
+#
+#   # Re-run after config changes or updates:
+#   ansible-playbook blog.yml --limit <host> --ask-vault-pass
+#
+#   # Specific host examples:
+#   ansible-playbook blog.yml --limit test           --ask-vault-pass
+#   ansible-playbook blog.yml --limit www.example.de --ask-vault-pass
+#
+#   # After first run: reboot the server, then change ansible_port to 10022.
+#
+# Prerequisites:
+#   1. cp inventory/hosts.yml.example           inventory/hosts.yml
+#   2. cp inventory/host_vars/<h>/vars.yml.example  .../vars.yml  → fill in
+#   3. cp inventory/host_vars/<h>/vault.yml.example .../vault.yml → fill in
+#   4. ansible-vault encrypt inventory/host_vars/<host>/vault.yml
 #
 # SWITCHING BETWEEN BLOG AND NEXTCLOUD ON THE TEST SERVER
 # -----------------------------------------------------------------------------
@@ -45,11 +57,10 @@
 # ADDING A NEW BLOG HOST
 # -----------------------------------------------------------------------------
 # 1. Add the host under the 'blog' group in inventory/hosts.yml
-# 2. Create inventory/host_vars/<host>/vars.yml  (copy from test/vars.yml,
-#    remove the Nextcloud section, adjust IPs / hostnames / blog_title)
-# 3. Create inventory/host_vars/<host>/vault.yml (copy from test/vault.yml,
-#    remove Nextcloud credentials, set unique passwords)
-# 4. Follow the QUICK START steps above.
+# 2. Copy inventory/host_vars/test/vars.yml.example → host_vars/<host>/vars.yml
+# 3. Copy inventory/host_vars/test/vault.yml.example → host_vars/<host>/vault.yml
+# 4. Fill in vars.yml (IPs, hostname) and vault.yml (passwords)
+# 5. Follow the Quick Start steps above.
 # =============================================================================
 - name: Install and configure WordPress blog
   hosts: blog

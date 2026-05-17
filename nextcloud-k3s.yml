@@ -29,7 +29,27 @@
 # before running without --limit.
 #
 # Usage:
-#   ansible-playbook nextcloud-k3s.yml --limit test
+# -----------------------------------------------------------------------------
+#
+#   # First-time setup (fresh server, ansible_port: 22):
+#   ansible-playbook nextcloud-k3s.yml --limit <host> --ask-vault-pass
+#
+#   # Re-run after config changes or updates:
+#   ansible-playbook nextcloud-k3s.yml --limit <host> --ask-vault-pass
+#
+#   # Specific host examples:
+#   ansible-playbook nextcloud-k3s.yml --limit test  --ask-vault-pass
+#   ansible-playbook nextcloud-k3s.yml --limit cvjm  --ask-vault-pass
+#   ansible-playbook nextcloud-k3s.yml --limit sofie --ask-vault-pass
+#
+#   # All nextcloud hosts at once:
+#   ansible-playbook nextcloud-k3s.yml --ask-vault-pass
+#
+# Prerequisites:
+#   1. cp inventory/hosts.yml.example           inventory/hosts.yml
+#   2. cp inventory/host_vars/<h>/vars.yml.example  .../vars.yml  → fill in
+#   3. cp inventory/host_vars/<h>/vault.yml.example .../vault.yml → fill in
+#   4. ansible-vault encrypt inventory/host_vars/<host>/vault.yml
 # =============================================================================
 - name: Install packages and configure server
   hosts: nextcloud
