@@ -1446,9 +1446,9 @@ k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
   </tr>
   <tr>
     <td>Port Scan Blocker</td>
-    <td>Every packet that does not match an ACCEPT rule enters its source IP into
+    <td>Only after 5 SYN packets within 3600 s (1 h) is the source IP entered into
         <code>/proc/net/xt_recent/portscan</code>. On the next packet from that IP
-        <code>--rcheck</code> triggers at the top → 24-hour block.
+        <code>--rcheck</code> triggers at the top → 1-hour block.
         Check: <code>cat /proc/net/xt_recent/portscan</code></td>
   </tr>
   <tr>

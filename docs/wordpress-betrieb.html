@@ -1448,9 +1448,9 @@ k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
   </tr>
   <tr>
     <td>Portscan-Blocker</td>
-    <td>Jedes Paket, das keine ACCEPT-Regel trifft, trägt die Quell-IP in
-        <code>/proc/net/xt_recent/portscan</code> ein. Beim nächsten Paket dieser IP
-        greift <code>--rcheck</code> ganz oben → 24h Sperre.
+    <td>Erst nach 5 SYN-Paketen innerhalb von 3600 s (1 h) wird die Quell-IP in
+        <code>/proc/net/xt_recent/portscan</code> eingetragen. Beim nächsten Paket dieser IP
+        greift <code>--rcheck</code> ganz oben → 1 h Sperre.
         Prüfen: <code>cat /proc/net/xt_recent/portscan</code></td>
   </tr>
   <tr>
