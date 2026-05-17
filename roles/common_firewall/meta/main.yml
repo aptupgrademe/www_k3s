@@ -1,0 +1,12 @@
+galaxy_info:
+  author: raphael
+  description: Configure iptables firewall rules (IPv4 + IPv6) via templates on AlmaLinux 9
+  license: MIT
+  min_ansible_version: "2.10"
+  platforms:
+    - name: EL
+      versions:
+        - "9"
+  galaxy_tags: []
+
+dependencies: []

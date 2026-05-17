@@ -1,0 +1,140 @@
+---
+# =============================================================================
+# Playbook: nextcloud-update.yml
+# Purpose:  In-place patch update – pulls the latest image for the current
+#           tag, restarts pods and updates all Nextcloud apps.
+#
+# Use this when a new patch is available under the same tag
+# (e.g. nextcloud:33-fpm: 33.0.2 → 33.0.3). Since imagePullPolicy defaults
+# to IfNotPresent, K3s will not pull a new image on its own.
+#
+# -----------------------------------------------------------------------------
+# Full update workflow (run in this order):
+#
+#   Step 1 – Patch update (this playbook):
+#     ansible-playbook nextcloud-update.yml --limit <host>
+#     → pulls latest images for current tags, restarts pods, updates apps
+#
+#   Step 2 – Version bumps (nextcloud-k3s.yml), only when tags were changed:
+#     Edit inventory/group_vars/all.yml:
+#       nextcloud_image_fpm, nextcloud_image_nginx, nextcloud_image_collabora,
+#       ingress_nginx_chart_version, cert_manager_chart_version
+#     ansible-playbook nextcloud-k3s.yml --limit <host>
+#     → applies new image tags, upgrades Helm charts, reconfigures everything
+#
+# If only Step 1 is needed (no tag/chart changes): run this playbook alone.
+# If only Step 2 is needed (tag/chart changes, no patch): run nextcloud-k3s.yml alone.
+# For a full maintenance cycle: run both, Step 1 first.
+# -----------------------------------------------------------------------------
+#
+# Usage:
+#   ansible-playbook nextcloud-update.yml --limit test
+# =============================================================================
+- name: Nextcloud in-place update
+  hosts: nextcloud
+  gather_facts: false
+  become: false
+
+  tasks:
+
+    # -------------------------------------------------------------------------
+    # Pull latest images for the current tags.
+    # crictl pull is idempotent: if the registry digest matches the local cache
+    # the download is skipped; otherwise the new layer is fetched.
+    # -------------------------------------------------------------------------
+    - name: Update | Pull latest nextcloud:fpm image
+      ansible.builtin.command: crictl pull docker.io/library/{{ nextcloud_image_fpm }}
+      changed_when: false
+
+    - name: Update | Pull latest collabora image
+      ansible.builtin.command: crictl pull docker.io/{{ nextcloud_image_collabora }}
+      changed_when: false
+
+    # -------------------------------------------------------------------------
+    # Restart pods so they pick up the freshly pulled images.
+    # Recreate strategy ensures only one pod accesses the HostPath volumes.
+    # -------------------------------------------------------------------------
+    - name: Update | Restart Nextcloud deployment
+      ansible.builtin.command: >
+        k3s kubectl rollout restart deployment/nextcloud
+        --namespace nextcloud
+      changed_when: true
+
+    - name: Update | Wait for Nextcloud rollout
+      ansible.builtin.command: >
+        k3s kubectl rollout status deployment/nextcloud
+        --namespace nextcloud
+        --timeout=300s
+      changed_when: false
+
+    - name: Update | Restart Collabora deployment
+      ansible.builtin.command: >
+        k3s kubectl rollout restart deployment/collabora
+        --namespace nextcloud
+      changed_when: true
+
+    - name: Update | Wait for Collabora rollout
+      ansible.builtin.command: >
+        k3s kubectl rollout status deployment/collabora
+        --namespace nextcloud
+        --timeout=180s
+      changed_when: false
+
+    # -------------------------------------------------------------------------
+    # occ upgrade runs automatically on pod start, but we call it explicitly
+    # here as a safety net in case the entrypoint skipped it.
+    # -------------------------------------------------------------------------
+    - name: Update | Run occ upgrade
+      ansible.builtin.command: >
+        k3s kubectl exec deployment/nextcloud
+        --namespace nextcloud
+        --container nextcloud-fpm
+        --
+        runuser -u www-data -- php /var/www/html/occ upgrade --no-interaction
+      register: occ_upgrade
+      changed_when: "'already at the latest version' not in occ_upgrade.stdout"
+      failed_when: occ_upgrade.rc != 0
+
+    # -------------------------------------------------------------------------
+    # Update all installed Nextcloud apps.
+    # Apps live on the HostPath volume (/srv/nextcloud-www) so updates persist
+    # across pod restarts independently of the container image.
+    # -------------------------------------------------------------------------
+    - name: Update | Update all Nextcloud apps
+      ansible.builtin.command: >
+        k3s kubectl exec deployment/nextcloud
+        --namespace nextcloud
+        --container nextcloud-fpm
+        --
+        runuser -u www-data -- php /var/www/html/occ app:update --all
+      register: app_update
+      changed_when: app_update.stdout | length > 0
+
+    - name: Update | Show updated apps
+      ansible.builtin.debug:
+        msg: "{{ app_update.stdout_lines }}"
+      when: app_update.stdout_lines | length > 0
+
+    # -------------------------------------------------------------------------
+    # Final status output
+    # -------------------------------------------------------------------------
+    - name: Update | Show Nextcloud version
+      ansible.builtin.command: >
+        k3s kubectl exec deployment/nextcloud
+        --namespace nextcloud
+        --container nextcloud-fpm
+        --
+        runuser -u www-data -- php /var/www/html/occ status
+      register: nc_status
+      changed_when: false
+
+    - name: Update | Show pod status
+      ansible.builtin.command: k3s kubectl get pods --namespace nextcloud
+      register: pod_status
+      changed_when: false
+
+    - name: Update | Print results
+      ansible.builtin.debug:
+        msg:
+          - "{{ nc_status.stdout_lines }}"
+          - "{{ pod_status.stdout_lines }}"

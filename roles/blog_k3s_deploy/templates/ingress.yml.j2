@@ -1,0 +1,67 @@
+# Ingress for WordPress blog – managed by Ansible (blog_k3s_deploy)
+# cert-manager issues the Let's Encrypt TLS certificate automatically.
+# wp-login.php rate-limiting is applied via nginx.org annotations.
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wordpress
+  namespace: wordpress
+  annotations:
+    # TLS certificate issued by cert-manager
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # Force HTTPS
+    nginx.org/ssl-redirect: "true"
+    # Security headers added to every response in the location context
+    nginx.org/location-snippets: |
+      add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+      add_header X-Frame-Options "SAMEORIGIN" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header Referrer-Policy "same-origin" always;
+      add_header X-Permitted-Cross-Domain-Policies "none" always;
+    # Rate-limit wp-login.php (5 r/s per IP, burst 5) + block xmlrpc
+    nginx.org/server-snippets: |
+      location = /xmlrpc.php {
+        deny all;
+        return 403;
+      }
+      location = /wp-login.php {
+        limit_req zone=wp_login burst=5 nodelay;
+        proxy_pass http://wordpress.wordpress.svc.cluster.local;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+      }
+    # Upload size
+    nginx.org/client-max-body-size: "500m"
+    nginx.org/proxy-read-timeout: "300s"
+    nginx.org/proxy-send-timeout: "300s"
+    # Regex path matching for Grafana sub-path
+    nginx.org/path-regex: "case_sensitive"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - {{ blog_hostname }}
+    secretName: wordpress-tls
+  rules:
+  - host: {{ blog_hostname }}
+    http:
+      paths:
+      # Grafana is proxied at /grafana/ to the host-side Grafana service.
+      - path: /grafana(/|$)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: grafana
+            port:
+              number: 3000
+      # Everything else goes to WordPress
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: wordpress
+            port:
+              number: 80

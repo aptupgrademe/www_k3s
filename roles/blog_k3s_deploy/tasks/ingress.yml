@@ -1,0 +1,20 @@
+---
+# Deploy the Nginx Ingress for the WordPress blog.
+# cert-manager issues the Let's Encrypt certificate automatically.
+
+- name: Template WordPress Ingress manifest
+  ansible.builtin.template:
+    src: ingress.yml.j2
+    dest: /tmp/k8s-wp-ingress.yml
+    mode: "0644"
+
+- name: Apply WordPress Ingress
+  ansible.builtin.command: >
+    k3s kubectl apply -f /tmp/k8s-wp-ingress.yml
+  register: ingress_apply
+  changed_when: "'created' in ingress_apply.stdout or 'configured' in ingress_apply.stdout"
+
+- name: Remove temporary Ingress manifest
+  ansible.builtin.file:
+    path: /tmp/k8s-wp-ingress.yml
+    state: absent

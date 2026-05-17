@@ -1,0 +1,8 @@
+---
+fail2ban_bantime:  3600    # seconds a bad IP stays banned (1 h)
+fail2ban_findtime:  600    # observation window (10 min)
+fail2ban_maxretry:    5    # allowed failures before ban
+
+# Application-specific jails – enable per play via vars:
+fail2ban_jail_nextcloud: false
+fail2ban_jail_wordpress: false

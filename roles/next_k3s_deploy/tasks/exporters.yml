@@ -1,0 +1,23 @@
+---
+# =============================================================================
+# Nextcloud exporter NodePort Service
+# Exposes php-fpm_exporter (nextcloud pod) to host-side Prometheus via NodePort.
+# mysqld_exporter for Nextcloud's host MariaDB is handled by common_mysqld_exporter.
+# =============================================================================
+
+- name: Exporters | Template exporter NodePort service manifest
+  ansible.builtin.template:
+    src: exporters.yml.j2
+    dest: /tmp/k8s-nc-exporters.yml
+    mode: "0644"
+
+- name: Exporters | Apply exporter NodePort service
+  ansible.builtin.command: >
+    k3s kubectl apply -f /tmp/k8s-nc-exporters.yml
+  register: exporters_apply
+  changed_when: "'created' in exporters_apply.stdout or 'configured' in exporters_apply.stdout"
+
+- name: Exporters | Remove temporary exporters manifest
+  ansible.builtin.file:
+    path: /tmp/k8s-nc-exporters.yml
+    state: absent

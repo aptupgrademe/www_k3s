@@ -1,0 +1,75 @@
+# =============================================================================
+# Playbook: blog.yml
+# Provisions a WordPress blog on a fresh AlmaLinux 9 server.
+#
+# QUICK START – first-time setup on a new host
+# -----------------------------------------------------------------------------
+# 1. Add the server IP to inventory/hosts.yml  (ansible_host: "x.x.x.x")
+#
+# 2. Fill in host_vars:
+#    inventory/host_vars/<host>/vars.yml   – network, hostnames, paths
+#    inventory/host_vars/<host>/vault.yml  – passwords (see template for keys)
+#    Encrypt the vault before committing:
+#      ansible-vault encrypt inventory/host_vars/<host>/vault.yml
+#
+# 3. Ensure ansible_port is set to 22 in vars.yml (fresh server default).
+#
+# 4. Run the playbook:
+#      ansible-playbook blog.yml --limit <host> --ask-vault-pass
+#
+# 5. WITHOUT disconnecting your SSH session, reboot the server:
+#      ssh root@<host> reboot
+#    After the reboot sshd listens on port 10022 and the firewall is active.
+#
+# 6. Change ansible_port from 22 to 10022 in vars.yml.
+#
+# 7. All subsequent runs:
+#      ansible-playbook blog.yml --limit <host> --ask-vault-pass
+#
+# HOSTS
+# -----------------------------------------------------------------------------
+# test              – test server (82.165.165.230), used for both blog and
+#                     Nextcloud scenarios; only one playbook at a time
+# www.apt-upgrade.me – production WordPress server (fill in IP first)
+#
+# To target a single host:
+#   ansible-playbook blog.yml --limit test --ask-vault-pass
+#
+# SWITCHING BETWEEN BLOG AND NEXTCLOUD ON THE TEST SERVER
+# -----------------------------------------------------------------------------
+# The test server can run either blog.yml or nextcloud-k3s.yml.
+# Before switching scenarios, wipe the K3s state on the server:
+#   k3s-uninstall.sh && rm -rf /srv/wordpress-* /srv/nextcloud-*
+# Then run the desired playbook from scratch.
+#
+# ADDING A NEW BLOG HOST
+# -----------------------------------------------------------------------------
+# 1. Add the host under the 'blog' group in inventory/hosts.yml
+# 2. Create inventory/host_vars/<host>/vars.yml  (copy from test/vars.yml,
+#    remove the Nextcloud section, adjust IPs / hostnames / blog_title)
+# 3. Create inventory/host_vars/<host>/vault.yml (copy from test/vault.yml,
+#    remove Nextcloud credentials, set unique passwords)
+# 4. Follow the QUICK START steps above.
+# =============================================================================
+- name: Install and configure WordPress blog
+  hosts: blog
+  gather_facts: true
+  become: false
+
+
+  roles:
+    - blog_packages         # Host packages: iptables, SELinux tools, utilities only
+    - common_ssh            # SSH hardening (port, key-only auth)
+    - common_firewall       # iptables IPv4/IPv6 rules
+    - blog_selinux          # SELinux enforcing + container_file_t for HostPath  ← before deploy!
+    - common_k3s            # K3s + Helm + cert-manager + nginx-ingress (F5)
+    - blog_k3s_deploy       # WordPress K8s Deployment + Ingress + CronJob
+    - blog_wordpress        # WordPress install + plugins via kubectl exec
+    - common_node_exporter  # Node Exporter (metrics collector, port 9100)
+    - common_prometheus     # Prometheus (scrapes node:9100 + K3s NodePorts 30104/30253, port 9090)
+    - common_grafana        # Grafana (dashboards 1860/7362/4912, port 3000)
+    - common_fail2ban       # Fail2Ban: SSH + nginx + WordPress login protection
+    - common_msmtp          # msmtp sendmail relay (used by rkhunter, cron, dnf-automatic)
+    - common_dnf_automatic  # Automatic security-only updates via dnf-automatic
+    - common_rkhunter       # Rootkit detection with daily scan
+    - common_auditd         # Linux Audit Daemon with security-relevant rules

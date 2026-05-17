@@ -1,0 +1,33 @@
+---
+# =============================================================================
+# Role: common_dnf_automatic
+# Purpose: Install dnf-automatic and configure it to apply security patches
+#          automatically once a day. Non-security updates remain manual.
+# =============================================================================
+
+- name: dnf-automatic | Install package
+  ansible.builtin.dnf:
+    name: dnf-automatic
+    state: present
+
+# upgrade_type = security  → only apply packages tagged as security fixes
+- name: dnf-automatic | Set upgrade_type to security
+  ansible.builtin.lineinfile:
+    path: /etc/dnf/automatic.conf
+    regexp: '^upgrade_type\s*='
+    line: "upgrade_type = security"
+
+# apply_updates = yes  → actually install (not just download and notify)
+- name: dnf-automatic | Enable automatic application of updates
+  ansible.builtin.lineinfile:
+    path: /etc/dnf/automatic.conf
+    regexp: '^apply_updates\s*='
+    line: "apply_updates = yes"
+
+# The timer fires once a day (at a random offset within an hour)
+- name: dnf-automatic | Enable and start install timer
+  ansible.builtin.systemd:
+    name: dnf-automatic-install.timer
+    enabled: true
+    state: started
+    daemon_reload: true

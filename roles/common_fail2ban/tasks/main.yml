@@ -1,0 +1,41 @@
+---
+# =============================================================================
+# Role: common_fail2ban  (K3s mode)
+# Purpose: SSH brute-force protection via Fail2Ban.
+#
+# HTTP-level protection is handled by nginx-ingress (F5) rate-limiting inside K3s.
+# Only the sshd jail runs on the host.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# Package  (fail2ban is in EPEL)
+# -----------------------------------------------------------------------------
+- name: Fail2Ban | Install package
+  ansible.builtin.dnf:
+    name: fail2ban
+    state: present
+
+
+# -----------------------------------------------------------------------------
+# Configuration
+# -----------------------------------------------------------------------------
+- name: Fail2Ban | Deploy jail.local
+  ansible.builtin.template:
+    src: jail.local.j2
+    dest: /etc/fail2ban/jail.local
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart fail2ban
+
+
+# -----------------------------------------------------------------------------
+# Service
+# -----------------------------------------------------------------------------
+- name: Fail2Ban | Enable and start service
+  ansible.builtin.systemd:
+    name: fail2ban
+    enabled: true
+    state: started
+    daemon_reload: true

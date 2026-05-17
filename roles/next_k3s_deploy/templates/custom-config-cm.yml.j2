@@ -1,0 +1,65 @@
+# Nextcloud custom config ConfigMap – managed by Ansible (next_k3s_deploy)
+# Mounted as /var/www/html/config/custom.config.php inside the FPM container.
+# Nextcloud loads all *.php files from config/ automatically.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nextcloud-custom-config
+  namespace: nextcloud
+data:
+  custom.config.php: |
+    <?php
+    $CONFIG = array(
+      // --- Locale ---
+      'default_language'     => 'de',
+      'default_locale'       => 'de_DE',
+      'force_language'       => 'de',
+      'default_phone_region' => 'DE',
+
+      // --- Session ---
+      'session_lifetime'               => 3600,
+      'auto_logout'                    => true,
+      'session_keepalive'              => false,
+      'remember_login_cookie_lifetime' => 0,
+
+      // --- Maintenance ---
+      'maintenance_window_start'      => 1,
+      'trashbin_retention_obligation' => '180, 180',
+      'updater.release.channel'       => 'stable',
+
+      // --- Previews ---
+      'enable_previews' => true,
+      'preview_max_x'   => 4096,
+
+      // --- Logging (written into data dir → /data/nextcloud.log on host) ---
+      'loglevel'        => 4,
+      'logtimezone'     => 'Europe/Berlin',
+      'log_rotate_size' => 104857600,
+      'syslog_tag'      => 'Nextcloud',
+
+      // --- Redis ---
+      'filelocking.enabled'  => true,
+      'memcache.locking'     => '\\OC\\Memcache\\Redis',
+      'memcache.local'       => '\\OC\\Memcache\\Redis',
+      'memcache.distributed' => '\\OC\\Memcache\\Redis',
+      'redis' => array(
+        'host' => 'redis',
+        'port' => 6379,
+      ),
+
+      // --- Reverse proxy ---
+      // F5 nginx-ingress forwards requests from its pod IP (k3s_pod_cidr).
+      // Nextcloud extracts the real client IP from X-Forwarded-For sent by those pods.
+      'trusted_proxies'       => ['{{ k3s_pod_cidr }}'],
+      'forwarded_for_headers' => ['HTTP_X_FORWARDED_FOR'],
+
+      // --- Security ---
+      // Enforce app passwords for all non-browser clients (desktop sync, mobile,
+      // WebDAV). Users must create app passwords in Settings → Security.
+      // This prevents the main account password from being stored in third-party apps.
+      'token_auth_enforced' => true,
+
+      // --- Checks ---
+      'check_for_working_wellknown_setup' => true,
+      'check_for_working_htaccess'        => false,  // No .htaccess in nginx setup
+    );

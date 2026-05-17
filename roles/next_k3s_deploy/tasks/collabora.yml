@@ -1,0 +1,34 @@
+---
+# =============================================================================
+# Collabora CODE Deployment + Service
+# =============================================================================
+# Collabora CODE runs as a dedicated Deployment. TLS is terminated by
+# F5 nginx-ingress; the container runs without built-in SSL.
+# Collabora connects back to Nextcloud for WOPI from its pod IP (10.42.x.x),
+# so wopi_allowed_hosts must include k3s_pod_cidr (see next_config/wopi.yml).
+# =============================================================================
+
+- name: Collabora | Template Deployment + Service manifest
+  ansible.builtin.template:
+    src: collabora-deployment.yml.j2
+    dest: /tmp/k8s-collabora-deployment.yml
+    mode: "0644"
+
+- name: Collabora | Apply Deployment + Service
+  ansible.builtin.command: >
+    k3s kubectl apply -f /tmp/k8s-collabora-deployment.yml
+  register: collabora_apply
+  changed_when: "'created' in collabora_apply.stdout or 'configured' in collabora_apply.stdout"
+
+- name: Collabora | Remove temporary manifest
+  ansible.builtin.file:
+    path: /tmp/k8s-collabora-deployment.yml
+    state: absent
+
+- name: Collabora | Wait for Deployment to be ready (up to 3 min)
+  ansible.builtin.command: >
+    k3s kubectl rollout status deployment/collabora
+    --namespace nextcloud
+    --timeout=180s
+  changed_when: false
+  when: collabora_apply.changed

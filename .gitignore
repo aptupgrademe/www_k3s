@@ -1,0 +1,19 @@
+.vscode
+.git
+.ansible
+.claude
+
+# Ansible Vault password file – never commit this
+.vault_pass
+
+# Vault credential files – never commit real passwords.
+# Copy vault.yml.example → vault.yml and fill in your values.
+**/vault.yml
+
+# Host-specific variables – contain real IPs, hostnames and domains.
+# Copy vars.yml.example → vars.yml and fill in your values.
+inventory/host_vars/*/vars.yml
+
+# Main inventory – contains real server IPs.
+# Copy hosts.yml.example → hosts.yml and fill in your values.
+inventory/hosts.yml

@@ -1,0 +1,22 @@
+---
+# =============================================================================
+# Nextcloud background jobs (Kubernetes CronJob)
+# Runs occ cron.php every 5 minutes inside the nextcloud-fpm container.
+# =============================================================================
+
+- name: CronJob | Template Nextcloud CronJob manifest
+  ansible.builtin.template:
+    src: cronjob.yml.j2
+    dest: /tmp/k8s-nc-cronjob.yml
+    mode: "0644"
+
+- name: CronJob | Apply Nextcloud CronJob
+  ansible.builtin.command: >
+    k3s kubectl apply -f /tmp/k8s-nc-cronjob.yml
+  register: cronjob_apply
+  changed_when: "'created' in cronjob_apply.stdout or 'configured' in cronjob_apply.stdout"
+
+- name: CronJob | Remove temporary CronJob manifest
+  ansible.builtin.file:
+    path: /tmp/k8s-nc-cronjob.yml
+    state: absent

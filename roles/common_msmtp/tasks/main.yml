@@ -1,0 +1,45 @@
+---
+# =============================================================================
+# Role: common_msmtp
+# Purpose: Install msmtp as a lightweight sendmail replacement so that
+#          system services (cron, rkhunter, dnf-automatic) can relay mail
+#          through an external SMTP account (e.g. Strato, Gmail).
+#          No daemon – msmtp is called directly by /usr/sbin/sendmail.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# Package
+# The msmtp package on AlmaLinux creates a /usr/sbin/sendmail symlink so that
+# cron, rkhunter and dnf-automatic can send mail without a full MTA.
+# -----------------------------------------------------------------------------
+- name: msmtp | Install packages
+  ansible.builtin.dnf:
+    name: msmtp
+    state: present
+
+
+# -----------------------------------------------------------------------------
+# Configuration  (owner root, mode 0600 – contains plaintext password)
+# -----------------------------------------------------------------------------
+- name: msmtp | Deploy /etc/msmtprc
+  ansible.builtin.template:
+    src:   msmtprc.j2
+    dest:  /etc/msmtprc
+    owner: root
+    group: root
+    mode:  "0600"
+
+
+# -----------------------------------------------------------------------------
+# Log file – create with correct permissions so msmtp can write to it
+# -----------------------------------------------------------------------------
+- name: msmtp | Create log file
+  ansible.builtin.file:
+    path:  /var/log/msmtp.log
+    state: touch
+    owner: root
+    group: root
+    mode:  "0640"
+    modification_time: preserve
+    access_time:       preserve

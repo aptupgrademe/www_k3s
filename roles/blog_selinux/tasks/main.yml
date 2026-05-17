@@ -1,0 +1,87 @@
+---
+# =============================================================================
+# Role: blog_selinux (AlmaLinux 9 – K3s mode)
+#
+# In K3s mode Nginx and PHP-FPM run inside containers – httpd_* SELinux types
+# are no longer needed.  Instead the HostPath volume directory must carry the
+# container_file_t type so that the container runtime (containerd/K3s) can
+# read and write it while SELinux is in enforcing mode.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# Packages
+# -----------------------------------------------------------------------------
+- name: Ensure SELinux tools are installed (semanage/restorecon)
+  ansible.builtin.dnf:
+    name:
+      - policycoreutils
+      - policycoreutils-python-utils
+      - selinux-policy-targeted
+      - container-selinux   # K3s container SELinux policy
+    state: present
+
+- name: Ensure SELinux is enforcing (targeted policy)
+  ansible.builtin.selinux:
+    policy: targeted
+    state: enforcing
+
+
+# -----------------------------------------------------------------------------
+# HostPath volume directories
+# -----------------------------------------------------------------------------
+- name: Ensure WordPress www HostPath directory exists
+  ansible.builtin.file:
+    path: "{{ blog_k3s_www_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Ensure MariaDB data HostPath directory exists
+  ansible.builtin.file:
+    path: "{{ blog_k3s_db_dir }}"
+    state: directory
+    owner: "999"   # mysql user inside the mariadb container
+    group: "999"
+    mode: "0755"
+
+
+# -----------------------------------------------------------------------------
+# SELinux file contexts for K3s HostPath volumes
+# container_file_t allows containerd to read/write these directories
+# while SELinux is enforcing.
+# -----------------------------------------------------------------------------
+- name: Label WordPress www dir as container_file_t
+  ansible.builtin.command: >
+    semanage fcontext -a -t container_file_t "{{ blog_k3s_www_dir }}(/.*)?"
+  register: semanage_www
+  changed_when: semanage_www.rc == 0 and "already defined" not in (semanage_www.stderr | default(""))
+  failed_when: semanage_www.rc != 0 and "already defined" not in (semanage_www.stderr | default(""))
+
+- name: Apply SELinux context to WordPress www dir
+  ansible.builtin.command: restorecon -Rv "{{ blog_k3s_www_dir }}"
+  changed_when: false
+
+- name: Label MariaDB data dir as container_file_t
+  ansible.builtin.command: >
+    semanage fcontext -a -t container_file_t "{{ blog_k3s_db_dir }}(/.*)?"
+  register: semanage_db
+  changed_when: semanage_db.rc == 0 and "already defined" not in (semanage_db.stderr | default(""))
+  failed_when: semanage_db.rc != 0 and "already defined" not in (semanage_db.stderr | default(""))
+
+- name: Apply SELinux context to MariaDB data dir
+  ansible.builtin.command: restorecon -Rv "{{ blog_k3s_db_dir }}"
+  changed_when: false
+
+
+# -----------------------------------------------------------------------------
+# SELinux boolean: allow containers to make outbound network connections
+# (needed for container → MariaDB on the host, and for WordPress HTTP calls)
+# -----------------------------------------------------------------------------
+- name: Allow container processes to make outbound network connections
+  ansible.posix.seboolean:
+    name: container_manage_cgroup
+    state: true
+    persistent: true
+  failed_when: false   # boolean may not exist on all policy versions

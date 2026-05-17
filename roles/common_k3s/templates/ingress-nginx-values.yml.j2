@@ -1,0 +1,48 @@
+# nginx-ingress Helm values – managed by Ansible (common_k3s)
+# F5 NGINX Ingress Controller (nginx-stable/nginx-ingress).
+# DaemonSet with hostNetwork binds directly to the host's ports 80/443.
+controller:
+  kind: daemonset
+  hostNetwork: true
+  dnsPolicy: ClusterFirstWithHostNet
+  hostPort:
+    enable: true
+  service:
+    type: ClusterIP
+
+  # Allow server-snippets and location-snippets on Ingress resources.
+  # Used for rate-limiting location blocks and security headers.
+  enableSnippets: true
+
+  config:
+    entries:
+      # --- TLS hardening ---
+      # Only TLS 1.2 and 1.3; disable legacy protocols.
+      ssl-protocols: "TLSv1.2 TLSv1.3"
+      # Modern ECDHE cipher suite; no RSA key exchange, no CBC mode ciphers.
+      ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305"
+
+      # --- Compression ---
+      gzip: "on"
+
+      # --- Custom http-context directives ---
+      # SSL session cache, OCSP stapling, gzip tuning and rate-limit zones all
+      # go here because F5 NGINX exposes them via the http-snippets key rather
+      # than as individual ConfigMap entries.
+      http-snippets: |
+        ssl_session_cache shared:SSL:10m;
+        ssl_session_timeout 1d;
+
+        # OCSP stapling: attaches the CA's signed revocation response to the
+        # TLS handshake so browsers skip a separate round-trip to the CA.
+        ssl_stapling on;
+        ssl_stapling_verify on;
+
+        gzip_comp_level 6;
+        gzip_types text/plain text/css text/xml text/javascript application/javascript application/json application/xml image/svg+xml;
+
+        # Rate-limit zones – referenced by nginx.org/server-snippets annotations.
+        # nc_login: Nextcloud /login endpoint
+        # wp_login: WordPress /wp-login.php endpoint
+        limit_req_zone $binary_remote_addr zone=nc_login:10m rate=5r/s;
+        limit_req_zone $binary_remote_addr zone=wp_login:10m rate=5r/s;

@@ -1,0 +1,135 @@
+---
+# -----------------------------------------------------------------------------
+# Nextcloud system configuration (occ config:system:*)
+# occ runs as www-data (uid 33) via runuser inside the nextcloud-fpm container.
+# -----------------------------------------------------------------------------
+
+# Shared prefix used by all occ tasks in this file.
+- name: Config | Set kubectl exec occ prefix
+  ansible.builtin.set_fact:
+    occ_exec: >-
+      k3s kubectl exec deployment/nextcloud
+      --namespace nextcloud
+      --container nextcloud-fpm
+      --
+
+
+# -----------------------------------------------------------------------------
+# Trusted domains
+# -----------------------------------------------------------------------------
+- name: Config | Get current trusted_domains from Nextcloud
+  ansible.builtin.command: >
+    {{ occ_exec }}
+    runuser -u www-data -- php /var/www/html/occ
+    config:system:get trusted_domains
+  register: nc_trusted_domains
+  changed_when: false
+  failed_when: false
+
+- name: Config | Set trusted_domains[0] to nextcloud_hostname
+  ansible.builtin.command: >
+    {{ occ_exec }}
+    runuser -u www-data -- php /var/www/html/occ
+    config:system:set trusted_domains 0
+    --value="{{ nextcloud_hostname }}"
+  when: nextcloud_hostname not in nc_trusted_domains.stdout
+  changed_when: true
+
+- name: Config | Show trusted_domains update result
+  ansible.builtin.debug:
+    msg: "trusted_domains[0] was already set to {{ nextcloud_hostname }} – skipped."
+  when: nextcloud_hostname in nc_trusted_domains.stdout
+
+
+# -----------------------------------------------------------------------------
+# overwrite.cli.url
+# -----------------------------------------------------------------------------
+- name: Config | Get current overwrite.cli.url
+  ansible.builtin.command: >
+    {{ occ_exec }}
+    runuser -u www-data -- php /var/www/html/occ
+    config:system:get overwrite.cli.url
+  register: nc_cli_url
+  changed_when: false
+  failed_when: false
+
+- name: Config | Set overwrite.cli.url to nextcloud_url
+  ansible.builtin.command: >
+    {{ occ_exec }}
+    runuser -u www-data -- php /var/www/html/occ
+    config:system:set overwrite.cli.url
+    --value="{{ nextcloud_url }}"
+  when: nc_cli_url.stdout | trim != nextcloud_url
+  changed_when: true
+
+
+# -----------------------------------------------------------------------------
+# Mail / SMTP
+# Configured via occ so settings are always in sync with Ansible – even when
+# Nextcloud was already installed (env vars only apply during first-boot setup).
+# mail_smtppassword comes from vault.yml; no_log prevents it appearing in logs.
+# -----------------------------------------------------------------------------
+- name: Config | Set mail_smtpmode to smtp
+  ansible.builtin.command: >
+    {{ occ_exec }}
+    runuser -u www-data -- php /var/www/html/occ
+    config:system:set mail_smtpmode --value="smtp"
+  changed_when: false
+
+- name: Config | Set mail_smtphost
+  ansible.builtin.command: >
+    {{ occ_exec }}
+    runuser -u www-data -- php /var/www/html/occ
+    config:system:set mail_smtphost --value="{{ mail_smtphost }}"
+  changed_when: false
+
+- name: Config | Set mail_smtpport
+  ansible.builtin.command: >
+    {{ occ_exec }}
+    runuser -u www-data -- php /var/www/html/occ
+    config:system:set mail_smtpport --type=integer --value="{{ mail_smtpport }}"
+  changed_when: false
+
+- name: Config | Set mail_smtpsecure to tls (STARTTLS on port 587)
+  ansible.builtin.command: >
+    {{ occ_exec }}
+    runuser -u www-data -- php /var/www/html/occ
+    config:system:set mail_smtpsecure --value="tls"
+  changed_when: false
+
+- name: Config | Enable mail_smtpauth
+  ansible.builtin.command: >
+    {{ occ_exec }}
+    runuser -u www-data -- php /var/www/html/occ
+    config:system:set mail_smtpauth --type=boolean --value="true"
+  changed_when: false
+
+- name: Config | Set mail_smtpname (SMTP login)
+  ansible.builtin.command: >
+    {{ occ_exec }}
+    runuser -u www-data -- php /var/www/html/occ
+    config:system:set mail_smtpname --value="{{ mail_smtpname }}"
+  changed_when: false
+  no_log: true
+
+- name: Config | Set mail_smtppassword
+  ansible.builtin.command: >
+    {{ occ_exec }}
+    runuser -u www-data -- php /var/www/html/occ
+    config:system:set mail_smtppassword --value="{{ mail_smtppassword }}"
+  changed_when: false
+  no_log: true
+
+- name: Config | Set mail_from_address
+  ansible.builtin.command: >
+    {{ occ_exec }}
+    runuser -u www-data -- php /var/www/html/occ
+    config:system:set mail_from_address --value="{{ mail_from_address }}"
+  changed_when: false
+
+- name: Config | Set mail_domain
+  ansible.builtin.command: >
+    {{ occ_exec }}
+    runuser -u www-data -- php /var/www/html/occ
+    config:system:set mail_domain --value="{{ mail_domain }}"
+  changed_when: false

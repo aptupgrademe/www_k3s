@@ -1,0 +1,27 @@
+---
+# www.apt-upgrade.me – Sensitive credentials (WordPress blog)
+# 1. Copy this file:  cp vault.yml.example vault.yml
+# 2. Fill in your values below
+# 3. Encrypt before committing to your private repo:
+#      ansible-vault encrypt inventory/host_vars/www.apt-upgrade.me/vault.yml
+
+# --- Let's Encrypt ---
+email: "admin@example.de"
+
+# --- MariaDB ---
+mysql_root_password: "changeme"
+
+# --- WordPress database ---
+blog_db_pass: "changeme"
+
+# --- WordPress admin account ---
+blog_admin_user: "admin"
+blog_admin_pass: "changeme"
+
+# --- Grafana ---
+grafana_basic_auth_user: "admin"
+grafana_admin_pass:      "changeme"
+
+# --- Mail / SMTP ---
+mail_smtpname:     "homelab@example.de"
+mail_smtppassword: "changeme"

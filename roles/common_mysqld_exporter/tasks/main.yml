@@ -1,0 +1,106 @@
+---
+# =============================================================================
+# Role: common_mysqld_exporter
+# Purpose: Install Prometheus mysqld_exporter for host-side MariaDB (Nextcloud).
+#          Binds to 127.0.0.1:9104 – only accessible from localhost.
+#          Prometheus (common_prometheus) scrapes this endpoint.
+#          The Prometheus DB user 'prometheus'@'127.0.0.1' is created by next_mariadb.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# System user
+# -----------------------------------------------------------------------------
+- name: mysqld_exporter | Create system user
+  ansible.builtin.user:
+    name: mysqld_exporter
+    system: true
+    shell: /sbin/nologin
+    home: /var/lib/mysqld_exporter
+    create_home: false
+
+
+# -----------------------------------------------------------------------------
+# Binary installation
+# -----------------------------------------------------------------------------
+- name: mysqld_exporter | Download archive
+  ansible.builtin.get_url:
+    url: "https://github.com/prometheus/mysqld_exporter/releases/download/\
+          v{{ mysqld_exporter_version }}/\
+          mysqld_exporter-{{ mysqld_exporter_version }}.linux-amd64.tar.gz"
+    dest: "/tmp/mysqld_exporter-{{ mysqld_exporter_version }}.tar.gz"
+    mode: "0644"
+
+- name: mysqld_exporter | Extract archive
+  ansible.builtin.unarchive:
+    src: "/tmp/mysqld_exporter-{{ mysqld_exporter_version }}.tar.gz"
+    dest: /tmp
+    remote_src: true
+    creates: "/tmp/mysqld_exporter-{{ mysqld_exporter_version }}.linux-amd64/mysqld_exporter"
+
+- name: mysqld_exporter | Install binary
+  ansible.builtin.copy:
+    src: "/tmp/mysqld_exporter-{{ mysqld_exporter_version }}.linux-amd64/mysqld_exporter"
+    dest: /usr/local/bin/mysqld_exporter
+    owner: root
+    group: root
+    mode: "0755"
+    remote_src: true
+  notify: restart mysqld_exporter
+
+
+# -----------------------------------------------------------------------------
+# MySQL client config (.my.cnf style)
+# mysqld_exporter reads credentials from this file via --config.my-cnf flag.
+# The prometheus user is created by next_mariadb with PROCESS, REPLICATION CLIENT, SELECT.
+# -----------------------------------------------------------------------------
+- name: mysqld_exporter | Write MySQL client config
+  ansible.builtin.copy:
+    dest: /etc/mysqld_exporter.cnf
+    owner: mysqld_exporter
+    group: mysqld_exporter
+    mode: "0600"
+    content: |
+      [client]
+      user=prometheus
+      password={{ mysql_root_password }}
+      host=127.0.0.1
+      port=3306
+  no_log: true
+  notify: restart mysqld_exporter
+
+
+# -----------------------------------------------------------------------------
+# Systemd service
+# -----------------------------------------------------------------------------
+- name: mysqld_exporter | Install systemd unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/mysqld_exporter.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Prometheus MariaDB Exporter
+      After=network.target mariadb.service
+
+      [Service]
+      User=mysqld_exporter
+      ExecStart=/usr/local/bin/mysqld_exporter \
+        --config.my-cnf=/etc/mysqld_exporter.cnf \
+        --web.listen-address=127.0.0.1:9104
+      Restart=on-failure
+      RestartSec=5s
+
+      [Install]
+      WantedBy=multi-user.target
+  notify:
+    - reload systemd
+    - restart mysqld_exporter
+
+- name: mysqld_exporter | Enable and start service
+  ansible.builtin.systemd:
+    name: mysqld_exporter
+    enabled: true
+    state: started
+    daemon_reload: true

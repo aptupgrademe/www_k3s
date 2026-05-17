@@ -1,0 +1,30 @@
+---
+# Create HostPath directories on the host node.
+# The K3s containerd runtime mounts these into the respective pods.
+# SELinux context (container_file_t) is applied by role blog_selinux.
+
+- name: Ensure WordPress www HostPath directory exists
+  ansible.builtin.file:
+    path: "{{ blog_k3s_www_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# Deploy PGP public key served at https://<blog_hostname>/publickey.asc.
+# To update the key: edit roles/blog_k3s_deploy/files/publickey.asc and re-run the playbook.
+- name: Deploy publickey.asc to WordPress document root
+  ansible.builtin.copy:
+    src: publickey.asc
+    dest: "{{ blog_k3s_www_dir }}/publickey.asc"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Ensure MariaDB data HostPath directory exists
+  ansible.builtin.file:
+    path: "{{ blog_k3s_db_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"

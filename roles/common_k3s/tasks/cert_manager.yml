@@ -1,0 +1,79 @@
+---
+# =============================================================================
+# cert-manager – Let's Encrypt TLS certificates inside K3s
+# =============================================================================
+# cert-manager automates certificate issuance and renewal via the ACME
+# protocol. It replaces certbot (which ran on the host). The HTTP-01
+# challenge is answered by F5 nginx-ingress (port 80 on the host).
+# =============================================================================
+
+- name: cert-manager | Add Jetstack Helm repository
+  ansible.builtin.command: >
+    helm repo add jetstack https://charts.jetstack.io
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: jetstack_repo
+  changed_when: "'has been added' in jetstack_repo.stdout"
+  failed_when: >
+    jetstack_repo.rc != 0 and
+    'already exists' not in jetstack_repo.stderr | lower
+
+- name: cert-manager | Update Helm repositories
+  ansible.builtin.command: helm repo update
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: false
+
+- name: cert-manager | Install/upgrade cert-manager via Helm
+  ansible.builtin.command: >
+    helm upgrade --install cert-manager jetstack/cert-manager
+    --namespace cert-manager
+    --create-namespace
+    --version {{ cert_manager_chart_version }}
+    --set crds.enabled=true
+    --wait
+    --timeout 300s
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: true
+
+- name: cert-manager | Wait for cert-manager webhook deployment to be ready
+  ansible.builtin.command: >
+    k3s kubectl wait deployment/cert-manager-webhook
+    --namespace cert-manager
+    --for=condition=available
+    --timeout=300s
+  changed_when: false
+
+# -----------------------------------------------------------------------------
+# ClusterIssuer – Let's Encrypt production endpoint
+# -----------------------------------------------------------------------------
+- name: cert-manager | Template Let's Encrypt ClusterIssuer manifest
+  ansible.builtin.template:
+    src: clusterissuer.yml.j2
+    dest: /tmp/k8s-clusterissuer.yml
+    mode: "0600"
+
+- name: cert-manager | Check if ClusterIssuer already exists
+  ansible.builtin.command: >
+    k3s kubectl get clusterissuer letsencrypt-prod
+  register: ci_check
+  changed_when: false
+  failed_when: false
+
+- name: cert-manager | Wait for ClusterIssuer CRD to be established
+  ansible.builtin.command: >
+    k3s kubectl wait --for=condition=established --timeout=120s
+    crd/clusterissuers.cert-manager.io
+  changed_when: false
+
+- name: cert-manager | Apply Let's Encrypt ClusterIssuer
+  ansible.builtin.command: >
+    k3s kubectl apply -f /tmp/k8s-clusterissuer.yml
+  register: ci_apply
+  changed_when: "'created' in ci_apply.stdout or 'configured' in ci_apply.stdout"
+
+- name: cert-manager | Remove temporary ClusterIssuer manifest
+  ansible.builtin.file:
+    path: /tmp/k8s-clusterissuer.yml
+    state: absent

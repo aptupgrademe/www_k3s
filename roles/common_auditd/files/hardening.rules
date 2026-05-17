@@ -1,0 +1,46 @@
+# Managed by Ansible – do not edit manually
+# =============================================================================
+# Audit rules – security-relevant system events
+# Applied via: augenrules --load
+# View log:    ausearch -k <key>  |  aureport --summary
+# =============================================================================
+
+# --- Identity and authentication files ---
+-w /etc/passwd          -p wa -k identity
+-w /etc/shadow          -p wa -k identity
+-w /etc/group           -p wa -k identity
+-w /etc/gshadow         -p wa -k identity
+-w /etc/security/opasswd -p wa -k identity
+
+# --- Privilege escalation configuration ---
+-w /etc/sudoers         -p wa -k sudoers
+-w /etc/sudoers.d/      -p wa -k sudoers
+
+# --- SSH daemon configuration ---
+-w /etc/ssh/sshd_config -p wa -k sshd_config
+
+# --- Cron / scheduled tasks ---
+-w /etc/cron.d/         -p wa -k cron
+-w /etc/crontab         -p wa -k cron
+-w /var/spool/cron/     -p wa -k cron
+
+# --- Kernel module loading ---
+-w /sbin/insmod         -p x  -k modules
+-w /sbin/rmmod          -p x  -k modules
+-w /sbin/modprobe       -p x  -k modules
+
+# --- Sudo executions (who ran what as root) ---
+-w /usr/bin/sudo        -p x  -k sudo_exec
+
+# --- Network configuration changes ---
+-w /etc/hosts           -p wa -k network_config
+-w /etc/hostname        -p wa -k network_config
+-w /etc/sysconfig/network-scripts/ -p wa -k network_config
+
+# --- Audit configuration itself ---
+-w /etc/audit/          -p wa -k audit_config
+-w /etc/audit/rules.d/  -p wa -k audit_config
+
+# --- Make the configuration immutable (requires reboot to change rules) ---
+# Uncomment to lock audit configuration after applying:
+# -e 2

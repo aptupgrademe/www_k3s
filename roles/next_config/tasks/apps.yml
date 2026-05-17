@@ -1,0 +1,71 @@
+---
+# -----------------------------------------------------------------------------
+# Nextcloud app installation
+# Installs and enables:
+#   richdocuments    – Nextcloud Office (Collabora integration)
+#   previewgenerator – pre-generates file previews via background jobs
+# -----------------------------------------------------------------------------
+
+- name: Apps | Get Nextcloud app list (plain text)
+  ansible.builtin.command: >
+    k3s kubectl exec deployment/nextcloud
+    --namespace nextcloud
+    --container nextcloud-fpm
+    --
+    runuser -u www-data -- php /var/www/html/occ app:list
+  register: nc_app_list
+  changed_when: false
+  failed_when: false
+
+
+# --- richdocuments (Nextcloud Office) ----------------------------------------
+
+- name: Apps | Install Nextcloud Office (richdocuments)
+  ansible.builtin.command: >
+    k3s kubectl exec deployment/nextcloud
+    --namespace nextcloud
+    --container nextcloud-fpm
+    --
+    runuser -u www-data -- php /var/www/html/occ app:install richdocuments
+  when: "nc_app_list.stdout is not search('richdocuments: ')"
+  changed_when: true
+
+- name: Apps | Enable Nextcloud Office (richdocuments)
+  ansible.builtin.command: >
+    k3s kubectl exec deployment/nextcloud
+    --namespace nextcloud
+    --container nextcloud-fpm
+    --
+    runuser -u www-data -- php /var/www/html/occ app:enable richdocuments
+  register: enable_richdocuments
+  changed_when: "'already enabled' not in enable_richdocuments.stdout"
+  failed_when: false
+
+
+# --- previewgenerator ---------------------------------------------------------
+# Pre-generates thumbnails for images, videos and documents in the background.
+# Once enabled, occ cron.php (K8s CronJob) picks up the preview jobs every 5 min.
+# For an initial bulk generation on an existing instance run manually:
+#   kubectl exec -n nextcloud deployment/nextcloud -c nextcloud-fpm -- \
+#     runuser -u www-data -- php /var/www/html/occ preview:generate-all
+
+- name: Apps | Install preview_generator
+  ansible.builtin.command: >
+    k3s kubectl exec deployment/nextcloud
+    --namespace nextcloud
+    --container nextcloud-fpm
+    --
+    runuser -u www-data -- php /var/www/html/occ app:install previewgenerator
+  when: "nc_app_list.stdout is not search('previewgenerator: ')"
+  changed_when: true
+
+- name: Apps | Enable preview_generator
+  ansible.builtin.command: >
+    k3s kubectl exec deployment/nextcloud
+    --namespace nextcloud
+    --container nextcloud-fpm
+    --
+    runuser -u www-data -- php /var/www/html/occ app:enable previewgenerator
+  register: enable_previewgenerator
+  changed_when: "'already enabled' not in enable_previewgenerator.stdout"
+  failed_when: false

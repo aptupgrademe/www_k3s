@@ -1,0 +1,208 @@
+# WordPress Deployment + Service – managed by Ansible (blog_k3s_deploy)
+# Pod contains two containers:
+#   wordpress-fpm  – PHP-FPM (port 9000) – official wordpress:fpm image
+#   nginx          – Nginx sidecar (port 80), serves static files + proxies PHP
+#
+# The wordpress:fpm image auto-creates wp-config.php on first start when
+# WORDPRESS_DB_* env vars are set.  WP-CLI is downloaded by the init container
+# to /var/www/html/wp-cli.phar and used by the blog_wordpress Ansible role
+# (kubectl exec) for the initial installation and plugin setup.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: wordpress
+  labels:
+    app: wordpress
+spec:
+  replicas: 1
+  # Recreate ensures only one pod accesses the RWO HostPath volume at a time.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      # -------------------------------------------------------------------
+      # Init container: fix HostPath directory ownership and download WP-CLI
+      # The wordpress:fpm image runs as www-data (uid 33).
+      # WP-CLI is written to the shared volume so kubectl exec can use it.
+      # -------------------------------------------------------------------
+      initContainers:
+      - name: init-dirs
+        image: {{ blog_image_busybox }}
+        command:
+        - sh
+        - -c
+        - |
+          chown -R 33:33 /var/www/html
+          chmod 0755 /var/www/html
+          echo "Downloading WP-CLI..."
+          wget -q -O /var/www/html/wp-cli.phar \
+            https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
+          chmod +x /var/www/html/wp-cli.phar
+          echo "Init complete."
+        volumeMounts:
+        - name: wordpress-www
+          mountPath: /var/www/html
+
+      containers:
+      # -------------------------------------------------------------------
+      # Container 1: WordPress PHP-FPM
+      # The official image auto-creates wp-config.php from env vars.
+      # wp core install is handled by blog_wordpress role via kubectl exec.
+      # -------------------------------------------------------------------
+      - name: wordpress-fpm
+        image: {{ blog_image_wordpress }}
+        env:
+        # Database
+        - name: WORDPRESS_DB_HOST
+          valueFrom:
+            secretKeyRef:
+              name: wordpress-secrets
+              key: db-host
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            secretKeyRef:
+              name: wordpress-secrets
+              key: db-name
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: wordpress-secrets
+              key: db-user
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: wordpress-secrets
+              key: db-password
+        # Force WordPress to use the correct public URL regardless of auto-detection.
+        # Without this the container may derive a wrong siteurl from SCRIPT_FILENAME.
+        - name: WORDPRESS_CONFIG_EXTRA
+          value: |
+            define('WP_HOME', 'https://{{ blog_hostname }}');
+            define('WP_SITEURL', 'https://{{ blog_hostname }}');
+        ports:
+        - containerPort: 9000
+          name: fpm
+        volumeMounts:
+        - name: wordpress-www
+          mountPath: /var/www/html
+        - name: php-config
+          mountPath: /usr/local/etc/php/conf.d/uploads.ini
+          subPath: uploads.ini
+        - name: fpm-pool-config
+          mountPath: /usr/local/etc/php-fpm.d/z-monitoring.conf
+          subPath: z-monitoring.conf
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        readinessProbe:
+          tcpSocket:
+            port: 9000
+          initialDelaySeconds: 20
+          periodSeconds: 15
+          failureThreshold: 5
+        livenessProbe:
+          exec:
+            command: ["sh", "-c", "kill -0 1"]
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          failureThreshold: 3
+
+      # -------------------------------------------------------------------
+      # Container 2: php-fpm_exporter – Prometheus metrics for PHP-FPM
+      # Scrapes the FPM status page via FastCGI on 127.0.0.1:9000.
+      # Requires pm.status_path = /fpm-status in the FPM pool config.
+      # -------------------------------------------------------------------
+      - name: php-fpm-exporter
+        image: {{ blog_image_fpm_exporter }}
+        env:
+        - name: PHP_FPM_SCRAPE_URI
+          value: "tcp://127.0.0.1:9000/fpm-status"
+        - name: PHP_FPM_FIX_PROCESS_COUNT
+          value: "true"
+        ports:
+        - containerPort: 9253
+          name: metrics
+        resources:
+          requests:
+            memory: "16Mi"
+            cpu: "10m"
+          limits:
+            memory: "64Mi"
+            cpu: "50m"
+
+      # -------------------------------------------------------------------
+      # Container 3: Nginx sidecar
+      # Serves static files, proxies PHP requests to FPM.
+      # -------------------------------------------------------------------
+      - name: nginx
+        image: {{ blog_image_nginx }}
+        ports:
+        - containerPort: 80
+          name: http
+        volumeMounts:
+        - name: wordpress-www
+          mountPath: /var/www/html
+          readOnly: true
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d/default.conf
+          subPath: default.conf
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "25m"
+          limits:
+            memory: "128Mi"
+            cpu: "250m"
+        readinessProbe:
+          tcpSocket:
+            port: 80
+          initialDelaySeconds: 20
+          periodSeconds: 15
+          failureThreshold: 5
+
+      # -------------------------------------------------------------------
+      # Volumes
+      # -------------------------------------------------------------------
+      volumes:
+      - name: wordpress-www
+        hostPath:
+          path: {{ blog_k3s_www_dir }}
+          type: DirectoryOrCreate
+      - name: nginx-config
+        configMap:
+          name: wordpress-nginx-config
+      - name: php-config
+        configMap:
+          name: wordpress-php-config
+      - name: fpm-pool-config
+        configMap:
+          name: wordpress-fpm-pool-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  namespace: wordpress
+  labels:
+    app: wordpress
+spec:
+  selector:
+    app: wordpress
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+    protocol: TCP
+  type: ClusterIP

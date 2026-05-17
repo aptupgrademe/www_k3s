@@ -1,0 +1,29 @@
+# Managed by Ansible – do not edit manually
+# =============================================================================
+# Fail2Ban – jail.local  (K3s mode)
+#
+# HTTP-level protection (WordPress login, Nextcloud login, bot scanning) is
+# handled by nginx-ingress (F5) rate-limiting annotations in the Ingress resources.
+# Fail2Ban on the host is responsible for SSH brute-force protection only.
+# =============================================================================
+
+[DEFAULT]
+bantime  = {{ fail2ban_bantime }}
+findtime = {{ fail2ban_findtime }}
+maxretry = {{ fail2ban_maxretry }}
+backend  = systemd
+banaction = iptables-multiport
+
+# Ignore localhost and private RFC-1918 ranges
+ignoreip = 127.0.0.1/8 ::1 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
+
+
+# -----------------------------------------------------------------------------
+# SSH – brute-force protection on the custom SSH port
+# -----------------------------------------------------------------------------
+[sshd]
+enabled  = true
+port     = {{ ansible_port | default(10022) }}
+logpath  = %(sshd_log)s
+backend  = systemd
+maxretry = 3

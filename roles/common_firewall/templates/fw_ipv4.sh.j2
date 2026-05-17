@@ -1,0 +1,132 @@
+#!/bin/bash
+set -euo pipefail
+
+# =============================================================================
+# IPv4 packet filter – managed by Ansible (common_firewall)
+# Applied at every reboot via @reboot cron job (/root/fw/fw_ipv4.sh).
+# K3s starts after crond and adds its KUBE-* chains on top of these rules.
+# =============================================================================
+
+# Flush all rules and custom chains
+/sbin/iptables -F
+/sbin/iptables -X
+
+# ── Default policies: DROP immediately (no race window) ───────────────────────
+# Set DROP before any ACCEPT rules are added, so there is no window during
+# which the chain is empty and all traffic passes.  The old ACCEPT-first
+# approach left the server unprotected for the duration of the script.
+/sbin/iptables -P INPUT   DROP
+/sbin/iptables -P OUTPUT  DROP
+/sbin/iptables -P FORWARD DROP
+
+# ── Loopback ──────────────────────────────────────────────────────────────────
+# Covers all host-local traffic: kubectl, kubelet, Prometheus scraping
+# NodePorts (127.0.0.1:30xxx), MariaDB/Redis sockets, etc.
+# The old "server_ipv4 -j ACCEPT" whitelist is removed – traffic from the
+# host to its own IP always routes through loopback and is caught here.
+# Accepting src=server_ipv4 on the external interface only helps spoofers.
+/sbin/iptables -A INPUT  -i lo -j ACCEPT
+/sbin/iptables -A OUTPUT -o lo -j ACCEPT
+
+# ── Connection tracking ───────────────────────────────────────────────────────
+/sbin/iptables -A INPUT   -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+/sbin/iptables -A OUTPUT  -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+/sbin/iptables -A INPUT   -m conntrack --ctstate INVALID -j DROP
+/sbin/iptables -A FORWARD -m conntrack --ctstate INVALID -j DROP
+/sbin/iptables -A OUTPUT  -m conntrack --ctstate INVALID -j DROP
+
+# ── Malformed TCP ─────────────────────────────────────────────────────────────
+/sbin/iptables -A INPUT -p tcp --tcp-flags ALL ALL  -j DROP  # XMAS packets
+/sbin/iptables -A INPUT -p tcp --tcp-flags ALL NONE -j DROP  # NULL packets
+
+# ── TCP spoofing: reject unsolicited SYN,ACK ──────────────────────────────────
+# A SYN,ACK arriving as a NEW connection has no matching SYN in the conntrack
+# table – it is always a spoofed reflection attempt.
+/sbin/iptables -A INPUT -m conntrack --ctstate NEW \
+  -p tcp --tcp-flags SYN,ACK SYN,ACK \
+  -j REJECT --reject-with tcp-reset
+
+# ── Port scanner blocklist ────────────────────────────────────────────────────
+# Block only after 5+ TCP SYN packets to closed ports within 60 seconds.
+# Using --hitcount prevents lockout from a single accidental connection or
+# an online port-check tool hitting one port.  Ban duration: 1 hour.
+# TCP-SYN scope (set below) ignores ICMP/UDP background noise.
+/sbin/iptables -A INPUT   -m recent --name portscan --rcheck --seconds 3600 --hitcount 5 -j DROP
+/sbin/iptables -A FORWARD -m recent --name portscan --rcheck --seconds 3600 --hitcount 5 -j DROP
+
+# ── K3s / Kubernetes CNI exceptions ───────────────────────────────────────────
+# These MUST appear before the RFC-1918 DROP rules below so that pod traffic
+# ({{ k3s_pod_cidr }}) is not blocked by the private-range rules.
+
+# Allow K3s pods to reach host-side MariaDB (Nextcloud)
+/sbin/iptables -A INPUT -s {{ k3s_pod_cidr }} -p tcp --dport 3306 -j ACCEPT
+
+# Allow K3s pods to reach host-side Redis (Nextcloud)
+/sbin/iptables -A INPUT -s {{ k3s_pod_cidr }} -p tcp --dport 6379 -j ACCEPT
+
+# Pod-to-pod and pod-to-service forwarding
+# (K3s manages KUBE-* chains; we just keep FORWARD open for the pod CIDR.)
+/sbin/iptables -A FORWARD -s {{ k3s_pod_cidr }} -j ACCEPT
+/sbin/iptables -A FORWARD -d {{ k3s_pod_cidr }} -j ACCEPT
+
+# ── Block RFC-1918 and reserved source ranges ──────────────────────────────────
+# Must appear AFTER the K3s exceptions above.
+/sbin/iptables -A INPUT -s 0.0.0.0/8      -j DROP
+/sbin/iptables -A INPUT -s 10.0.0.0/8     -j DROP
+/sbin/iptables -A INPUT -s 127.0.0.0/8    -j DROP
+/sbin/iptables -A INPUT -s 169.254.0.0/16 -j DROP
+/sbin/iptables -A INPUT -s 172.16.0.0/12  -j DROP
+/sbin/iptables -A INPUT -s 192.168.0.0/16 -j DROP
+/sbin/iptables -A INPUT -s 224.0.0.0/4    -j DROP
+/sbin/iptables -A INPUT -s 240.0.0.0/5    -j DROP
+
+# ── RST flood protection ──────────────────────────────────────────────────────
+# Allow up to 5 RST packets/s; excess falls through to DROP.
+/sbin/iptables -A INPUT -p tcp --tcp-flags SYN,ACK,FIN,RST RST \
+  -m limit --limit 1/s --limit-burst 5 -j ACCEPT
+
+# ── ICMP ─────────────────────────────────────────────────────────────────────
+/sbin/iptables -A INPUT -p icmp --icmp-type 3  -j ACCEPT              # Destination unreachable (PMTUD)
+/sbin/iptables -A INPUT -p icmp --icmp-type 8  \
+  -m limit --limit 5/s --limit-burst 10 -j ACCEPT                     # Echo-request (rate-limited)
+/sbin/iptables -A INPUT -p icmp --icmp-type 11 -j ACCEPT              # Time exceeded (traceroute)
+/sbin/iptables -A INPUT -p icmp --icmp-type 12 -j ACCEPT              # Parameter problem
+
+# ── Inbound: web + management ─────────────────────────────────────────────────
+# TCP 80/443: HTTP and HTTPS (nginx-ingress F5 with hostNetwork=true)
+# UDP 443:    HTTP/3 (QUIC)
+# TCP 10022:  SSH on non-default management port
+/sbin/iptables -A INPUT -m conntrack --ctstate NEW -p tcp --dport 80    -d {{ server_ipv4 }} -j ACCEPT
+/sbin/iptables -A INPUT -m conntrack --ctstate NEW -p tcp --dport 443   -d {{ server_ipv4 }} -j ACCEPT
+/sbin/iptables -A INPUT -m conntrack --ctstate NEW -p udp --dport 443   -d {{ server_ipv4 }} -j ACCEPT
+/sbin/iptables -A INPUT -m conntrack --ctstate NEW -p tcp --dport 10022 -d {{ server_ipv4 }} -j ACCEPT
+
+# ── Outbound: K3s internal traffic ───────────────────────────────────────────
+# All host→pod and host→service traffic must be allowed in the OUTPUT chain.
+# This covers: kubelet health checks (10250), CNI probes, kube-proxy, metrics.
+# Without these rules the strict OUTPUT DROP policy breaks K3s node health.
+/sbin/iptables -A OUTPUT -d {{ k3s_pod_cidr }}     -j ACCEPT
+/sbin/iptables -A OUTPUT -d {{ k3s_service_cidr }} -j ACCEPT
+
+# ── Outbound: external services ───────────────────────────────────────────────
+/sbin/iptables -A OUTPUT -m conntrack --ctstate NEW -p udp --dport 53   -j ACCEPT  # DNS (UDP)
+/sbin/iptables -A OUTPUT -m conntrack --ctstate NEW -p tcp --dport 53   -j ACCEPT  # DNS (TCP)
+/sbin/iptables -A OUTPUT -m conntrack --ctstate NEW -p udp --dport 123  -j ACCEPT  # NTP
+/sbin/iptables -A OUTPUT -m conntrack --ctstate NEW -p tcp --dport 80   -j ACCEPT  # HTTP
+/sbin/iptables -A OUTPUT -m conntrack --ctstate NEW -p tcp --dport 443  -j ACCEPT  # HTTPS
+/sbin/iptables -A OUTPUT -m conntrack --ctstate NEW -p tcp --dport 465  -j ACCEPT  # SMTP/TLS      – Nextcloud mail
+/sbin/iptables -A OUTPUT -m conntrack --ctstate NEW -p tcp --dport 587  -j ACCEPT  # SMTP/STARTTLS – Nextcloud mail
+/sbin/iptables -A OUTPUT -m conntrack --ctstate NEW -p tcp --dport 6443 -j ACCEPT  # K3s API server
+
+# ── Logging + portscan registration + final DROP ──────────────────────────────
+# Only TCP SYN packets to closed ports count toward the portscan threshold.
+# Non-SYN packets (ICMP, UDP, ACK, FIN …) are logged and dropped but do NOT
+# increment the portscan counter, so they cannot trigger the ban.
+/sbin/iptables -N LOGGING
+/sbin/iptables -A INPUT  -p tcp --syn -m recent --name portscan --set
+/sbin/iptables -A INPUT  -j LOGGING
+/sbin/iptables -A OUTPUT -j LOGGING
+/sbin/iptables -A LOGGING -m limit --limit 2/min -j LOG --log-prefix "IPTables-Dropped: " --log-level 4
+/sbin/iptables -A LOGGING -j DROP
+
+exit 0

@@ -1,0 +1,79 @@
+---
+# =============================================================================
+# Role: common_rkhunter
+# Purpose: Install and configure rkhunter (rootkit hunter) on AlmaLinux 9.
+#          Runs a daily cron scan and warns by e-mail on suspicious findings.
+#          Must run AFTER all other software is installed so that --propupd
+#          captures a clean baseline of the system.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# Package (from EPEL – should already be enabled by *_packages roles)
+# -----------------------------------------------------------------------------
+- name: rkhunter | Install package
+  ansible.builtin.dnf:
+    name: rkhunter
+    state: present
+
+
+# -----------------------------------------------------------------------------
+# Configuration
+# -----------------------------------------------------------------------------
+- name: rkhunter | Configure options
+  ansible.builtin.lineinfile:
+    path: /etc/rkhunter.conf
+    regexp: "^{{ item.key }}="
+    line: "{{ item.key }}={{ item.value }}"
+  loop:
+    - { key: "UPDATE_MIRRORS",    value: "1" }
+    - { key: "MIRRORS_MODE",      value: "0" }       # use any mirror
+    - { key: "WEB_CMD",           value: "curl" }
+    - { key: "MAIL-ON-WARNING",   value: "{{ rkhunter_mail }}" }
+    - { key: "AUTO_X_DETECT",     value: "0" }        # no X display
+    - { key: "TMPDIR",            value: "/var/lib/rkhunter/tmp" }
+    - { key: "PKGMGR",            value: "RPM" }      # use RPM for binary checks
+
+
+# -----------------------------------------------------------------------------
+# Ensure TMPDIR exists (rkhunter will not run without it)
+# -----------------------------------------------------------------------------
+- name: rkhunter | Create TMPDIR
+  ansible.builtin.file:
+    path: /var/lib/rkhunter/tmp
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+
+# -----------------------------------------------------------------------------
+# Initialise – update mirror list and build the file-properties database
+# This must run every time to capture newly installed binaries.
+# -----------------------------------------------------------------------------
+- name: rkhunter | Update data files
+  ansible.builtin.command: rkhunter --update --nocolors
+  register: rkhunter_update
+  changed_when: false
+  # rc=1: all mirrors failed, rc=2: update not possible – both non-fatal,
+  # rkhunter ships usable data files with the package.
+  failed_when: false
+
+- name: rkhunter | Build / refresh file-properties database
+  ansible.builtin.command: rkhunter --propupd --nocolors
+  changed_when: true
+  failed_when: false
+
+
+# -----------------------------------------------------------------------------
+# Daily cron scan
+# Runs at 03:15 every night; output only on warnings (--report-warnings-only)
+# If mail is configured the OS MTA forwards cron output to root/rkhunter_mail.
+# -----------------------------------------------------------------------------
+- name: rkhunter | Configure daily cron scan
+  ansible.builtin.cron:
+    name: "rkhunter daily scan"
+    hour: "3"
+    minute: "15"
+    job: "/usr/bin/rkhunter --check --cronjob --report-warnings-only --nocolors 2>&1"
+    user: root

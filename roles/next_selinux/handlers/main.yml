@@ -1,0 +1,4 @@
+---
+# handlers file for next_selinux
+# Nginx reload and PHP-FPM restart are executed directly as tasks in this role
+# because they are always required after SELinux context changes.

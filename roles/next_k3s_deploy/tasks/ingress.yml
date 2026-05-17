@@ -1,0 +1,24 @@
+---
+# =============================================================================
+# Ingress resources for Nextcloud and Collabora
+# =============================================================================
+# One Ingress per hostname; cert-manager issues Let's Encrypt certificates
+# automatically via the annotation cert-manager.io/cluster-issuer.
+# =============================================================================
+
+- name: Ingress | Template Ingress manifest
+  ansible.builtin.template:
+    src: ingress.yml.j2
+    dest: /tmp/k8s-nc-ingress.yml
+    mode: "0644"
+
+- name: Ingress | Apply Ingress resources
+  ansible.builtin.command: >
+    k3s kubectl apply -f /tmp/k8s-nc-ingress.yml
+  register: ingress_apply
+  changed_when: "'created' in ingress_apply.stdout or 'configured' in ingress_apply.stdout"
+
+- name: Ingress | Remove temporary Ingress manifest
+  ansible.builtin.file:
+    path: /tmp/k8s-nc-ingress.yml
+    state: absent

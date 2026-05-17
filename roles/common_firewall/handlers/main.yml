@@ -1,0 +1,5 @@
+---
+# No handlers needed.
+# Firewall rules are applied on the next reboot via the @reboot cron job
+# (/root/fw/fw_ipv4.sh and /root/fw/fw_ipv6.sh), not during the Ansible run.
+# Applying iptables -F on a live K3s node causes a deadlock with the KUBE-* chains.

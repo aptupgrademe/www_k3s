@@ -1,0 +1,159 @@
+# Ingress resources – managed by Ansible (next_k3s_deploy)
+# F5 nginx-ingress requires Mergeable Ingresses when multiple Ingresses share
+# the same hostname (e.g. main Ingress + cert-manager ACME solver Ingress).
+# Each service uses two Ingress objects:
+#   master: TLS + server-level config, NO paths (F5 requirement)
+#   minion: paths/routing + location-level config, NO TLS
+# cert-manager solver Ingresses are created as minions via ClusterIssuer
+# ingressTemplate annotations, so their challenge locations are merged in.
+
+# ============================================================
+# Nextcloud – MASTER (TLS + server config, no paths)
+# ============================================================
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nextcloud
+  namespace: nextcloud
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.org/mergeable-ingress-type: "master"
+    nginx.org/ssl-redirect: "false"
+    # HTTPS redirect with /.well-known/ exception for ACME HTTP-01 challenges.
+    # Rate-limit /login via a custom location block (exact match takes priority
+    # over the minion's catch-all location /).
+    nginx.org/server-snippets: |
+      set $redirect_https 0;
+      if ($scheme = http)                       { set $redirect_https 1; }
+      if ($request_uri ~ "^/.well-known/")      { set $redirect_https 0; }
+      if ($redirect_https = 1)                  { return 301 https://$host$request_uri; }
+      location = /login {
+        limit_req zone=nc_login burst=5 nodelay;
+        proxy_pass http://nextcloud.nextcloud.svc.cluster.local;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+      }
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - {{ nextcloud_hostname }}
+    secretName: nextcloud-tls
+  rules:
+  - host: {{ nextcloud_hostname }}
+    # No http.paths – required for F5 nginx-ingress master Ingress.
+    # Paths are defined in the nextcloud-routes minion Ingress below.
+
+# ============================================================
+# Nextcloud – MINION (paths + location-level config)
+# ============================================================
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nextcloud-routes
+  namespace: nextcloud
+  annotations:
+    nginx.org/mergeable-ingress-type: "minion"
+    # Security headers applied to all Nextcloud locations
+    nginx.org/location-snippets: |
+      add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+      add_header X-Frame-Options "SAMEORIGIN" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header Referrer-Policy "same-origin" always;
+      add_header X-Permitted-Cross-Domain-Policies "none" always;
+      add_header X-Download-Options "noopen" always;
+      add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
+      add_header X-Robots-Tag "noindex, nofollow" always;
+      add_header Cross-Origin-Opener-Policy "same-origin" always;
+      add_header Cross-Origin-Resource-Policy "same-site" always;
+    nginx.org/client-max-body-size: "512m"
+    nginx.org/proxy-read-timeout: "300s"
+    nginx.org/proxy-send-timeout: "300s"
+    nginx.org/path-regex: "case_sensitive"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: {{ nextcloud_hostname }}
+    http:
+      paths:
+      - path: /grafana/
+        pathType: Prefix
+        backend:
+          service:
+            name: grafana
+            port:
+              number: 3000
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: nextcloud
+            port:
+              number: 80
+
+# ============================================================
+# Collabora – MASTER (TLS + server config, no paths)
+# ============================================================
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: collabora
+  namespace: nextcloud
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.org/mergeable-ingress-type: "master"
+    nginx.org/ssl-redirect: "false"
+    nginx.org/server-snippets: |
+      set $redirect_https 0;
+      if ($scheme = http)                       { set $redirect_https 1; }
+      if ($request_uri ~ "^/.well-known/")      { set $redirect_https 0; }
+      if ($redirect_https = 1)                  { return 301 https://$host$request_uri; }
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - {{ collabora_hostname }}
+    secretName: collabora-tls
+  rules:
+  - host: {{ collabora_hostname }}
+    # No http.paths – required for F5 nginx-ingress master Ingress.
+
+# ============================================================
+# Collabora – MINION (paths + location-level config)
+# ============================================================
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: collabora-routes
+  namespace: nextcloud
+  annotations:
+    nginx.org/mergeable-ingress-type: "minion"
+    # WebSocket support required for /cool endpoint (document editing)
+    nginx.org/proxy-read-timeout: "36000s"
+    nginx.org/proxy-send-timeout: "36000s"
+    nginx.org/proxy-connect-timeout: "36000s"
+    nginx.org/location-snippets: |
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+      add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header X-Frame-Options "SAMEORIGIN" always;
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: {{ collabora_hostname }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: collabora
+            port:
+              number: 9980

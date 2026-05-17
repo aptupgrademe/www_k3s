@@ -1,0 +1,16 @@
+# Managed by Ansible – do not edit manually
+# msmtp – lightweight SMTP relay
+# Used by cron, rkhunter, dnf-automatic and other system services.
+
+defaults
+auth           on
+tls            on
+tls_trust_file /etc/ssl/certs/ca-bundle.crt
+logfile        /var/log/msmtp.log
+
+account        default
+host           {{ msmtp_host }}
+port           {{ msmtp_port }}
+from           {{ msmtp_from }}
+user           {{ msmtp_user }}
+password       {{ msmtp_password }}

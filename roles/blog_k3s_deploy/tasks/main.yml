@@ -1,0 +1,32 @@
+---
+# =============================================================================
+# Role: blog_k3s_deploy
+# Purpose: Deploy the complete WordPress stack into K3s.
+#          All services (MariaDB, WordPress PHP-FPM, Nginx) run as K8s
+#          workloads in the 'wordpress' namespace.
+#          Only iptables and SSH remain on the host.
+# =============================================================================
+
+- name: blog_k3s_deploy | HostPath directories
+  ansible.builtin.import_tasks: dirs.yml
+
+- name: blog_k3s_deploy | Namespace, Secret, ConfigMap
+  ansible.builtin.import_tasks: namespace_secrets.yml
+
+- name: blog_k3s_deploy | MariaDB Deployment + Service
+  ansible.builtin.import_tasks: mariadb.yml
+
+- name: blog_k3s_deploy | External Services (Grafana → host)
+  ansible.builtin.import_tasks: external_services.yml
+
+- name: blog_k3s_deploy | WordPress Deployment + Service
+  ansible.builtin.import_tasks: wordpress.yml
+
+- name: blog_k3s_deploy | Ingress + TLS
+  ansible.builtin.import_tasks: ingress.yml
+
+- name: blog_k3s_deploy | WordPress CronJob
+  ansible.builtin.import_tasks: cronjob.yml
+
+- name: blog_k3s_deploy | Exporter NodePort Services
+  ansible.builtin.import_tasks: exporters.yml

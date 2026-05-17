@@ -1,0 +1,111 @@
+---
+# =============================================================================
+# Role: ssh
+# Purpose: Harden SSH by setting a custom port (10022), deploying a locked-down
+#          sshd_config, and ensuring SELinux labels the new port correctly.
+# Target:  AlmaLinux 9 (SELinux enforcing by default)
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# STEP 1: Ensure SELinux management tools are present
+# -----------------------------------------------------------------------------
+# "semanage" (from policycoreutils-python-utils) lets us assign SELinux labels
+# to custom ports. Without it, Steps 2 and 3 would fail.
+# -----------------------------------------------------------------------------
+- name: Install SELinux management tools
+  ansible.builtin.dnf:
+    name: policycoreutils-python-utils
+    state: present
+
+
+# -----------------------------------------------------------------------------
+# STEP 2: Check whether tcp/10022 already has an SELinux label
+# -----------------------------------------------------------------------------
+# We query the full SELinux port list once and reuse the result in Steps 3a/3b.
+# This avoids fragile error-code logic and keeps both follow-up tasks idempotent.
+#
+# "changed_when: false" – read-only query, never counts as a change.
+# "failed_when: false"  – returns non-zero when the port is unlabelled; that is
+#                         expected on a fresh system, not an error.
+# -----------------------------------------------------------------------------
+- name: Query current SELinux port labels
+  ansible.builtin.command: semanage port -l
+  register: semanage_port_list
+  changed_when: false
+  failed_when: false
+
+
+# -----------------------------------------------------------------------------
+# STEP 3a: Add SELinux label for tcp/10022 (port not yet in database)
+# -----------------------------------------------------------------------------
+- name: Add ssh_port_t label for tcp/10022 in SELinux (new entry)
+  ansible.builtin.command: semanage port -a -t ssh_port_t -p tcp 10022
+  when: "'10022' not in (semanage_port_list.stdout | default(''))"
+  changed_when: true
+
+
+# -----------------------------------------------------------------------------
+# STEP 3b: Update SELinux label for tcp/10022 (port exists with wrong type)
+# -----------------------------------------------------------------------------
+# Only runs when 10022 is already in the database but not labelled ssh_port_t.
+# "semanage port -m" updates an existing entry (-a would fail in this case).
+# -----------------------------------------------------------------------------
+- name: Update ssh_port_t label for tcp/10022 in SELinux (modify existing entry)
+  ansible.builtin.command: semanage port -m -t ssh_port_t -p tcp 10022
+  when:
+    - "'10022' in (semanage_port_list.stdout | default(''))"
+    - "'ssh_port_t' not in (semanage_port_list.stdout | default('') | regex_search('ssh_port_t.*10022') | default(''))"
+  changed_when: true
+
+
+# -----------------------------------------------------------------------------
+# STEP 4: Deploy sshd_config
+# -----------------------------------------------------------------------------
+# Copies the hardened SSH configuration to the target host.
+#   mode 0600  – only root may read or modify this file (SSH requirement)
+#   backup     – keeps a timestamped copy of the previous config for rollback
+#   notify     – handlers run once at the end of the play (Ansible deduplicates
+#                them, so multiple notifies still only trigger one restart)
+# -----------------------------------------------------------------------------
+- name: Deploy hardened sshd_config
+  ansible.builtin.copy:
+    src: sshd_config
+    dest: /etc/ssh/sshd_config
+    owner: root
+    group: root
+    mode: "0600"
+    backup: true
+  notify: Validate sshd config
+
+
+# -----------------------------------------------------------------------------
+# STEP 5: Deploy SSH login banner
+# -----------------------------------------------------------------------------
+# Shown to users before authentication. Mode 0644 is intentional – the file
+# contains no secrets and sshd reads it as a non-root process.
+# template is used instead of copy so Jinja2 variables (e.g. nextcloud_ipv4)
+# are rendered into the banner at deploy time.
+# -----------------------------------------------------------------------------
+- name: Deploy SSH login banner
+  ansible.builtin.template:
+    src: sshd_banner.j2
+    dest: /etc/ssh/sshd_banner
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Validate sshd config
+
+
+# -----------------------------------------------------------------------------
+# STEP 6: Restore SELinux file contexts for /etc/ssh
+# -----------------------------------------------------------------------------
+# Ansible does not automatically apply SELinux labels when copying files.
+# "restorecon -Rv" resets all labels under /etc/ssh to the values defined in
+# the SELinux policy, preventing sshd from being blocked after a file change.
+#
+# "changed_when: false" – safe to run every time, not a meaningful change.
+# -----------------------------------------------------------------------------
+- name: Restore SELinux file contexts for /etc/ssh
+  ansible.builtin.command: restorecon -Rv /etc/ssh
+  changed_when: false

@@ -1,0 +1,55 @@
+---
+# =============================================================================
+# Role: next_redis
+# Purpose: Ensure Redis is running and reachable from K3s pods.
+#          Redis binds to 127.0.0.1 and the node's public IP so that pods can
+#          connect via the K8s ExternalService → Endpoints → node IP.
+#          iptables rules (common_firewall) restrict port 6379 to the K3s pod
+#          CIDR ({{ k3s_pod_cidr }}) and localhost.
+# Target:  AlmaLinux 9
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# Service
+# -----------------------------------------------------------------------------
+- name: Ensure Redis service is enabled and started
+  ansible.builtin.service:
+    name: redis
+    state: started
+    enabled: true
+
+
+# -----------------------------------------------------------------------------
+# Network binding
+# -----------------------------------------------------------------------------
+# Bind to loopback and the node's public IP so K3s pods can reach Redis.
+# iptables restricts port 6379 to the K3s pod CIDR and localhost.
+- name: Ensure Redis binds to localhost and node IP
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: '^bind\s+'
+    line: 'bind 127.0.0.1 {{ nextcloud_ipv4 }}'
+    backup: true
+  notify: Restart Redis
+
+- name: Ensure Redis protected-mode is enabled
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: '^protected-mode\s+'
+    line: 'protected-mode yes'
+    backup: true
+  notify: Restart Redis
+
+# Flush handlers immediately so Redis restarts with the new bind address
+# before next_config (which runs in the same play) tries to connect via the
+# pod → ExternalService → host IP path.  Without this, Redis still listens
+# on 127.0.0.1 only when occ commands run and the connection is refused.
+- name: Redis | Flush handlers to apply config changes now
+  ansible.builtin.meta: flush_handlers
+
+- name: Redis | Wait for Redis to be ready on host IP
+  ansible.builtin.wait_for:
+    host: "{{ nextcloud_ipv4 }}"
+    port: 6379
+    timeout: 30

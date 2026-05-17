@@ -1,0 +1,70 @@
+# Prometheus alert rules – managed by Ansible (common_prometheus)
+# View active alerts at http://localhost:9090/alerts
+# To receive notifications, configure Alertmanager (not included here).
+groups:
+
+  - name: disk
+    rules:
+    - alert: DiskSpaceLow
+      # Root filesystem below 20% free – warning threshold.
+      expr: >
+        (node_filesystem_avail_bytes{mountpoint="/", fstype!="tmpfs"}
+        / node_filesystem_size_bytes{mountpoint="/", fstype!="tmpfs"}) * 100 < 20
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Low disk space on {{ '{{' }} $labels.instance {{ '}}' }}"
+        description: "Root filesystem {{ '{{' }} $value | printf \"%.1f\" {{ '}}' }}% free."
+
+    - alert: DiskSpaceCritical
+      # Root filesystem below 10% free – act immediately.
+      expr: >
+        (node_filesystem_avail_bytes{mountpoint="/", fstype!="tmpfs"}
+        / node_filesystem_size_bytes{mountpoint="/", fstype!="tmpfs"}) * 100 < 10
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Critical disk space on {{ '{{' }} $labels.instance {{ '}}' }}"
+        description: "Root filesystem {{ '{{' }} $value | printf \"%.1f\" {{ '}}' }}% free – fill up imminent."
+
+  - name: memory
+    rules:
+    - alert: LowMemory
+      # Less than 10% of RAM available for more than 5 minutes.
+      expr: >
+        (node_memory_MemAvailable_bytes
+        / node_memory_MemTotal_bytes) * 100 < 10
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Low memory on {{ '{{' }} $labels.instance {{ '}}' }}"
+        description: "Only {{ '{{' }} $value | printf \"%.1f\" {{ '}}' }}% RAM available."
+
+  - name: cpu
+    rules:
+    - alert: HighCpuLoad
+      # Average CPU usage above 90% for 10 minutes (sustained load, not spikes).
+      expr: >
+        100 - (avg by (instance)
+          (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High CPU load on {{ '{{' }} $labels.instance {{ '}}' }}"
+        description: "CPU at {{ '{{' }} $value | printf \"%.1f\" {{ '}}' }}% for over 10 minutes."
+
+  - name: availability
+    rules:
+    - alert: NodeExporterDown
+      # Node Exporter unreachable – no host metrics available.
+      expr: up{job="node"} == 0
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Node Exporter is down on {{ '{{' }} $labels.instance {{ '}}' }}"
+        description: "Prometheus cannot scrape metrics. Host may be down."

@@ -1,0 +1,93 @@
+---
+# =============================================================================
+# Role: firewall
+# Purpose: Deploy IPv4/IPv6 iptables packet-filter rules.
+#          /root/fw/ is the single source of truth – rules are applied via a
+#          @reboot cron job.  iptables-services is NOT used so there is no
+#          second rule-store (/etc/sysconfig/iptables) that can get out of sync.
+# Target:  AlmaLinux 9
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# Prerequisites
+# -----------------------------------------------------------------------------
+- name: Install prerequisites
+  ansible.builtin.package:
+    name:
+      - iptables
+      - cronie
+    state: present
+
+- name: Ensure cron service is running
+  ansible.builtin.service:
+    name: crond
+    state: started
+    enabled: true
+
+
+# -----------------------------------------------------------------------------
+# Disable iptables-services (avoid conflict with @reboot cron)
+# -----------------------------------------------------------------------------
+# iptables-services would load /etc/sysconfig/iptables early at boot – before
+# crond runs – and could overwrite the rules from /root/fw with stale content.
+# We stop and disable it so /root/fw is the only rule source.
+- name: Stop and disable iptables-services (if installed)
+  ansible.builtin.service:
+    name: iptables
+    state: stopped
+    enabled: false
+  failed_when: false   # service may not be installed on a fresh host
+
+- name: Stop and disable ip6tables-services (if installed)
+  ansible.builtin.service:
+    name: ip6tables
+    state: stopped
+    enabled: false
+  failed_when: false
+
+
+# -----------------------------------------------------------------------------
+# Deploy rule scripts
+# -----------------------------------------------------------------------------
+- name: Create directory for iptables rules
+  ansible.builtin.file:
+    path: /root/fw
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Upload iptables IPv4 rules file (templated)
+  ansible.builtin.template:
+    src: fw_ipv4.sh.j2
+    dest: /root/fw/fw_ipv4.sh
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Upload iptables IPv6 rules file (templated)
+  ansible.builtin.template:
+    src: fw_ipv6.sh.j2
+    dest: /root/fw/fw_ipv6.sh
+    owner: root
+    group: root
+    mode: "0755"
+
+
+# -----------------------------------------------------------------------------
+# Reboot cronjob – applies rules on every boot
+# -----------------------------------------------------------------------------
+# Rules are NOT applied to the running kernel here.  Running iptables -F on a
+# live K3s node causes a deadlock: K3s detects the missing KUBE-* chains and
+# tries to re-insert them while the script holds the xtables lock → hang.
+#
+# After a reboot K3s rebuilds its chains cleanly and the cron runs without
+# contention.  Until the first reboot the default AlmaLinux rules stay active
+# (port 22 open, policy ACCEPT) – that is intentional for the initial setup.
+- name: Ensure iptables startup cronjob is present
+  ansible.builtin.cron:
+    name: "Apply iptables rules at reboot"
+    special_time: reboot
+    job: "/root/fw/fw_ipv4.sh; /root/fw/fw_ipv6.sh"
+    user: root

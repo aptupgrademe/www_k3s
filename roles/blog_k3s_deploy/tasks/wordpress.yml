@@ -1,0 +1,27 @@
+---
+# Deploy the WordPress Deployment (wordpress:fpm + nginx sidecar) and
+# the ClusterIP Service.
+
+- name: Template WordPress Deployment manifest
+  ansible.builtin.template:
+    src: wordpress-deployment.yml.j2
+    dest: /tmp/k8s-wp-deployment.yml
+    mode: "0644"
+
+- name: Apply WordPress Deployment + Service
+  ansible.builtin.command: >
+    k3s kubectl apply -f /tmp/k8s-wp-deployment.yml
+  register: wp_apply
+  changed_when: "'created' in wp_apply.stdout or 'configured' in wp_apply.stdout"
+
+- name: Remove temporary Deployment manifest
+  ansible.builtin.file:
+    path: /tmp/k8s-wp-deployment.yml
+    state: absent
+
+- name: Wait for WordPress rollout to complete
+  ansible.builtin.command: >
+    k3s kubectl rollout status deployment/wordpress
+    --namespace wordpress
+    --timeout=300s
+  changed_when: false

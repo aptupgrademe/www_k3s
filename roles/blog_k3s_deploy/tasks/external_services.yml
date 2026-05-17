@@ -1,0 +1,21 @@
+---
+# Deploy headless K8s Services + manually-managed Endpoints that point
+# to MariaDB and Grafana running on the host.
+# Pods can then reach them via DNS: mariadb.wordpress.svc.cluster.local
+
+- name: Template external services manifest
+  ansible.builtin.template:
+    src: external-services.yml.j2
+    dest: /tmp/k8s-wp-ext-svc.yml
+    mode: "0644"
+
+- name: Apply external services
+  ansible.builtin.command: >
+    k3s kubectl apply -f /tmp/k8s-wp-ext-svc.yml
+  register: ext_svc_apply
+  changed_when: "'created' in ext_svc_apply.stdout or 'configured' in ext_svc_apply.stdout"
+
+- name: Remove temporary external services manifest
+  ansible.builtin.file:
+    path: /tmp/k8s-wp-ext-svc.yml
+    state: absent

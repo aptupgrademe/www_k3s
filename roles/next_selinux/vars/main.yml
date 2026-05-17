@@ -1,0 +1,4 @@
+---
+# No role-internal variables.  HostPath directory paths come from inventory
+# (nextcloud_k3s_www_dir, nextcloud_data_dir in group_vars/all.yml and
+# host_vars/<host>/vars.yml).

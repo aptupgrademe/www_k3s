@@ -1,0 +1,42 @@
+---
+# -----------------------------------------------------------------------------
+# Database maintenance
+# -----------------------------------------------------------------------------
+- name: Add missing database indices (occ db:add-missing-indices)
+  ansible.builtin.command: >
+    k3s kubectl exec deployment/nextcloud
+    --namespace nextcloud
+    --container nextcloud-fpm
+    --
+    runuser -u www-data -- php /var/www/html/occ
+    db:add-missing-indices --no-interaction
+  register: occ_indices
+  changed_when: >
+    'Adding' in occ_indices.stdout or
+    'Creating' in occ_indices.stdout
+  failed_when: occ_indices.rc != 0
+
+- name: Show db:add-missing-indices output
+  ansible.builtin.debug:
+    var: occ_indices.stdout_lines
+  when: occ_indices.stdout_lines | length > 0
+
+
+# -----------------------------------------------------------------------------
+# MIME type migrations + expensive repairs – always run, idempotent
+# The command detects what needs doing and skips already-done steps.
+# It takes < 5 s on a small instance.  Previously opt-in via
+# nextcloud_run_repair; now unconditional so the admin panel warning
+# "MIME-Type-Migrationen verfügbar" never appears after a playbook run.
+# -----------------------------------------------------------------------------
+- name: Run MIME type migrations and repairs (occ maintenance:repair --include-expensive)
+  ansible.builtin.command: >
+    k3s kubectl exec deployment/nextcloud
+    --namespace nextcloud
+    --container nextcloud-fpm
+    --
+    runuser -u www-data -- php /var/www/html/occ
+    maintenance:repair --include-expensive --no-interaction
+  register: occ_repair
+  changed_when: false
+  failed_when: occ_repair.rc != 0

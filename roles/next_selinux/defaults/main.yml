@@ -1,0 +1,4 @@
+---
+# Set selinux_debug: true in host_vars to enable context verification tasks
+# (ls -Zd on HostPath directories) at the end of the role.
+selinux_debug: false

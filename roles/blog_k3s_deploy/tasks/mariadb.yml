@@ -1,0 +1,29 @@
+---
+# Deploy MariaDB as a K3s Deployment with a HostPath volume.
+# The official mariadb:10.11 image auto-initialises the database on first
+# start when MARIADB_DATABASE / MARIADB_USER / MARIADB_PASSWORD are set.
+# Wait for MariaDB to be ready before deploying WordPress.
+
+- name: Template MariaDB Deployment manifest
+  ansible.builtin.template:
+    src: mariadb-deployment.yml.j2
+    dest: /tmp/k8s-wp-mariadb.yml
+    mode: "0644"
+
+- name: Apply MariaDB Deployment + Service
+  ansible.builtin.command: >
+    k3s kubectl apply -f /tmp/k8s-wp-mariadb.yml
+  register: mariadb_apply
+  changed_when: "'created' in mariadb_apply.stdout or 'configured' in mariadb_apply.stdout"
+
+- name: Remove temporary MariaDB manifest
+  ansible.builtin.file:
+    path: /tmp/k8s-wp-mariadb.yml
+    state: absent
+
+- name: Wait for MariaDB rollout to complete
+  ansible.builtin.command: >
+    k3s kubectl rollout status deployment/mariadb
+    --namespace wordpress
+    --timeout=180s
+  changed_when: false

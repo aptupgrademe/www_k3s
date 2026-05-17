@@ -1,0 +1,4 @@
+---
+# All firewall parameters are defined directly in the fw_ipv4.sh.j2 and
+# fw_ipv6.sh.j2 templates using inventory variables (server_ipv4, server_ipv6,
+# k3s_pod_cidr).  No role-level defaults needed.

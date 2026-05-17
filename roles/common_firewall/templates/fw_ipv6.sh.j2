@@ -1,0 +1,89 @@
+#!/bin/bash
+set -euo pipefail
+IPT=/sbin/ip6tables
+
+# =============================================================================
+# IPv6 packet filter – managed by Ansible (common_firewall)
+# Applied at every reboot via @reboot cron job (/root/fw/fw_ipv6.sh).
+# =============================================================================
+
+# Cleanup existing rules
+$IPT -F
+$IPT -X
+
+# Default policies: DROP
+$IPT -P INPUT   DROP
+$IPT -P FORWARD DROP
+$IPT -P OUTPUT  DROP
+
+# ── Logging chains (rate-limited) ─────────────────────────────────────────────
+$IPT -N LOGGING_IN  || true
+$IPT -N LOGGING_OUT || true
+$IPT -A LOGGING_IN  -m limit --limit 2/min -j LOG --log-prefix "ip6tables DROP IN: "  --log-level 4
+$IPT -A LOGGING_IN  -j DROP
+$IPT -A LOGGING_OUT -m limit --limit 2/min -j LOG --log-prefix "ip6tables DROP OUT: " --log-level 4
+$IPT -A LOGGING_OUT -j DROP
+
+# ── Loopback ──────────────────────────────────────────────────────────────────
+$IPT -A INPUT  -i lo -j ACCEPT
+$IPT -A OUTPUT -o lo -j ACCEPT
+
+# ── Connection tracking ───────────────────────────────────────────────────────
+$IPT -A INPUT   -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+$IPT -A OUTPUT  -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+$IPT -A INPUT   -m conntrack --ctstate INVALID -j DROP
+$IPT -A OUTPUT  -m conntrack --ctstate INVALID -j DROP
+$IPT -A FORWARD -m conntrack --ctstate INVALID -j DROP
+
+# ── ICMPv6 (essential for IPv6 – RFC 4890) ────────────────────────────────────
+# Neighbour Discovery and Router Discovery: unrestricted – IPv6 cannot function
+# without these (they are the IPv6 equivalent of ARP and default-route learning).
+for t in neighbour-solicitation neighbour-advertisement \
+         router-solicitation router-advertisement; do
+  $IPT -A INPUT -p icmpv6 --icmpv6-type "$t" -j ACCEPT
+done
+
+# Error messages critical for PMTUD (Path MTU Discovery):
+# destination-unreachable and packet-too-big must be accepted even for new flows
+# because they may arrive before conntrack has the full session tracked.
+$IPT -A INPUT -p icmpv6 --icmpv6-type destination-unreachable -j ACCEPT
+$IPT -A INPUT -p icmpv6 --icmpv6-type packet-too-big          -j ACCEPT
+
+# Informational error messages: only accept RELATED (generated in response to our traffic)
+$IPT -A INPUT -p icmpv6 --icmpv6-type time-exceeded    -m conntrack --ctstate RELATED -j ACCEPT
+$IPT -A INPUT -p icmpv6 --icmpv6-type parameter-problem -m conntrack --ctstate RELATED -j ACCEPT
+
+# Echo-request (ping): rate-limited to prevent ICMPv6 flood attacks
+$IPT -A INPUT -p icmpv6 --icmpv6-type echo-request \
+  -m limit --limit 5/s --limit-burst 10 -j ACCEPT
+
+# Echo-reply: only for ESTABLISHED/RELATED (responses to our pings)
+$IPT -A INPUT -p icmpv6 --icmpv6-type echo-reply \
+  -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+# All ICMPv6 outbound: unrestricted (NDP, RS, ping, errors we generate)
+$IPT -A OUTPUT -p icmpv6 -j ACCEPT
+
+# ── Inbound: web + management ─────────────────────────────────────────────────
+# Scoped to the server's own IPv6 address; only NEW connections accepted.
+$IPT -A INPUT -p tcp -m multiport --dports 80,443 \
+  -m conntrack --ctstate NEW -d {{ server_ipv6 }} -j ACCEPT   # HTTP/HTTPS
+$IPT -A INPUT -p udp --dport 443 \
+  -d {{ server_ipv6 }} -j ACCEPT                               # HTTP/3 (QUIC)
+$IPT -A INPUT -p tcp --dport 10022 \
+  -m conntrack --ctstate NEW -d {{ server_ipv6 }} -j ACCEPT   # SSH
+
+# ── Outbound ──────────────────────────────────────────────────────────────────
+$IPT -A OUTPUT -p udp --dport 53  -j ACCEPT              # DNS (UDP)
+$IPT -A OUTPUT -p tcp --dport 53  -j ACCEPT              # DNS (TCP)
+$IPT -A OUTPUT -p udp --dport 123 -j ACCEPT              # NTP
+$IPT -A OUTPUT -p tcp -m multiport --dports 80,443 -j ACCEPT  # HTTP/HTTPS
+$IPT -A OUTPUT -p udp --dport 443 -j ACCEPT              # HTTP/3 outbound
+$IPT -A OUTPUT -p tcp --dport 465 -j ACCEPT              # SMTP/TLS      – Nextcloud mail
+$IPT -A OUTPUT -p tcp --dport 587 -j ACCEPT              # SMTP/STARTTLS – Nextcloud mail
+
+# ── Log and drop everything else ──────────────────────────────────────────────
+$IPT -A INPUT  -j LOGGING_IN
+$IPT -A OUTPUT -j LOGGING_OUT
+
+exit 0

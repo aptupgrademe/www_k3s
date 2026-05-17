@@ -1,0 +1,48 @@
+---
+# Managed by Ansible – do not edit manually
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/alert.rules.yml
+
+scrape_configs:
+  - job_name: "node"
+    static_configs:
+      - targets: ["127.0.0.1:9100"]
+        labels:
+          instance: "{{ inventory_hostname }}"
+
+  # Note: All four exporter jobs are defined in this shared template.
+  # On a WordPress-only host, the nextcloud jobs (9104, 30254) will show as DOWN.
+  # On a Nextcloud-only host, the wordpress jobs (30104, 30253) will show as DOWN.
+  # Prometheus handles missing targets gracefully – no alerts are configured.
+
+  # MariaDB – host service (Nextcloud) via common_mysqld_exporter
+  - job_name: "mysqld_nextcloud"
+    static_configs:
+      - targets: ["127.0.0.1:9104"]
+        labels:
+          instance: "nextcloud"
+
+  # MariaDB – K3s pod (WordPress) via NodePort 30104 → mysqld_exporter sidecar
+  - job_name: "mysqld_wordpress"
+    static_configs:
+      - targets: ["127.0.0.1:30104"]
+        labels:
+          instance: "wordpress"
+
+  # PHP-FPM – K3s pod (WordPress) via NodePort 30253 → php-fpm_exporter sidecar
+  - job_name: "php_fpm_wordpress"
+    static_configs:
+      - targets: ["127.0.0.1:30253"]
+        labels:
+          instance: "wordpress"
+
+  # PHP-FPM – K3s pod (Nextcloud) via NodePort 30254 → php-fpm_exporter sidecar
+  - job_name: "php_fpm_nextcloud"
+    static_configs:
+      - targets: ["127.0.0.1:30254"]
+        labels:
+          instance: "nextcloud"

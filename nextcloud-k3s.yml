@@ -1,0 +1,58 @@
+# =============================================================================
+# Playbook: nextcloud-k3s.yml
+# Purpose:  Full infrastructure deployment and configuration.
+#           Idempotent – safe to re-run on an existing installation.
+#
+# Run this playbook to:
+#   - Provision a new server from scratch
+#   - Apply configuration changes (vars, templates, occ settings)
+#   - Roll out new image tags or Helm chart versions after editing
+#     inventory/group_vars/all.yml
+#
+# -----------------------------------------------------------------------------
+# Update workflow – see also nextcloud-update.yml:
+#
+#   Patch update (same tag, e.g. 33.0.2 → 33.0.3):
+#     → ansible-playbook nextcloud-update.yml --limit <host>
+#
+#   Version bump (tag/chart change in group_vars/all.yml):
+#     → ansible-playbook nextcloud-k3s.yml --limit <host>
+#
+#   Full maintenance cycle (patch + version bumps):
+#     → run nextcloud-update.yml first, then nextcloud-k3s.yml
+# -----------------------------------------------------------------------------
+#
+# First run on a fresh server: ansible_port must be 22 in host_vars.
+# After SSH hardening: change ansible_port to 10022.
+#
+# Production hosts (cvjm, sofie) require host_vars and encrypted vault.yml
+# before running without --limit.
+#
+# Usage:
+#   ansible-playbook nextcloud-k3s.yml --limit test
+# =============================================================================
+- name: Install packages and configure server
+  hosts: nextcloud
+  gather_facts: true
+  become: false
+
+
+  roles:
+    - next_packages         # Repositories, packages (MariaDB 10.11, Redis) – nginx/PHP run in K3s pods
+    - common_ssh            # SSH hardening (port, key-only auth)
+    - common_firewall       # iptables IPv4/IPv6 rules (incl. K3s pod CIDR exceptions)
+    - next_mariadb          # MariaDB setup + Nextcloud database and user
+    - next_selinux          # SELinux enforcing + container_file_t contexts for K3s HostPath vols  ← before deploy!
+    - common_k3s            # K3s single-node cluster + Helm + cert-manager + nginx-ingress (F5)
+    - next_k3s_deploy       # Nextcloud + Collabora K8s workloads + Ingress
+    - next_redis            # Redis (caching, file locking, sessions)
+    - next_config           # Post-install: occ config via kubectl exec
+    - common_node_exporter  # Node Exporter (metrics collector, port 9100)
+    - common_mysqld_exporter # mysqld_exporter (MariaDB metrics, port 9104)
+    - common_prometheus     # Prometheus (scrapes localhost:9100/9104 + K3s NodePorts, port 9090)
+    - common_grafana        # Grafana (dashboard, port 3000)
+    - common_fail2ban       # Fail2Ban: SSH + Nextcloud login protection
+    - common_msmtp          # msmtp sendmail relay (used by rkhunter, cron, dnf-automatic)
+    - common_dnf_automatic  # Automatic security-only updates via dnf-automatic
+    - common_rkhunter       # Rootkit detection with daily scan
+    - common_auditd         # Linux Audit Daemon with security-relevant rules
