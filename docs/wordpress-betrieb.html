@@ -281,7 +281,7 @@
 <main>
 
 <h1>WordPress – Betriebs&shy;dokumentation</h1>
-<p class="subtitle">WordPress 6.9 auf K3s (AlmaLinux 9) &middot; Letzte Aktualisierung: Mai 2026</p>
+<p class="subtitle">WordPress 7.0 auf K3s (AlmaLinux 9) &middot; Letzte Aktualisierung: Mai 2026</p>
 
 <!-- ─────────────────────────── ÜBERBLICK ─────────────────────────────── -->
 <section id="ueberblick">
@@ -297,7 +297,7 @@
 <div class="card-grid">
   <div class="card">
     <div class="label">WordPress</div>
-    <div class="value">6.9.x (wordpress:6.9-fpm)</div>
+    <div class="value">7.0.x (wordpress:7.0-fpm)</div>
   </div>
   <div class="card">
     <div class="label">Betriebssystem</div>
@@ -357,7 +357,7 @@
 <span class="c-pod">│  fastcgi       │ :9000                  │</span>
 <span class="c-pod">│  ┌─────────────▼─────────────────────┐  │</span>
 <span class="c-pod">│  │  wordpress-fpm  PHP-FPM 8.2       │  │</span>
-<span class="c-pod">│  │  wordpress:6.9-fpm                │  │</span>
+<span class="c-pod">│  │  wordpress:7.0-fpm                │  │</span>
 <span class="c-pod">│  └───────────────────────────────────┘  │</span>
 <span class="c-pod">└──────────────────────────────────────────┘</span>
         │
@@ -414,7 +414,7 @@
 <h3>WordPress-Pod im Detail</h3>
 <div class="card">
   <h4>Container 1: <code>wordpress-fpm</code></h4>
-  <p>Das offizielle <code>wordpress:6.9-fpm</code>-Image. Führt PHP-FPM auf Port 9000 aus.
+  <p>Das offizielle <code>wordpress:7.0-fpm</code>-Image. Führt PHP-FPM auf Port 9000 aus.
   Beim ersten Start installiert der Docker-Entrypoint WordPress automatisch anhand
   der Umgebungsvariablen (DB-Host, DB-Name, DB-User, DB-Passwort).
   WordPress-Dateien werden in <code>/var/www/html</code> auf dem gemeinsamen
@@ -701,7 +701,7 @@ k3s kubectl get secret wordpress-secrets -n wordpress \
 </p>
 
 <pre><code># inventory/group_vars/all.yml
-blog_image_wordpress: "wordpress:6.9-fpm"   # WordPress PHP-FPM
+blog_image_wordpress: "wordpress:7.0-fpm"   # WordPress PHP-FPM
 blog_image_mariadb:   "mariadb:10.11"       # MariaDB LTS
 blog_image_nginx:     "nginx:1.30-alpine"   # nginx Sidecar</code></pre>
 
@@ -709,9 +709,9 @@ blog_image_nginx:     "nginx:1.30-alpine"   # nginx Sidecar</code></pre>
 <table>
   <tr><th>Tag-Format</th><th>Bedeutung</th><th>Beispiel</th></tr>
   <tr>
-    <td><code>6.9-fpm</code></td>
-    <td>Folgt Patch-Updates in WordPress 6.9.x automatisch beim Pull</td>
-    <td><code>wordpress:6.9-fpm</code></td>
+    <td><code>7.0-fpm</code></td>
+    <td>Folgt Patch-Updates in WordPress 7.0.x automatisch beim Pull</td>
+    <td><code>wordpress:7.0-fpm</code></td>
   </tr>
   <tr>
     <td><code>10.11</code></td>
@@ -737,10 +737,10 @@ blog_image_nginx:     "nginx:1.30-alpine"   # nginx Sidecar</code></pre>
 
 <div class="callout callout-warn">
   <strong>Patch-Update ohne Tag-Änderung</strong>
-  Wenn Docker Hub z.B. <code>wordpress:6.9-fpm</code> auf 6.9.1 aktualisiert,
+  Wenn Docker Hub z.B. <code>wordpress:7.0-fpm</code> auf 7.0.1 aktualisiert,
   passiert auf dem Server <em>nichts automatisch</em>. Der Tag ist lokal gecacht.
   Manuell updaten:
-  <pre style="margin-top:8px"><code>crictl pull docker.io/library/wordpress:6.9-fpm
+  <pre style="margin-top:8px"><code>crictl pull docker.io/library/wordpress:7.0-fpm
 k3s kubectl rollout restart deployment/wordpress -n wordpress</code></pre>
 </div>
 </section>
@@ -1161,12 +1161,12 @@ k3s kubectl get pods -n wordpress</code></pre>
 
 <h3>WordPress-Update: Patch innerhalb desselben Tags</h3>
 <p>
-  Wenn Docker Hub <code>wordpress:6.9-fpm</code> auf 6.9.1 aktualisiert
+  Wenn Docker Hub <code>wordpress:7.0-fpm</code> auf 7.0.1 aktualisiert
   und der Tag im Ansible unverändert bleibt:
 </p>
 <ol class="steps">
   <li>Neues Image manuell pullen:
-    <pre><code>crictl pull docker.io/library/wordpress:6.9-fpm</code></pre>
+    <pre><code>crictl pull docker.io/library/wordpress:7.0-fpm</code></pre>
   </li>
   <li>Pod neu starten:
     <pre><code>k3s kubectl rollout restart deployment/wordpress -n wordpress
@@ -1174,7 +1174,7 @@ k3s kubectl rollout status  deployment/wordpress -n wordpress --timeout=300s</co
   </li>
 </ol>
 
-<h3>WordPress-Update: Minor-Versionssprung (z.B. 6.9 → 7.0)</h3>
+<h3>WordPress-Update: Minor-Versionssprung (z.B. 7.0 → 7.1)</h3>
 
 <div class="callout callout-danger">
   <strong>Backup vor jedem Major-Update!</strong>
