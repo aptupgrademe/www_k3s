@@ -1,0 +1,147 @@
+---
+# =============================================================================
+# Role: next_packages
+# Purpose: Install repositories and host packages for AlmaLinux 9.
+#          Sets up MariaDB 10.11, Redis, SELinux tools, and utilities.
+#          Nginx and PHP run inside K3s (next_k3s_deploy), not on the host.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# STEP 1: Install DNF plugin
+# -----------------------------------------------------------------------------
+- name: Install 'dnf-plugins-core' (required for config-manager sub-command)
+  ansible.builtin.dnf:
+    name: dnf-plugins-core
+    state: present
+
+
+# -----------------------------------------------------------------------------
+# STEP 2: Enable the CRB repository
+# -----------------------------------------------------------------------------
+- name: Read list of currently enabled repositories (to check if CRB is active)
+  ansible.builtin.command: dnf repolist --enabled
+  register: enabled_repos
+  changed_when: false
+
+- name: Enable CRB repository (only if not already active)
+  ansible.builtin.command: dnf -y config-manager --set-enabled crb
+  when: "'crb' not in enabled_repos.stdout"
+  changed_when: true
+
+
+# -----------------------------------------------------------------------------
+# STEP 3: Install the EPEL repository
+# -----------------------------------------------------------------------------
+- name: Install EPEL repository
+  ansible.builtin.dnf:
+    name: epel-release
+    state: present
+
+- name: Enable module_hotfixes for EPEL (prevents modular filtering errors)
+  ansible.builtin.ini_file:
+    path: /etc/yum.repos.d/epel.repo
+    section: epel
+    option: module_hotfixes
+    value: "1"
+    mode: "0644"
+
+
+# -----------------------------------------------------------------------------
+# STEP 4: Add the MariaDB 10.11 Community repository
+# -----------------------------------------------------------------------------
+- name: Import MariaDB Community GPG key
+  ansible.builtin.rpm_key:
+    state: present
+    key: https://mirror.mariadb.org/yum/RPM-GPG-KEY-MariaDB
+
+- name: Add MariaDB 10.11 Community repository
+  ansible.builtin.copy:
+    dest: /etc/yum.repos.d/mariadb.repo
+    content: |
+      [mariadb]
+      name=MariaDB 10.11 - AlmaLinux 9
+      baseurl=https://mirror.mariadb.org/yum/10.11/rhel/9/$basearch
+      gpgkey=https://mirror.mariadb.org/yum/RPM-GPG-KEY-MariaDB
+      gpgcheck=1
+      enabled=1
+    mode: "0644"
+
+- name: Disable the AppStream mariadb module (prevents shadowing the Community packages)
+  ansible.builtin.command: dnf -y module disable mariadb
+  changed_when: true
+  failed_when: false
+
+
+# -----------------------------------------------------------------------------
+# STEP 5: Full system update
+# -----------------------------------------------------------------------------
+- name: Upgrade all system packages to the latest version
+  ansible.builtin.dnf:
+    name: "*"
+    state: latest
+    update_cache: true
+
+
+# -----------------------------------------------------------------------------
+# STEP 6: Install required packages
+# -----------------------------------------------------------------------------
+- name: Install packages for the web stack
+  ansible.builtin.dnf:
+    name:
+      # --- Database ---
+      - MariaDB-server
+
+      # --- Redis ---
+      - redis
+
+      # --- SELinux tooling ---
+      - policycoreutils
+      - policycoreutils-python-utils
+      # container-selinux is required for K3s to run containers under SELinux
+      - container-selinux
+
+      # --- Firewall ---
+      - nftables
+
+      # --- Utility packages ---
+      - curl
+      - unzip
+      - tar
+      - git
+      - cronie
+      - rsync
+      - rdiff-backup
+      - tmux
+      - nano
+
+      # --- Prerequisite for Ansible MySQL modules ---
+      - python3-PyMySQL
+    state: present
+
+
+# -----------------------------------------------------------------------------
+# STEP 7: Enable and start services
+# -----------------------------------------------------------------------------
+- name: Enable and start MariaDB
+  ansible.builtin.service:
+    name: mariadb
+    state: started
+    enabled: true
+
+- name: Enable and start Redis
+  ansible.builtin.service:
+    name: redis
+    state: started
+    enabled: true
+
+
+# -----------------------------------------------------------------------------
+# STEP 8: Disable firewalld (we manage rules via nftables directly)
+# -----------------------------------------------------------------------------
+- name: Disable and stop firewalld (conflicts with direct nftables management)
+  ansible.builtin.service:
+    name: firewalld
+    state: stopped
+    enabled: false
+  failed_when: false

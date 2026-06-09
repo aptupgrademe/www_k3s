@@ -1,0 +1,41 @@
+---
+# =============================================================================
+# Nextcloud Deployment + Service
+# =============================================================================
+# Single Pod with two containers:
+#   1. nextcloud-fpm  – official nextcloud:fpm image (PHP 8.3 + FPM on :9000)
+#   2. nginx          – nginx:alpine sidecar (serves static files, proxies PHP)
+#
+# Both containers share two HostPath volumes:
+#   /srv/nextcloud-www  →  /var/www/html   (Nextcloud app files + config)
+#   /data               →  /var/www/html/data  (user data)
+#
+# On first start the official Nextcloud image auto-installs via env vars
+# (MYSQL_*, NEXTCLOUD_ADMIN_*, REDIS_HOST …) – no manual occ install needed.
+# =============================================================================
+
+- name: Nextcloud | Template Deployment + Service manifest
+  ansible.builtin.template:
+    src: nextcloud-deployment.yml.j2
+    dest: /tmp/k8s-nc-deployment.yml
+    mode: "0600"
+  no_log: true
+
+- name: Nextcloud | Apply Deployment + Service
+  ansible.builtin.command: >
+    k3s kubectl apply -f /tmp/k8s-nc-deployment.yml
+  register: nc_apply
+  changed_when: "'created' in nc_apply.stdout or 'configured' in nc_apply.stdout"
+
+- name: Nextcloud | Remove temporary Deployment manifest
+  ansible.builtin.file:
+    path: /tmp/k8s-nc-deployment.yml
+    state: absent
+
+- name: Nextcloud | Wait for Deployment to be ready (up to 5 min)
+  ansible.builtin.command: >
+    k3s kubectl rollout status deployment/nextcloud
+    --namespace nextcloud
+    --timeout=300s
+  changed_when: false
+  when: nc_apply.changed

@@ -1,0 +1,1548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WordPress K3s – Operations Guide</title>
+<style>
+  :root {
+    --bg:       #0f1117;
+    --sidebar:  #161b22;
+    --card:     #1c2128;
+    --border:   #30363d;
+    --accent:   #58a6ff;
+    --accent2:  #3fb950;
+    --warn:     #d29922;
+    --danger:   #f85149;
+    --text:     #e6edf3;
+    --muted:    #8b949e;
+    --code-bg:  #161b22;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    min-height: 100vh;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  /* ── Sidebar ── */
+  nav {
+    width: 260px;
+    min-width: 260px;
+    background: var(--sidebar);
+    border-right: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 24px 0;
+  }
+  nav .logo {
+    padding: 0 20px 20px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 12px;
+  }
+  nav .logo span { font-size: 11px; color: var(--muted); display: block; margin-top: 4px; }
+  nav .logo strong { font-size: 15px; color: var(--text); }
+  nav a {
+    display: block;
+    padding: 6px 20px;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 13px;
+    border-left: 3px solid transparent;
+    transition: color .15s, border-color .15s;
+  }
+  nav a:hover, nav a.active { color: var(--accent); border-left-color: var(--accent); }
+  nav .section-label {
+    padding: 16px 20px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--muted);
+  }
+
+  /* ── Main ── */
+  main {
+    flex: 1;
+    padding: 40px 48px;
+    max-width: 960px;
+  }
+  h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+  h2 {
+    font-size: 20px; font-weight: 600;
+    margin: 48px 0 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+  }
+  h3 { font-size: 16px; font-weight: 600; margin: 28px 0 10px; color: var(--accent); }
+  h4 { font-size: 14px; font-weight: 600; margin: 20px 0 8px; color: var(--text); }
+  p  { margin-bottom: 12px; color: var(--text); }
+  ul, ol { padding-left: 22px; margin-bottom: 12px; }
+  li { margin-bottom: 4px; }
+  a  { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 32px; }
+
+  /* ── Code ── */
+  code {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 12.5px;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
+    color: #e6edf3;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    overflow-x: auto;
+    margin: 12px 0 20px;
+    font-size: 12.5px;
+    line-height: 1.7;
+  }
+  pre code { background: none; border: none; padding: 0; font-size: inherit; }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin: 16px 0;
+  }
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    margin: 16px 0;
+  }
+  .card-grid .card { margin: 0; }
+  .card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
+  .card .value { font-size: 14px; font-weight: 600; }
+  .card .value code { background: none; border: none; font-size: 13px; padding: 0; color: var(--accent); }
+
+  /* ── Badges ── */
+  .badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 20px;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+  .badge-green  { background: #1a3a1a; color: var(--accent2); border: 1px solid #2ea04380; }
+  .badge-blue   { background: #0d2137; color: var(--accent);  border: 1px solid #58a6ff40; }
+  .badge-yellow { background: #2d1f00; color: var(--warn);    border: 1px solid #d2992240; }
+  .badge-red    { background: #2d0f0f; color: var(--danger);  border: 1px solid #f8514940; }
+
+  /* ── Callouts ── */
+  .callout {
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin: 16px 0;
+    border-left: 4px solid;
+    font-size: 14px;
+  }
+  .callout-info    { background: #0d2137; border-color: var(--accent); }
+  .callout-warn    { background: #2d1f00; border-color: var(--warn); }
+  .callout-danger  { background: #2d0f0f; border-color: var(--danger); }
+  .callout-success { background: #0d2416; border-color: var(--accent2); }
+  .callout strong  { display: block; margin-bottom: 4px; }
+
+  /* ── Tables ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0 24px;
+    font-size: 13.5px;
+  }
+  th {
+    background: var(--card);
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 2px solid var(--border);
+  }
+  td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #1c2128; }
+
+  /* ── Architecture diagram ── */
+  .arch {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    font-family: "SFMono-Regular", Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.8;
+    overflow-x: auto;
+    color: #e6edf3;
+  }
+  .arch .c-internet  { color: #58a6ff; }
+  .arch .c-ingress   { color: #79c0ff; }
+  .arch .c-pod       { color: #3fb950; }
+  .arch .c-host      { color: #d29922; }
+  .arch .c-storage   { color: #a371f7; }
+
+  /* ── Steps ── */
+  .steps { counter-reset: step; list-style: none; padding: 0; }
+  .steps li {
+    counter-increment: step;
+    padding: 10px 0 10px 48px;
+    position: relative;
+    border-bottom: 1px solid var(--border);
+  }
+  .steps li:last-child { border-bottom: none; }
+  .steps li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    top: 10px;
+    width: 28px;
+    height: 28px;
+    background: var(--card);
+    border: 2px solid var(--accent);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent);
+    line-height: 28px;
+    text-align: center;
+  }
+
+  /* ── Section anchors ── */
+  section { scroll-margin-top: 24px; }
+
+  @media (max-width: 768px) {
+    nav { display: none; }
+    main { padding: 24px 20px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════ SIDEBAR ═══════════════════════════════ -->
+<nav>
+  <div class="logo">
+    <strong>WordPress on K3s</strong>
+    <span>Operations&shy;Documentation</span>
+  </div>
+
+  <div class="section-label">Fundamentals</div>
+  <a href="#ueberblick">Overview</a>
+  <a href="#architektur">Architecture</a>
+  <a href="#speicher">Storage &amp; Data</a>
+  <a href="#netzwerk">Network &amp; TLS</a>
+
+  <div class="section-label">Configuration</div>
+  <a href="#dateien">Important Files</a>
+  <a href="#variablen">Variables &amp; Secrets</a>
+  <a href="#images">Container Images</a>
+  <a href="#wordpress-config">WordPress Configuration</a>
+
+  <div class="section-label">Operations</div>
+  <a href="#playbook">Run Playbook</a>
+  <a href="#befehle">Important Commands</a>
+  <a href="#monitoring">Monitoring</a>
+  <a href="#cronjob">WP-Cron</a>
+
+  <div class="section-label">Maintenance</div>
+  <a href="#updates">Updates</a>
+  <a href="#backup">Backup &amp; Restore</a>
+  <a href="#troubleshooting">Troubleshooting</a>
+  <a href="#sicherheit">Security</a>
+</nav>
+
+<!-- ═══════════════════════════════ CONTENT ═══════════════════════════════ -->
+<main>
+
+<h1>WordPress – Operations&shy;Guide</h1>
+<p class="subtitle">WordPress 7.0 on K3s (AlmaLinux 9) &middot; Last updated: June 2026</p>
+
+<!-- ─────────────────────────── OVERVIEW ─────────────────────────────── -->
+<section id="ueberblick">
+<h2>Overview</h2>
+<p>
+  WordPress runs on a <strong>single-node K3s cluster</strong> on AlmaLinux 9.
+  The entire infrastructure is built and managed with an Ansible playbook
+  (<code>blog.yml</code>).
+  The playbook is idempotent – it can be re-run at any time
+  without modifying data or unnecessarily interrupting services.
+</p>
+
+<div class="card-grid">
+  <div class="card">
+    <div class="label">WordPress</div>
+    <div class="value">7.0.x (wordpress:7.0-fpm)</div>
+  </div>
+  <div class="card">
+    <div class="label">Operating System</div>
+    <div class="value">AlmaLinux 9</div>
+  </div>
+  <div class="card">
+    <div class="label">Kubernetes</div>
+    <div class="value">K3s (Single-Node)</div>
+  </div>
+  <div class="card">
+    <div class="label">Database</div>
+    <div class="value">MariaDB 10.11 (K3s Pod)</div>
+  </div>
+  <div class="card">
+    <div class="label">Web Server</div>
+    <div class="value">nginx 1.30 (Sidecar)</div>
+  </div>
+  <div class="card">
+    <div class="label">Ingress</div>
+    <div class="value">ingress-nginx Community 4.15.1</div>
+  </div>
+</div>
+
+<div class="callout callout-info">
+  <strong>Design Decision: Single-Node, everything in K3s</strong>
+  Unlike Nextcloud, the database (MariaDB) also runs as a K3s pod here.
+  The data resides on a HostPath volume (<code>/srv/wordpress-db</code>).
+  There is no high availability. Updates cause a brief downtime
+  (typically: 30–60 seconds).
+</div>
+</section>
+
+<!-- ─────────────────────────── ARCHITECTURE ───────────────────────────── -->
+<section id="architektur">
+<h2>Architecture</h2>
+
+<h3>Overall Overview</h3>
+<div class="arch">
+<span class="c-internet">Internet / Browser</span>
+        │
+        │ HTTPS :443 / HTTP :80
+        ▼
+<span class="c-ingress">┌─────────────────────────────────────────────────────┐</span>
+<span class="c-ingress">│  ingress-nginx Community (K3s DaemonSet, hostNetwork)│</span>
+<span class="c-ingress">│  TLS termination via cert-manager (Let's Encrypt)   │</span>
+<span class="c-ingress">│  Rate-Limiting: wp_login 5r/s, xmlrpc.php → 403     │</span>
+<span class="c-ingress">└──────────────────────────┬──────────────────────────┘</span>
+                           │ HTTP
+                  www.apt-upgrade.me
+                           ▼
+<span class="c-pod">┌──────────────────────────────────────────┐</span>
+<span class="c-pod">│  Pod: wordpress (Namespace: wordpress)   │</span>
+<span class="c-pod">│  ┌───────────────────────────────────┐  │</span>
+<span class="c-pod">│  │  nginx sidecar  :80               │  │</span>
+<span class="c-pod">│  │  static files + PHP proxy         │  │</span>
+<span class="c-pod">│  └─────────────┬─────────────────────┘  │</span>
+<span class="c-pod">│  fastcgi       │ :9000                  │</span>
+<span class="c-pod">│  ┌─────────────▼─────────────────────┐  │</span>
+<span class="c-pod">│  │  wordpress-fpm  PHP-FPM 8.2       │  │</span>
+<span class="c-pod">│  │  wordpress:7.0-fpm                │  │</span>
+<span class="c-pod">│  └───────────────────────────────────┘  │</span>
+<span class="c-pod">└──────────────────────────────────────────┘</span>
+        │
+        │ TCP :3306
+        ▼
+<span class="c-pod">┌──────────────────────────┐</span>
+<span class="c-pod">│  Pod: mariadb            │</span>
+<span class="c-pod">│  mariadb:10.11           │</span>
+<span class="c-pod">│  Namespace: wordpress    │</span>
+<span class="c-pod">└──────────────────────────┘</span>
+        │
+<span class="c-storage">┌───────────────────────────────────────────────┐</span>
+<span class="c-storage">│  HostPath Volumes                             │</span>
+<span class="c-storage">│  /srv/wordpress-www  → /var/www/html          │</span>
+<span class="c-storage">│  /srv/wordpress-db   → /var/lib/mysql         │</span>
+<span class="c-storage">└───────────────────────────────────────────────┘</span>
+
+<span class="c-host">┌──────────────────────────────────────────┐</span>
+<span class="c-host">│  K3s CronJob: wordpress-cron (every 5 min)│</span>
+<span class="c-host">│  php /var/www/html/wp-cron.php           │</span>
+<span class="c-host">└──────────────────────────────────────────┘</span>
+</div>
+
+<h3>Why This Approach?</h3>
+<table>
+  <tr><th>Component</th><th>Where does it run?</th><th>Rationale</th></tr>
+  <tr>
+    <td>WordPress PHP-FPM + nginx</td>
+    <td>K3s Pod <span class="badge badge-green">Container</span></td>
+    <td>Simple updates by swapping images; no php-fpm on the host</td>
+  </tr>
+  <tr>
+    <td>MariaDB</td>
+    <td>K3s Pod <span class="badge badge-green">Container</span></td>
+    <td>Unlike Nextcloud, the DB runs in a container here; data on HostPath</td>
+  </tr>
+  <tr>
+    <td>ingress-nginx (Community)</td>
+    <td>K3s DaemonSet <span class="badge badge-blue">hostNetwork</span></td>
+    <td>Binds directly to port 80/443 on the host; no external load balancer needed</td>
+  </tr>
+  <tr>
+    <td>cert-manager</td>
+    <td>K3s <span class="badge badge-green">Container</span></td>
+    <td>Automatic Let's Encrypt certificates; replaces certbot</td>
+  </tr>
+  <tr>
+    <td>WP-Cron</td>
+    <td>K3s CronJob <span class="badge badge-blue">hostNetwork</span></td>
+    <td>Replaces WordPress's internal pseudo-cron; runs reliably every 5 minutes</td>
+  </tr>
+</table>
+
+<h3>WordPress Pod in Detail</h3>
+<div class="card">
+  <h4>Container 1: <code>wordpress-fpm</code></h4>
+  <p>The official <code>wordpress:7.0-fpm</code> image. Runs PHP-FPM on port 9000.
+  On first start, the Docker entrypoint automatically installs WordPress based on
+  the environment variables (DB host, DB name, DB user, DB password).
+  WordPress files are placed in <code>/var/www/html</code> on the shared
+  HostPath volume.</p>
+
+  <h4>Container 2: <code>nginx</code></h4>
+  <p>nginx sidecar (<code>nginx:1.30-alpine</code>) on port 80. Serves
+  static requests directly from the shared volume; PHP requests are forwarded via
+  FastCGI to port 9000. TLS is already terminated by ingress-nginx (Community)
+  – this nginx only speaks plain HTTP.</p>
+</div>
+
+<div class="callout callout-info">
+  <strong>Why are WordPress-FPM and nginx in the same pod?</strong>
+  Both containers share the same network namespace and the same volumes.
+  This allows nginx to communicate with PHP-FPM via <code>127.0.0.1:9000</code>
+  without needing a separate Kubernetes service. In addition, both
+  containers read WordPress files from the same volume – nginx for static assets,
+  PHP-FPM for PHP scripts.
+</div>
+</section>
+
+<!-- ─────────────────────────── STORAGE ─────────────────────────────── -->
+<section id="speicher">
+<h2>Storage &amp; Data</h2>
+
+<table>
+  <tr><th>Path on Host</th><th>Mount Point in Container</th><th>Contents</th></tr>
+  <tr>
+    <td><code>/srv/wordpress-www</code></td>
+    <td><code>/var/www/html</code></td>
+    <td>WordPress PHP core, wp-content (themes, plugins, uploads), wp-config.php</td>
+  </tr>
+  <tr>
+    <td><code>/srv/wordpress-db</code></td>
+    <td><code>/var/lib/mysql</code></td>
+    <td>MariaDB database files (InnoDB, system tables)</td>
+  </tr>
+</table>
+
+<div class="callout callout-warn">
+  <strong>Important: wp-content/uploads contains media files</strong>
+  Images, PDFs, and other uploads reside in <code>/srv/wordpress-www/wp-content/uploads/</code>.
+  This directory must be included in backups – it grows over time
+  and is not included in the container image.
+</div>
+
+<h3>Why are app and database separate volumes?</h3>
+<ul>
+  <li>Database data (<code>/srv/wordpress-db</code>) can be backed up independently</li>
+  <li>WordPress files are supplemented during an update by the new image
+      (the entrypoint updates core files in-place)</li>
+  <li>Both volumes survive a pod restart or image update unharmed</li>
+</ul>
+
+<h3>Ownership and Permissions</h3>
+<p>
+  WordPress-FPM runs as <code>www-data</code> (UID 33 in the container).
+  The HostPath directory must be writable by this user:
+</p>
+<pre><code># Set ownership for WordPress files (from the host):
+chown -R 33:33 /srv/wordpress-www
+
+# Database data belongs to root (MariaDB in the container uses root internally):
+ls -la /srv/wordpress-db</code></pre>
+</section>
+
+<!-- ─────────────────────────── NETWORK ─────────────────────────────── -->
+<section id="netzwerk">
+<h2>Network &amp; TLS</h2>
+
+<h3>IP Address Ranges</h3>
+<table>
+  <tr><th>Range</th><th>Purpose</th><th>Relevant for</th></tr>
+  <tr>
+    <td><code>10.42.0.0/16</code></td>
+    <td>K3s Pod CIDR (Flannel)</td>
+    <td>nftables rules, <code>set_real_ip_from</code> in the nginx sidecar</td>
+  </tr>
+  <tr>
+    <td><code>10.43.0.0/16</code></td>
+    <td>K3s Service CIDR</td>
+    <td>ClusterIP addresses of K8s services</td>
+  </tr>
+  <tr>
+    <td><code>217.154.101.78</code></td>
+    <td>Public host IP</td>
+    <td>DNS, MariaDB service endpoint</td>
+  </tr>
+</table>
+
+<h3>Required DNS Records</h3>
+<p>
+  The DNS record must be created at the domain registrar before the first playbook run.
+  cert-manager needs it for the Let's Encrypt HTTP-01 challenge – without a valid record
+  the certificate issuance will fail.
+</p>
+<table>
+  <tr><th>Name (Hostname)</th><th>Type</th><th>Value</th><th>Purpose</th></tr>
+  <tr>
+    <td><code>www.apt-upgrade.me</code></td>
+    <td>A</td>
+    <td>Public IP of the server (<code>217.154.101.78</code>)</td>
+    <td>WordPress blog, Let's Encrypt TLS</td>
+  </tr>
+</table>
+<div class="callout callout-info">
+  <strong>IPv6 (optional)</strong>
+  If the server has a public IPv6 address, an additional AAAA record can be added.
+  The nftables firewall covers IPv4 and IPv6 via a single <code>table inet filter</code> –
+  no separate script required.
+</div>
+
+<h3>TLS and Proxy Chain</h3>
+<pre><code>Internet
+  → ingress-nginx Community (Port 443, TLS terminated, sets X-Forwarded-For / -Proto)
+    → nginx sidecar (Port 80, plain HTTP)
+      → PHP-FPM (Port 9000, FastCGI)</code></pre>
+
+<p>
+  ingress-nginx forwards requests from its pod namespace (10.42.x.x).
+  The nginx sidecar is configured to read the real client IP from the
+  <code>X-Forwarded-For</code> header:
+</p>
+<pre><code># nginx ConfigMap (nginx-cm.yml.j2):
+set_real_ip_from 10.42.0.0/16;   # Pod CIDR – ingress packets originate from here
+real_ip_header   X-Forwarded-For;
+real_ip_recursive on;</code></pre>
+
+<h3>Rate Limiting and Security at the Ingress</h3>
+<p>
+  Security measures are defined directly in the Ingress via <code>nginx.ingress.kubernetes.io/</code>
+  annotations (community ingress-nginx):
+</p>
+<table>
+  <tr><th>Measure</th><th>Annotation / Configuration</th><th>Value</th></tr>
+  <tr>
+    <td>HTTPS redirect</td>
+    <td><code>nginx.ingress.kubernetes.io/ssl-redirect</code></td>
+    <td>true – HTTP is redirected to HTTPS</td>
+  </tr>
+  <tr>
+    <td>Block xmlrpc.php</td>
+    <td><code>nginx.ingress.kubernetes.io/server-snippet</code></td>
+    <td><code>deny all; return 403;</code> – prevents XML-RPC brute-force</td>
+  </tr>
+  <tr>
+    <td>wp-login.php rate limit</td>
+    <td><code>nginx.ingress.kubernetes.io/server-snippet</code></td>
+    <td>5 r/s per IP, burst 5 – prevents login brute-force</td>
+  </tr>
+  <tr>
+    <td>Security headers</td>
+    <td><code>nginx.ingress.kubernetes.io/configuration-snippet</code></td>
+    <td>HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy</td>
+  </tr>
+  <tr>
+    <td>Upload limit</td>
+    <td><code>nginx.ingress.kubernetes.io/proxy-body-size</code></td>
+    <td>500m – for media uploads via the WP backend</td>
+  </tr>
+</table>
+
+<div class="callout callout-info">
+  <strong>Rate-limit zones defined in the controller</strong>
+  The zone <code>wp_login</code> is defined in the Helm values of the ingress-nginx controller
+  (<code>controller.config.http-snippet</code>) and is thus globally available for all ingress
+  resources. The actual application of the zone is done via the
+  <code>server-snippet</code> annotation in the WordPress ingress.
+</div>
+
+<h3>Ingress Controller: Community vs. F5 – Background</h3>
+<div class="callout callout-warn">
+  <strong>Important: Two incompatible nginx ingress projects</strong>
+  There are two completely different nginx ingress controllers for Kubernetes:
+  <ul style="margin-top:8px">
+    <li><strong>Community:</strong> <code>ingress-nginx/ingress-nginx</code> – annotations prefixed with <code>nginx.ingress.kubernetes.io/</code></li>
+    <li><strong>F5/NGINX Inc.:</strong> <code>nginx-stable/nginx-ingress</code> – annotations prefixed with <code>nginx.org/</code>, master/minion model</li>
+  </ul>
+  The two projects are <em>not compatible</em>. The community controller is used here.
+</div>
+<p>
+  In May 2026 a GitHub merge accidentally switched to the F5 controller
+  (<code>nginx-stable/nginx-ingress 2.5.1</code>). This caused:
+</p>
+<ul>
+  <li><strong>TLS errors:</strong> cert-manager's ACME HTTP-01 solver uses community annotations;
+      the F5 controller ignores these → certificate could not be renewed.</li>
+  <li><strong>Grafana routing:</strong> The F5-specific annotation <code>nginx.org/path-regex</code>
+      is not recognized by the community controller → <code>/grafana</code> path served WordPress
+      instead of Grafana.</li>
+</ul>
+<p>
+  The fix: revert to community <code>ingress-nginx/ingress-nginx 4.15.1</code>.
+  All annotations in <code>ingress.yml.j2</code> were migrated from <code>nginx.org/</code> to
+  <code>nginx.ingress.kubernetes.io/</code>. The Grafana path was changed from
+  <code>ImplementationSpecific</code> with regex to simple <code>Prefix: /grafana</code>
+  (works thanks to <code>serve_from_sub_path = true</code> in Grafana's configuration).
+</p>
+</section>
+
+<!-- ─────────────────────────── FILES ──────────────────────────────── -->
+<section id="dateien">
+<h2>Important Files in the Repository</h2>
+
+<h3>Inventory &amp; Variables</h3>
+<table>
+  <tr><th>File</th><th>Contents</th></tr>
+  <tr>
+    <td><code>inventory/group_vars/all.yml</code></td>
+    <td>Global settings: <strong>container image tags</strong>,
+        Helm chart versions, monitoring versions, K3s CIDRs</td>
+  </tr>
+  <tr>
+    <td><code>inventory/host_vars/www.apt-upgrade.me/vars.yml</code></td>
+    <td>Host-specific: hostname, IP, DB name, DB user, paths, plugins, mail config</td>
+  </tr>
+  <tr>
+    <td><code>inventory/host_vars/www.apt-upgrade.me/vault.yml</code></td>
+    <td><strong>Encrypted!</strong> Passwords: DB root, DB user, WP admin, SMTP.
+        Encrypt before git commit:
+        <code>ansible-vault encrypt inventory/host_vars/www.apt-upgrade.me/vault.yml</code></td>
+  </tr>
+</table>
+
+<h3>Ansible Roles (WordPress-specific)</h3>
+<table>
+  <tr><th>Role</th><th>Task</th></tr>
+  <tr><td><code>blog_packages</code></td><td>Install packages (e.g. SELinux tools)</td></tr>
+  <tr><td><code>blog_selinux</code></td><td>SELinux enforcing, <code>container_file_t</code> for HostPath directories</td></tr>
+  <tr><td><code>common_k3s</code></td><td>K3s, Helm, cert-manager, ingress-nginx (Community) – common base</td></tr>
+  <tr><td><code>blog_k3s_deploy</code></td><td>K8s manifests: namespace, secrets, ConfigMaps, deployments, ingress, CronJob</td></tr>
+  <tr><td><code>blog_wordpress</code></td><td>Post-deploy: WP-CLI commands (admin, plugins, settings)</td></tr>
+</table>
+
+<h3>Templates (generate the K8s manifests)</h3>
+<table>
+  <tr><th>Template</th><th>Generates</th><th>Important because</th></tr>
+  <tr>
+    <td><code>wordpress-deployment.yml.j2</code></td>
+    <td>Deployment + Service for WordPress</td>
+    <td>Image tags, volumes, env variables (DB credentials as secret ref)</td>
+  </tr>
+  <tr>
+    <td><code>mariadb-deployment.yml.j2</code></td>
+    <td>Deployment + Service for MariaDB</td>
+    <td>Database initialization on first start, HostPath volume</td>
+  </tr>
+  <tr>
+    <td><code>nginx-cm.yml.j2</code></td>
+    <td>ConfigMap <code>wordpress-nginx-config</code></td>
+    <td>nginx routing for WordPress, PHP-FastCGI, real IP from X-Forwarded-For</td>
+  </tr>
+  <tr>
+    <td><code>secret.yml.j2</code></td>
+    <td>Secret <code>wordpress-secrets</code></td>
+    <td>DB host, DB name, DB user, DB password – as env variables in the pod</td>
+  </tr>
+  <tr>
+    <td><code>ingress.yml.j2</code></td>
+    <td>Ingress <code>wordpress</code></td>
+    <td>TLS, rate limiting, xmlrpc.php block, Grafana sub-path, security headers</td>
+  </tr>
+  <tr>
+    <td><code>cronjob.yml.j2</code></td>
+    <td>K8s CronJob <code>wordpress-cron</code></td>
+    <td>Runs <code>wp-cron.php</code> every 5 minutes; replaces WP's internal pseudo-cron</td>
+  </tr>
+</table>
+</section>
+
+<!-- ─────────────────────────── VARIABLES ─────────────────────────────── -->
+<section id="variablen">
+<h2>Variables &amp; Secrets</h2>
+
+<h3>Where Credentials Are Stored</h3>
+<p>
+  All passwords are stored in <code>inventory/host_vars/www.apt-upgrade.me/vault.yml</code>,
+  encrypted with Ansible Vault. This file must <strong>never be committed unencrypted</strong>
+  to git.
+</p>
+<pre><code># Encrypt before committing:
+ansible-vault encrypt inventory/host_vars/www.apt-upgrade.me/vault.yml
+
+# Open directly in editor (preferred):
+ansible-vault edit inventory/host_vars/www.apt-upgrade.me/vault.yml</code></pre>
+
+<h3>Typical vault.yml Contents</h3>
+<pre><code>blog_db_root_pass: "..."       # MariaDB root password
+blog_db_pass:      "..."       # WordPress DB user password
+blog_admin_pass:   "..."       # WordPress admin password
+mail_smtppass:     "..."       # SMTP password for mail delivery
+grafana_admin_pass: "..."      # Grafana admin password</code></pre>
+
+<h3>Secrets in the K8s Cluster</h3>
+<p>
+  The vault variables flow into the K8s secret
+  <code>wordpress-secrets</code> in the namespace <code>wordpress</code> during the playbook run.
+</p>
+<pre><code># Show secret (decoded):
+k3s kubectl get secret wordpress-secrets -n wordpress \
+  -o jsonpath='{.data}' | python3 -c \
+  "import sys,json,base64; [print(k,base64.b64decode(v).decode()) \
+   for k,v in json.load(sys.stdin).items()]"</code></pre>
+</section>
+
+<!-- ─────────────────────────── IMAGES ───────────────────────────────── -->
+<section id="images">
+<h2>Container Images &amp; Versions</h2>
+
+<p>
+  All image tags are centrally defined in <code>inventory/group_vars/all.yml</code>.
+  K3s automatically pulls a new image only when the tag in the manifest has changed
+  (<code>imagePullPolicy: IfNotPresent</code>).
+</p>
+
+<pre><code># inventory/group_vars/all.yml
+blog_image_wordpress: "wordpress:7.0-fpm"   # WordPress PHP-FPM
+blog_image_mariadb:   "mariadb:10.11"       # MariaDB LTS
+blog_image_nginx:     "nginx:1.30-alpine"   # nginx Sidecar</code></pre>
+
+<h3>Tag Strategy</h3>
+<table>
+  <tr><th>Tag Format</th><th>Meaning</th><th>Example</th></tr>
+  <tr>
+    <td><code>7.0-fpm</code></td>
+    <td>Follows patch updates in WordPress 7.0.x automatically on pull</td>
+    <td><code>wordpress:7.0-fpm</code></td>
+  </tr>
+  <tr>
+    <td><code>10.11</code></td>
+    <td>MariaDB LTS branch; patch updates come automatically, major upgrade requires migration</td>
+    <td><code>mariadb:10.11</code> (LTS until June 2028)</td>
+  </tr>
+  <tr>
+    <td><code>1.30-alpine</code></td>
+    <td>nginx stable branch; minor patches come automatically</td>
+    <td><code>nginx:1.30-alpine</code></td>
+  </tr>
+</table>
+
+<h3>Check for New Versions</h3>
+<table>
+  <tr><th>Component</th><th>URL</th></tr>
+  <tr><td>WordPress</td><td><code>https://hub.docker.com/_/wordpress/tags</code> (filter: <code>*-fpm</code>)</td></tr>
+  <tr><td>MariaDB</td><td><code>https://hub.docker.com/_/mariadb/tags</code></td></tr>
+  <tr><td>nginx</td><td><code>https://hub.docker.com/_/nginx/tags</code> (filter: <code>*-alpine</code>)</td></tr>
+  <tr><td>ingress-nginx (Community) Helm</td><td><code>https://artifacthub.io/packages/helm/ingress-nginx/ingress-nginx</code></td></tr>
+  <tr><td>cert-manager Helm</td><td><code>https://artifacthub.io/packages/helm/cert-manager/cert-manager</code></td></tr>
+</table>
+
+<div class="callout callout-warn">
+  <strong>Patch update without tag change</strong>
+  If Docker Hub updates e.g. <code>wordpress:7.0-fpm</code> to 6.9.1,
+  <em>nothing happens automatically</em> on the server. The tag is cached locally.
+  Update manually:
+  <pre style="margin-top:8px"><code>crictl pull docker.io/library/wordpress:7.0-fpm
+k3s kubectl rollout restart deployment/wordpress -n wordpress</code></pre>
+</div>
+</section>
+
+<!-- ──────────────────────── WORDPRESS CONFIG ──────────────────────── -->
+<section id="wordpress-config">
+<h2>WordPress Configuration</h2>
+
+<h3>wp-config.php</h3>
+<p>
+  The <code>wp-config.php</code> is automatically generated by the WordPress Docker entrypoint
+  from the environment variables on first start. Important generated entries:
+</p>
+<pre><code>define('DB_HOST',     'mariadb');          // K8s service name in the namespace
+define('DB_NAME',     'wordpress_db');
+define('DB_USER',     'wordpress');
+define('DB_PASSWORD', '...');              // from K8s Secret
+
+// WordPress's own cron is disabled (K8s CronJob takes over):
+define('DISABLE_WP_CRON', true);
+
+// URL settings (set by Ansible):
+define('WP_HOME',    'https://www.apt-upgrade.me');
+define('WP_SITEURL', 'https://www.apt-upgrade.me');</code></pre>
+
+<div class="callout callout-info">
+  <strong>DISABLE_WP_CRON</strong>
+  WordPress has a built-in pseudo-cron that is checked on every page request.
+  In this setup it is disabled (<code>DISABLE_WP_CRON = true</code>), because a
+  dedicated K8s CronJob calls <code>wp-cron.php</code> every 5 minutes.
+  This is more reliable and does not burden the normal page request.
+</div>
+
+<h3>Plugins (managed via Ansible)</h3>
+<p>
+  Plugins are defined as a list in <code>inventory/host_vars/www.apt-upgrade.me/vars.yml</code>
+  and automatically installed and activated by the <code>blog_wordpress</code> playbook:
+</p>
+<pre><code>blog_wordpress_plugins:
+  - all-in-one-wp-migration       # Import/export for backups
+  - classic-editor                # Classic editor instead of Gutenberg
+  - limit-login-attempts-reloaded # Additional brute-force protection</code></pre>
+
+<h3>Query the Database Directly</h3>
+<pre><code># In the MariaDB pod (no root password needed, socket auth):
+k3s kubectl exec -n wordpress deployment/mariadb -- \
+  mysql -u wordpress -p wordpress_db
+
+# Or with explicit password:
+k3s kubectl exec -n wordpress deployment/mariadb -- \
+  mysql -u wordpress -p'&lt;password&gt;' wordpress_db -e "SHOW TABLES;"</code></pre>
+</section>
+
+<!-- ─────────────────────────── PLAYBOOK ─────────────────────────────── -->
+<section id="playbook">
+<h2>Run Playbook</h2>
+
+<h3>Full Initial Run (new server installation)</h3>
+<ol class="steps">
+  <li>
+    Set SSH port to <code>22</code> in
+    <code>inventory/host_vars/www.apt-upgrade.me/vars.yml</code>:
+    <code>ansible_port: 22</code>
+  </li>
+  <li>
+    Enter vault passwords in <code>vault.yml</code> and encrypt
+  </li>
+  <li>
+    Install collections:
+    <code>ansible-galaxy collection install -r requirements.yml</code>
+  </li>
+  <li>
+    Run playbook:
+    <pre><code>ansible-playbook blog.yml --limit www.apt-upgrade.me --ask-vault-pass</code></pre>
+  </li>
+  <li>
+    Change SSH port in <code>vars.yml</code> to <code>10022</code>
+    (after SSH hardening by <code>common_ssh</code>)
+  </li>
+</ol>
+
+<h3>Idempotent Re-run (e.g. after config change)</h3>
+<pre><code>ansible-playbook blog.yml --limit www.apt-upgrade.me --ask-vault-pass</code></pre>
+
+<h3>Run Only Specific Roles</h3>
+<pre><code># Update only K8s deployments
+ansible-playbook blog.yml --limit www.apt-upgrade.me --tags blog_k3s_deploy --ask-vault-pass
+
+# Only WordPress configuration (plugins, admin, settings)
+ansible-playbook blog.yml --limit www.apt-upgrade.me --tags blog_wordpress --ask-vault-pass</code></pre>
+</section>
+
+<!-- ─────────────────────────── COMMANDS ──────────────────────────────── -->
+<section id="befehle">
+<h2>Important Operations Commands</h2>
+
+<h3>Pod Status</h3>
+<pre><code># All pods in the wordpress namespace
+k3s kubectl get pods -n wordpress
+
+# Detailed status
+k3s kubectl describe pod -l app=wordpress -n wordpress
+
+# Logs WordPress-FPM
+k3s kubectl logs deployment/wordpress -c wordpress-fpm -n wordpress --tail=50
+
+# Logs nginx sidecar
+k3s kubectl logs deployment/wordpress -c nginx -n wordpress --tail=50
+
+# Logs MariaDB
+k3s kubectl logs deployment/mariadb -n wordpress --tail=50</code></pre>
+
+<h3>WP-CLI Commands</h3>
+<pre><code># Prefix for all WP-CLI commands:
+k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
+  wp --allow-root &lt;COMMAND&gt;
+
+# Examples:
+... wp core version
+... wp core check-update
+... wp plugin list
+... wp plugin update --all
+... wp theme list
+... wp cache flush
+... wp cron event list
+... wp user list
+... wp db check
+... wp search-replace 'http://www.apt-upgrade.me' 'https://www.apt-upgrade.me' --dry-run</code></pre>
+
+<h3>Restart Pod</h3>
+<pre><code># WordPress
+k3s kubectl rollout restart deployment/wordpress -n wordpress
+k3s kubectl rollout status  deployment/wordpress -n wordpress --timeout=300s
+
+# MariaDB (Caution: brief DB downtime!)
+k3s kubectl rollout restart deployment/mariadb -n wordpress</code></pre>
+
+<h3>Namespace Overview</h3>
+<pre><code>k3s kubectl get all -n wordpress</code></pre>
+
+<h3>Check Ingress and Certificate</h3>
+<pre><code># Ingress resource
+k3s kubectl get ingress -n wordpress
+k3s kubectl describe ingress wordpress -n wordpress
+
+# TLS certificate
+k3s kubectl get certificate -n wordpress
+k3s kubectl describe certificate wordpress-tls -n wordpress</code></pre>
+</section>
+
+<!-- ─────────────────────────── MONITORING ───────────────────────────── -->
+<section id="monitoring">
+<h2>Monitoring</h2>
+
+<p>
+  The monitoring stack (Prometheus + Grafana + Node Exporter + mysqld_exporter + php-fpm_exporter)
+  runs partly as host services, partly as sidecar containers in K3s pods.
+  Grafana is accessible via the ingress at the blog hostname under <code>/grafana/</code>.
+</p>
+
+<div class="card-grid">
+  <div class="card">
+    <div class="label">Grafana</div>
+    <div class="value"><code>https://www.apt-upgrade.me/grafana/</code></div>
+    <p style="margin-top:8px;font-size:13px;color:var(--muted)">
+      Dashboards: Node Exporter Full (1860), MySQL Overview (7362), PHP-FPM (4912)<br>
+      Login: Grafana admin password from vault.yml
+    </p>
+  </div>
+  <div class="card">
+    <div class="label">Prometheus</div>
+    <div class="value"><code>127.0.0.1:9090</code></div>
+    <p style="margin-top:8px;font-size:13px;color:var(--muted)">
+      Locally accessible only<br>
+      Retention: 30 days
+    </p>
+  </div>
+  <div class="card">
+    <div class="label">Node Exporter</div>
+    <div class="value"><code>127.0.0.1:9100</code></div>
+    <p style="margin-top:8px;font-size:13px;color:var(--muted)">
+      CPU, RAM, Disk, Network
+    </p>
+  </div>
+  <div class="card">
+    <div class="label">mysqld_exporter</div>
+    <div class="value"><code>127.0.0.1:30104</code> (NodePort)</div>
+    <p style="margin-top:8px;font-size:13px;color:var(--muted)">
+      Sidecar in the MariaDB pod; Prometheus scrapes via NodePort 30104<br>
+      Prometheus job: <code>mysqld_wordpress</code>
+    </p>
+  </div>
+  <div class="card">
+    <div class="label">php-fpm_exporter</div>
+    <div class="value"><code>127.0.0.1:30253</code> (NodePort)</div>
+    <p style="margin-top:8px;font-size:13px;color:var(--muted)">
+      Sidecar in the WordPress pod; Prometheus scrapes via NodePort 30253<br>
+      Prometheus job: <code>php_fpm_wordpress</code>
+    </p>
+  </div>
+</div>
+
+<h3>MariaDB Slow Query Log</h3>
+<p>
+  The MariaDB pod writes slow queries (&ge; 1 second) to
+  <code>/var/lib/mysql/slow.log</code> – this resides on the HostPath volume and is readable
+  on the host at <code>/srv/wordpress-db/slow.log</code>.
+  (Background: <code>/dev/stderr</code> is not writable in the MariaDB container under K3s –
+  the mysql process runs as uid 999 and has no access to the fd.)
+</p>
+<pre><code># Read slow queries on the host
+tail -f /srv/wordpress-db/slow.log
+
+# Or directly in the pod
+k3s kubectl exec -n wordpress deployment/mariadb -c mariadb -- \
+  tail -f /var/lib/mysql/slow.log</code></pre>
+<p style="font-size:13px;color:var(--muted)">
+  Configuration: MariaDB pod args <code>--slow-query-log=1 --slow-query-log-file=/var/lib/mysql/slow.log --long-query-time=1</code>
+</p>
+
+<h3>PHP-FPM Slow Log</h3>
+<p>
+  PHP-FPM logs requests that take longer than 5 seconds to <code>/proc/1/fd/2</code>
+  (corresponding to stderr of the pod's main process). Since <code>ptrace</code> is not
+  available in containers, no stack traces are written – only the request timestamp and
+  execution time.
+</p>
+<pre><code># Monitor slow FPM requests
+k3s kubectl logs -n wordpress deployment/wordpress -c wordpress-fpm -f | grep -i "slow"</code></pre>
+<p style="font-size:13px;color:var(--muted)">
+  Configuration: ConfigMap <code>wordpress-fpm-pool-config</code> →
+  <code>pm.status_path = /fpm-status</code>, <code>slowlog = /proc/1/fd/2</code>,
+  <code>request_slowlog_timeout = 5s</code>
+</p>
+
+<h3>Grafana Dashboards</h3>
+
+<h4>Node Exporter Full (ID 1860) – Host Metrics</h4>
+<p>Shows the health of the entire server in real time.</p>
+<table>
+  <tr><th>Panel</th><th>What you read</th></tr>
+  <tr>
+    <td>CPU Usage</td>
+    <td>Total utilization and breakdown per core (user / system / iowait).
+        <em>iowait &gt; 20 %</em> indicates a disk bottleneck.</td>
+  </tr>
+  <tr>
+    <td>Load Average (1/5/15 min)</td>
+    <td>System load relative to the number of CPU cores. Consistently above the core count → server overloaded.</td>
+  </tr>
+  <tr>
+    <td>RAM / Memory</td>
+    <td>Used RAM, buffers, cache and swap.
+        Swap usage &gt; 0 indicates RAM shortage – WordPress/MariaDB may need more memory.</td>
+  </tr>
+  <tr>
+    <td>Disk I/O</td>
+    <td>Read and write rate per device, latency.
+        High latency on <code>/srv/wordpress-www</code> or <code>/srv/wordpress-db</code> slows the site down.</td>
+  </tr>
+  <tr>
+    <td>Disk Space</td>
+    <td>Filesystem utilization. <code>/srv/wordpress-www</code> (uploads) grows over time –
+        alert when &gt; 80 % used.</td>
+  </tr>
+  <tr>
+    <td>Network Traffic</td>
+    <td>Bytes in/out per interface. Unusual spikes can indicate attacks or data leaks.</td>
+  </tr>
+</table>
+
+<h4>MySQL Overview (ID 7362) – MariaDB Database Metrics</h4>
+<p>Shows the performance of the WordPress database (MariaDB sidecar in K3s pod, NodePort 30104).</p>
+<table>
+  <tr><th>Panel</th><th>What you read</th></tr>
+  <tr>
+    <td>Queries per Second (QPS)</td>
+    <td>Database activity. Sudden spikes can indicate inefficient plugins or attacks.</td>
+  </tr>
+  <tr>
+    <td>Slow Queries</td>
+    <td>Queries that take longer than 1 s.
+        Consistently &gt; 0 → missing indexes (common with poorly written plugins).</td>
+  </tr>
+  <tr>
+    <td>InnoDB Buffer Pool</td>
+    <td>Cache utilization and hit ratio. Hit ratio &lt; 95 % → buffer pool too small,
+        many read accesses go to disk (slow).</td>
+  </tr>
+  <tr>
+    <td>Connections</td>
+    <td>Active and maximum connections. Typically low for WordPress (&lt; 10).</td>
+  </tr>
+  <tr>
+    <td>Table Locks / Threads running</td>
+    <td>Lock contention. Poorly optimized plugins in WordPress can cause lock problems.</td>
+  </tr>
+  <tr>
+    <td>Aborted Connections</td>
+    <td>Interrupted connections. Expected during WordPress pod restarts; persistently elevated = problem.</td>
+  </tr>
+</table>
+
+<h4>PHP-FPM (ID 4912) – PHP Process Pool</h4>
+<p>Shows how well PHP-FPM processes WordPress requests (K3s pod, NodePort 30253).</p>
+<table>
+  <tr><th>Panel</th><th>What you read</th></tr>
+  <tr>
+    <td>Active Processes</td>
+    <td>Concurrently processing PHP workers. If this panel consistently reaches
+        <code>pm.max_children</code> → increase the pool or optimize the plugin.</td>
+  </tr>
+  <tr>
+    <td>Idle Processes</td>
+    <td>Free workers. Always 0 + queue &gt; 0 = PHP-FPM is overloaded.</td>
+  </tr>
+  <tr>
+    <td>Request Queue</td>
+    <td>Waiting requests. Any value &gt; 0 means a noticeable load time for the site visitor.</td>
+  </tr>
+  <tr>
+    <td>Requests per Second</td>
+    <td>Throughput. Useful for identifying traffic spikes (e.g. after a post).</td>
+  </tr>
+  <tr>
+    <td>Slow Requests</td>
+    <td>PHP requests &gt; 5 s. Common causes: poorly optimized plugins, external API calls, or missing indexes.</td>
+  </tr>
+  <tr>
+    <td>Max Active (Peak)</td>
+    <td>Highest value since FPM start. Helps with sizing <code>pm.max_children</code>.</td>
+  </tr>
+</table>
+<div class="callout callout-info">
+  <strong>Grafana dashboard variables are initialized automatically</strong>
+  Dashboard 1860 (Node Exporter Full) is in the modern Grafana 11 format without an <code>__inputs</code> section.
+  The variables <code>ds_prometheus</code>, <code>job</code>, <code>nodename</code> and <code>node</code>
+  are therefore set after each import via a Python script by the <code>common_grafana</code> task.
+  Without this step, all panels show "No data". If a dashboard is empty:
+  re-run the playbook or manually select the dropdown variables at the top of the dashboard in Grafana.
+</div>
+
+<h3>mysqld_exporter – Configuration Note</h3>
+<div class="callout callout-warn">
+  <strong>mysqld_exporter v0.19.0: DATA_SOURCE_NAME no longer supported</strong>
+  As of v0.19.0 <code>DATA_SOURCE_NAME</code> is no longer supported. The exporter reads
+  credentials exclusively from a <code>.my.cnf</code> file (<code>--config.my-cnf</code>).
+  In the WordPress setup the credentials are stored as key <code>mysqld-exporter-cnf</code> in
+  K8s secret <code>wordpress-secrets</code> and mounted into the mysqld_exporter sidecar container
+  with <code>defaultMode: 0444</code>
+  (the exporter runs as user <code>nobody</code> – 0600 would be permission denied).
+</div>
+
+<h3>Prometheus Scrape Targets</h3>
+<pre><code># Check active scrape targets (in browser or curl)
+curl -s http://127.0.0.1:9090/api/v1/targets | python3 -m json.tool | grep -E '"job"|"state"|"scrapeUrl"'</code></pre>
+</section>
+
+<!-- ─────────────────────────── WP-CRON ──────────────────────────────── -->
+<section id="cronjob">
+<h2>WP-Cron</h2>
+
+<p>
+  WordPress requires a regular cron call for scheduled tasks:
+  plugin updates, email delivery, publishing scheduled posts, etc.
+  In this setup a <strong>Kubernetes CronJob</strong> handles this task.
+</p>
+
+<div class="callout callout-info">
+  <strong>Why no system cron on the host?</strong>
+  WordPress runs in a container. The host has no access to <code>wp-cron.php</code>
+  without kubectl workarounds. A K8s CronJob is the clean approach: it starts a
+  temporary pod in the same namespace every 5 minutes, with direct access to
+  the WordPress volume and database.
+</div>
+
+<h3>Check CronJob Status</h3>
+<pre><code># Status and last run
+k3s kubectl get cronjob wordpress-cron -n wordpress
+
+# The last 5 jobs (completed pods)
+k3s kubectl get jobs -n wordpress --sort-by=.metadata.creationTimestamp | tail -5
+
+# Logs of a CronJob pod (ID from previous command):
+k3s kubectl logs -n wordpress -l job-name=wordpress-cron-&lt;id&gt;</code></pre>
+
+<h3>Manual Execution (for testing)</h3>
+<pre><code>k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
+  php /var/www/html/wp-cron.php</code></pre>
+</section>
+
+<!-- ─────────────────────────── UPDATES ──────────────────────────────── -->
+<section id="updates">
+<h2>Updates</h2>
+
+<h3>Operating System (AlmaLinux 9)</h3>
+<p>
+  Security updates are applied automatically daily by <code>dnf-automatic</code>. For a full system update:
+</p>
+<ol class="steps">
+  <li>
+    <pre><code>ssh -p 10022 root@217.154.101.78
+dnf upgrade -y</code></pre>
+  </li>
+  <li>
+    Check whether a reboot is necessary:
+    <pre><code>needs-restarting -r</code></pre>
+  </li>
+  <li>
+    If needed: reboot the server. K3s starts automatically, all pods come back up on their own.
+    <pre><code>reboot
+# Then check:
+k3s kubectl get pods -n wordpress</code></pre>
+  </li>
+</ol>
+
+<h3>WordPress Update: Patch Within the Same Tag</h3>
+<p>
+  When Docker Hub updates <code>wordpress:7.0-fpm</code> to 6.9.1
+  and the tag in Ansible remains unchanged:
+</p>
+<ol class="steps">
+  <li>Manually pull the new image:
+    <pre><code>crictl pull docker.io/library/wordpress:7.0-fpm</code></pre>
+  </li>
+  <li>Restart the pod:
+    <pre><code>k3s kubectl rollout restart deployment/wordpress -n wordpress
+k3s kubectl rollout status  deployment/wordpress -n wordpress --timeout=300s</code></pre>
+  </li>
+</ol>
+
+<h3>WordPress Update: Minor Version Jump (e.g. 7.0 → 7.1)</h3>
+
+<div class="callout callout-danger">
+  <strong>Backup before every major update!</strong>
+  Always back up the database and wp-content first, before changing the tag.
+</div>
+
+<ol class="steps">
+  <li>Change the tag in <code>inventory/group_vars/all.yml</code>:
+    <pre><code>blog_image_wordpress: "wordpress:7.0-fpm"</code></pre>
+  </li>
+  <li>Run the playbook – K3s pulls the new image and rolls out the pod:
+    <pre><code>ansible-playbook blog.yml --limit www.apt-upgrade.me --ask-vault-pass</code></pre>
+  </li>
+  <li>Check for WordPress DB update (sometimes needed for major versions):
+    <pre><code>k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
+  wp --allow-root core update-db</code></pre>
+  </li>
+</ol>
+
+<h3>MariaDB Update</h3>
+<div class="callout callout-warn">
+  <strong>MariaDB 10.11 is LTS (support until June 2028)</strong>
+  An upgrade to 11.x or 12.x requires a database migration and is
+  not a simple tag change. Do not perform without a test run.
+</div>
+<p>Patch updates within 10.11:</p>
+<pre><code>crictl pull docker.io/library/mariadb:10.11
+k3s kubectl rollout restart deployment/mariadb -n wordpress</code></pre>
+</section>
+
+<!-- ─────────────────────────── BACKUP ───────────────────────────────── -->
+<section id="backup">
+<h2>Backup &amp; Restore</h2>
+
+<h3>What Is Backed Up</h3>
+<table>
+  <tr><th>What</th><th>Path (Server)</th><th>Destination (local)</th><th>Method</th></tr>
+  <tr>
+    <td>WordPress files + uploads</td>
+    <td><code>/srv/wordpress-www</code></td>
+    <td><code>/data/wordpress/www.apt-upgrade.me/wordpress/</code></td>
+    <td>rsync</td>
+  </tr>
+  <tr>
+    <td>Database</td>
+    <td>MariaDB pod <code>wordpress_db</code></td>
+    <td><code>/data/wordpress/www.apt-upgrade.me/db.sql</code></td>
+    <td>mysqldump via kubectl exec</td>
+  </tr>
+</table>
+
+<div class="callout callout-info">
+  <strong>MariaDB runs as a K3s pod – not on the host</strong>
+  Unlike Nextcloud, MariaDB runs in the WordPress pod here. The dump is executed via
+  <code>kubectl exec</code> in the <code>mariadb</code> container.
+  The root credentials come from the <code>MARIADB_ROOT_PASSWORD</code> environment variable,
+  injected by the K8s secret – no password needed in the script.
+</div>
+
+<h3>Run Backup</h3>
+<p>
+  The backup script has no environment argument – it always backs up
+  <strong>www.apt-upgrade.me</strong> to <code>/data/wordpress/www.apt-upgrade.me/</code>.
+</p>
+<pre><code># Call from the repository directory:
+cd ~/www_k3s
+./scripts/wordpress-backup.sh
+
+# Process:
+# 1. WP-CLI maintenance-mode activate  (in the wordpress-fpm container)
+# 2. kubectl exec → mysqldump          (in the mariadb container, password from K8s secret)
+# 3. rsync /srv/wordpress-www/         → /data/wordpress/www.apt-upgrade.me/wordpress/
+# 4. WP-CLI maintenance-mode deactivate</code></pre>
+
+<h3>Restore Workflow</h3>
+<ol class="steps">
+  <li>
+    Set up server (infrastructure):
+    <pre><code>ansible-playbook blog.yml --limit www.apt-upgrade.me --ask-vault-pass</code></pre>
+  </li>
+  <li>
+    Run restore script:
+    <pre><code>cd ~/www_k3s
+./scripts/wordpress-restore.sh</code></pre>
+    <p style="font-size:13px;color:var(--muted)">
+      Process: maintenance on → stop WordPress + MariaDB →
+      rsync WordPress files → clear MariaDB data dir →
+      start MariaDB (re-initialization from K8s secret) →
+      import SQL dump → fix ownership → start WordPress → maintenance off
+    </p>
+  </li>
+  <li>
+    Run Ansible again (ensures plugin list and WP config):
+    <pre><code>ansible-playbook blog.yml --limit www.apt-upgrade.me --ask-vault-pass</code></pre>
+  </li>
+</ol>
+
+<div class="callout callout-warn">
+  <strong>Clear the MariaDB data directory during restore</strong>
+  The restore script deliberately deletes <code>/srv/wordpress-db/</code> so that MariaDB
+  initializes its database fresh from the K8s secret environment variables on the next start
+  (<code>MARIADB_DATABASE</code>, <code>MARIADB_USER</code>, <code>MARIADB_PASSWORD</code>).
+  The SQL dump is then imported. Without this step an old, incompatible
+  database state would be loaded.
+</div>
+
+<h3>Manual Individual Commands (Reference)</h3>
+<pre><code># mysqldump from the MariaDB pod (MARIADB_ROOT_PASSWORD from K8s secret)
+k3s kubectl exec -n wordpress deployment/mariadb -c mariadb -- \
+  sh -c 'mysqldump --single-transaction wordpress_db \
+    -u root -p"$MARIADB_ROOT_PASSWORD"'
+
+# Import SQL dump into a running MariaDB pod
+k3s kubectl exec -n wordpress deployment/mariadb -c mariadb -- \
+  sh -c 'mysql wordpress_db -u root -p"$MARIADB_ROOT_PASSWORD" &lt; /tmp/dump.sql'
+
+# WP-CLI Maintenance
+k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
+  php /var/www/html/wp-cli.phar maintenance-mode activate --path=/var/www/html --allow-root</code></pre>
+</section>
+
+<!-- ──────────────────────── TROUBLESHOOTING ─────────────────────────── -->
+<section id="troubleshooting">
+<h2>Troubleshooting</h2>
+
+<h3>WordPress Pod Does Not Start / CrashLoopBackOff</h3>
+<pre><code>k3s kubectl describe pod -l app=wordpress -n wordpress
+k3s kubectl logs deployment/wordpress -c wordpress-fpm -n wordpress --previous</code></pre>
+<p>Common causes:</p>
+<ul>
+  <li><strong>Database not reachable:</strong> MariaDB pod is not running.
+      Check <code>k3s kubectl get pods -n wordpress</code>.</li>
+  <li><strong>Wrong DB password:</strong> Secret <code>wordpress-secrets</code>
+      does not match the MariaDB user. Re-run the playbook.</li>
+  <li><strong>Volume permissions:</strong>
+      <code>chown -R 33:33 /srv/wordpress-www</code> and restart the pod.</li>
+</ul>
+
+<h3>MariaDB Pod Does Not Start</h3>
+<pre><code>k3s kubectl logs deployment/mariadb -n wordpress --previous</code></pre>
+<ul>
+  <li><strong>Database files corrupted:</strong> MariaDB attempts a recovery.
+      In the worst case the data must be restored from backup.</li>
+  <li><strong>Volume permissions:</strong>
+      MariaDB expects <code>/srv/wordpress-db</code> to be writable by the internal mysql user
+      (UID 999). Ansible sets the permissions automatically.</li>
+</ul>
+
+<h3>WordPress Site Shows 502 Bad Gateway</h3>
+<p>nginx sidecar cannot reach PHP-FPM. Check:</p>
+<pre><code># Is PHP-FPM running?
+k3s kubectl logs deployment/wordpress -c wordpress-fpm -n wordpress --tail=20
+
+# Are both containers in the pod Ready?
+k3s kubectl get pod -l app=wordpress -n wordpress</code></pre>
+
+<h3>WordPress Admin Backend: "Database Update Required"</h3>
+<pre><code>k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
+  wp --allow-root core update-db</code></pre>
+
+<h3>Certificate Is Not Being Issued</h3>
+<pre><code># cert-manager logs:
+k3s kubectl logs -n cert-manager deployment/cert-manager --tail=50
+
+# Certificate object:
+k3s kubectl describe certificate wordpress-tls -n wordpress
+
+# ClusterIssuer status:
+k3s kubectl describe clusterissuer letsencrypt-prod</code></pre>
+<p>
+  Common cause: port 80 is blocked by nftables or the provider.
+  cert-manager requires port 80 for the HTTP-01 challenge (even if the site
+  should only be reachable via HTTPS).
+</p>
+
+<h3>Rate Limiting Too Aggressive (Own IP Blocked)</h3>
+<pre><code># Check ingress logs (nginx-ingress controller):
+k3s kubectl logs -n ingress-nginx daemonset/ingress-nginx-nginx-ingress-controller --tail=50
+
+# Temporarily: redeploy ingress without rate limit (for emergencies):
+# → remove nginx.org/server-snippets annotation in the ingress and run the playbook</code></pre>
+
+<h3>WP-Cron Is Not Running</h3>
+<pre><code># CronJob status:
+k3s kubectl get cronjob wordpress-cron -n wordpress
+
+# Last job pod (should be "Completed"):
+k3s kubectl get pods -n wordpress --sort-by=.metadata.creationTimestamp | tail -5
+
+# Trigger manually (for testing):
+k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
+  php /var/www/html/wp-cron.php</code></pre>
+</section>
+
+<!-- ─────────────────────────── SECURITY ───────────────────────────── -->
+<section id="sicherheit">
+<h2>Security</h2>
+
+<h3>Multi-Layered Protection Strategy</h3>
+<table>
+  <tr><th>Layer</th><th>Measure</th><th>Role</th></tr>
+  <tr>
+    <td>Host Network</td>
+    <td>nftables (<code>table inet filter</code>) – default policy DROP, named-set blocklist with timeout, ICMP rate limit, only 80/443/10022 open</td>
+    <td><code>common_firewall</code></td>
+  </tr>
+  <tr>
+    <td>SSH</td>
+    <td>Port 10022, key-only, hardened sshd_config, Fail2Ban</td>
+    <td><code>common_ssh</code>, <code>common_fail2ban</code></td>
+  </tr>
+  <tr>
+    <td>HTTP – Rate Limiting</td>
+    <td>wp-login.php: 5 r/s per IP, burst 5</td>
+    <td><code>common_k3s</code> (nginx-ingress Helm values + ingress annotations)</td>
+  </tr>
+  <tr>
+    <td>HTTP – Endpoint Block</td>
+    <td>xmlrpc.php → 403 (prevents XML-RPC brute-force)</td>
+    <td><code>blog_k3s_deploy</code> (ingress server-snippets)</td>
+  </tr>
+  <tr>
+    <td>HTTP – Security Headers</td>
+    <td>HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy</td>
+    <td><code>blog_k3s_deploy</code> (ingress location-snippets)</td>
+  </tr>
+  <tr>
+    <td>WordPress</td>
+    <td>Limit Login Attempts plugin, plugin updates via Ansible</td>
+    <td><code>blog_wordpress</code></td>
+  </tr>
+  <tr>
+    <td>SELinux</td>
+    <td>Enforcing, <code>container_file_t</code> for HostPath volumes</td>
+    <td><code>blog_selinux</code></td>
+  </tr>
+  <tr>
+    <td>Audit</td>
+    <td>auditd with hardening rules (sudo, SSH, cron, kernel modules)</td>
+    <td><code>common_auditd</code></td>
+  </tr>
+  <tr>
+    <td>Rootkits</td>
+    <td>rkhunter daily scan at 03:15</td>
+    <td><code>common_rkhunter</code></td>
+  </tr>
+  <tr>
+    <td>Patches</td>
+    <td>dnf-automatic: security updates applied automatically daily</td>
+    <td><code>common_dnf_automatic</code></td>
+  </tr>
+  <tr>
+    <td>Secrets</td>
+    <td>Ansible Vault, K8s secrets (Opaque), no_log on sensitive tasks</td>
+    <td>all roles</td>
+  </tr>
+</table>
+
+<h3>Firewall in Detail</h3>
+<p>
+  The firewall is managed by the <code>common_firewall</code> role as an nftables
+  configuration. Ansible deploys <code>/etc/nftables.conf</code> from the template
+  <code>fw.nft.j2</code> and ensures the configuration is on the server <em>before</em>
+  the nftables service starts. IPv4 and IPv6 are handled in a single
+  <code>table inet filter</code> – no separate IPv6 script required.
+</p>
+<div class="callout callout-info">
+  <strong>K3s and nftables coexist without conflict</strong>
+  K3s uses the iptables subsystem internally for its <code>KUBE-*</code> chains. This
+  subsystem is separate from the nftables namespace – both run independently.
+</div>
+<table>
+  <tr><th>Feature</th><th>Detail</th></tr>
+  <tr>
+    <td>Default Policy DROP</td>
+    <td><code>type filter hook input policy drop</code> – all packets that match no
+        ACCEPT rule are dropped. Applies to OUTPUT and FORWARD chains too.</td>
+  </tr>
+  <tr>
+    <td>Blocklist with Timeout</td>
+    <td>Named sets <code>banned4</code> (IPv4) and <code>banned6</code> (IPv6) with a 1-day timeout.
+        Entries expire automatically. Fail2ban writes directly to these sets via
+        nftables-multiport. Manual: <code>nft add element inet filter banned4 { 1.2.3.4 }</code></td>
+  </tr>
+  <tr>
+    <td>ICMP Rate Limit</td>
+    <td>Echo-request max. 5/s – protects against ICMP flood.
+        ICMPv6 (NDP, router advertisement) is allowed separately.</td>
+  </tr>
+  <tr>
+    <td>Anti-Spoofing</td>
+    <td>Private address ranges (RFC 1918 / RFC 4193) are blocked on the WAN interface;
+        loopback traffic uses an explicit <code>lo</code> rule.</td>
+  </tr>
+  <tr>
+    <td>K3s Pod CIDR Exceptions</td>
+    <td>OUTPUT explicitly allows traffic to pod CIDR (10.42.0.0/16) and service CIDR
+        (10.43.0.0/16) – required for kubelet probes and kube-proxy.
+        Ports 3306 (MariaDB) and 6379 (Redis) are only reachable from the pod CIDR.</td>
+  </tr>
+  <tr>
+    <td>RST Rate Limit</td>
+    <td>TCP RST packets are limited to max. 2/s – reduces port-scan noise.</td>
+  </tr>
+</table>
+<pre><code># Monitor dropped packets live (nftables log prefix "nftables DROP")
+journalctl -k -f --grep "nftables DROP"
+
+# Show all current rules and blocklists
+nft list ruleset
+
+# Show blocklist only
+nft list set inet filter banned4
+nft list set inet filter banned6
+
+# Block an IP manually (1-day timeout expires automatically)
+nft add element inet filter banned4 { 1.2.3.4 }
+
+# Reload firewall configuration (after playbook run or manually)
+systemctl reload nftables</code></pre>
+
+<h3>Important Security Notes</h3>
+<div class="callout callout-danger">
+  <strong>Never commit vault.yml unencrypted</strong>
+  Before every <code>git commit</code> verify:
+  <code>ansible-vault encrypt inventory/host_vars/www.apt-upgrade.me/vault.yml</code>
+</div>
+<div class="callout callout-warn">
+  <strong>Keep WordPress plugins up to date</strong>
+  Outdated plugins are the most common entry point for WordPress attacks.
+  Run <code>wp plugin update --all</code> regularly or check in the admin panel.
+</div>
+<div class="callout callout-warn">
+  <strong>Secure the WP admin user</strong>
+  Use a strong password. Two-factor authentication is recommended
+  (e.g. via plugin "Two Factor"). The admin password is stored in vault.yml.
+</div>
+</section>
+
+</main>
+</body>
+</html>

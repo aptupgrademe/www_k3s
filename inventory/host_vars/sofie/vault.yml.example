@@ -1,0 +1,27 @@
+---
+# sofie – Sensitive credentials
+# 1. Copy this file:  cp vault.yml.example vault.yml
+# 2. Fill in your values below
+# 3. Encrypt before committing to your private repo:
+#      ansible-vault encrypt inventory/host_vars/sofie/vault.yml
+
+# --- Let's Encrypt ---
+email: "admin@example.de"
+
+# --- MariaDB ---
+mysql_root_password: "changeme"
+
+# --- Nextcloud database ---
+nextcloud_pass: "changeme"
+
+# --- Nextcloud admin account ---
+nextcloud_admin_user: "admin"
+nextcloud_admin_pass: "changeme"
+
+# --- Grafana ---
+grafana_basic_auth_user: "admin"
+grafana_admin_pass:      "changeme"
+
+# --- Mail / SMTP ---
+mail_smtpname:     "nextcloud@example.de"
+mail_smtppassword: "changeme"

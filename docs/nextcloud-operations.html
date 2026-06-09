@@ -1,0 +1,1589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nextcloud K3s – Operations Guide</title>
+<style>
+  :root {
+    --bg:       #0f1117;
+    --sidebar:  #161b22;
+    --card:     #1c2128;
+    --border:   #30363d;
+    --accent:   #58a6ff;
+    --accent2:  #3fb950;
+    --warn:     #d29922;
+    --danger:   #f85149;
+    --text:     #e6edf3;
+    --muted:    #8b949e;
+    --code-bg:  #161b22;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    min-height: 100vh;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  /* ── Sidebar ── */
+  nav {
+    width: 260px;
+    min-width: 260px;
+    background: var(--sidebar);
+    border-right: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 24px 0;
+  }
+  nav .logo {
+    padding: 0 20px 20px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 12px;
+  }
+  nav .logo span { font-size: 11px; color: var(--muted); display: block; margin-top: 4px; }
+  nav .logo strong { font-size: 15px; color: var(--text); }
+  nav a {
+    display: block;
+    padding: 6px 20px;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 13px;
+    border-left: 3px solid transparent;
+    transition: color .15s, border-color .15s;
+  }
+  nav a:hover, nav a.active { color: var(--accent); border-left-color: var(--accent); }
+  nav .section-label {
+    padding: 16px 20px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--muted);
+  }
+
+  /* ── Main ── */
+  main {
+    flex: 1;
+    padding: 40px 48px;
+    max-width: 960px;
+  }
+  h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+  h2 {
+    font-size: 20px; font-weight: 600;
+    margin: 48px 0 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+  }
+  h3 { font-size: 16px; font-weight: 600; margin: 28px 0 10px; color: var(--accent); }
+  h4 { font-size: 14px; font-weight: 600; margin: 20px 0 8px; color: var(--text); }
+  p  { margin-bottom: 12px; color: var(--text); }
+  ul, ol { padding-left: 22px; margin-bottom: 12px; }
+  li { margin-bottom: 4px; }
+  a  { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 32px; }
+
+  /* ── Code ── */
+  code {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 12.5px;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
+    color: #e6edf3;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    overflow-x: auto;
+    margin: 12px 0 20px;
+    font-size: 12.5px;
+    line-height: 1.7;
+  }
+  pre code { background: none; border: none; padding: 0; font-size: inherit; }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin: 16px 0;
+  }
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    margin: 16px 0;
+  }
+  .card-grid .card { margin: 0; }
+  .card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
+  .card .value { font-size: 14px; font-weight: 600; }
+  .card .value code { background: none; border: none; font-size: 13px; padding: 0; color: var(--accent); }
+
+  /* ── Badges ── */
+  .badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 20px;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+  .badge-green  { background: #1a3a1a; color: var(--accent2); border: 1px solid #2ea04380; }
+  .badge-blue   { background: #0d2137; color: var(--accent);  border: 1px solid #58a6ff40; }
+  .badge-yellow { background: #2d1f00; color: var(--warn);    border: 1px solid #d2992240; }
+  .badge-red    { background: #2d0f0f; color: var(--danger);  border: 1px solid #f8514940; }
+
+  /* ── Callouts ── */
+  .callout {
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin: 16px 0;
+    border-left: 4px solid;
+    font-size: 14px;
+  }
+  .callout-info    { background: #0d2137; border-color: var(--accent); }
+  .callout-warn    { background: #2d1f00; border-color: var(--warn); }
+  .callout-danger  { background: #2d0f0f; border-color: var(--danger); }
+  .callout-success { background: #0d2416; border-color: var(--accent2); }
+  .callout strong  { display: block; margin-bottom: 4px; }
+
+  /* ── Tables ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0 24px;
+    font-size: 13.5px;
+  }
+  th {
+    background: var(--card);
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 2px solid var(--border);
+  }
+  td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #1c2128; }
+
+  /* ── Architecture diagram ── */
+  .arch {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    font-family: "SFMono-Regular", Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.8;
+    overflow-x: auto;
+    color: #e6edf3;
+  }
+  .arch .c-internet  { color: #58a6ff; }
+  .arch .c-ingress   { color: #79c0ff; }
+  .arch .c-pod       { color: #3fb950; }
+  .arch .c-host      { color: #d29922; }
+  .arch .c-storage   { color: #a371f7; }
+
+  /* ── Steps ── */
+  .steps { counter-reset: step; list-style: none; padding: 0; }
+  .steps li {
+    counter-increment: step;
+    padding: 10px 0 10px 48px;
+    position: relative;
+    border-bottom: 1px solid var(--border);
+  }
+  .steps li:last-child { border-bottom: none; }
+  .steps li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    top: 10px;
+    width: 28px;
+    height: 28px;
+    background: var(--card);
+    border: 2px solid var(--accent);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent);
+    line-height: 28px;
+    text-align: center;
+  }
+
+  /* ── Section anchors ── */
+  section { scroll-margin-top: 24px; }
+
+  @media (max-width: 768px) {
+    nav { display: none; }
+    main { padding: 24px 20px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════ SIDEBAR ═══════════════════════════════ -->
+<nav>
+  <div class="logo">
+    <strong>Nextcloud on K3s</strong>
+    <span>Operations Guide</span>
+  </div>
+
+  <div class="section-label">Basics</div>
+  <a href="#ueberblick">Overview</a>
+  <a href="#architektur">Architecture</a>
+  <a href="#speicher">Storage &amp; Data</a>
+  <a href="#netzwerk">Network &amp; TLS</a>
+
+  <div class="section-label">Configuration</div>
+  <a href="#dateien">Important Files</a>
+  <a href="#variablen">Variables &amp; Secrets</a>
+  <a href="#images">Container Images</a>
+  <a href="#nextcloud-config">Nextcloud Configuration</a>
+
+  <div class="section-label">Operations</div>
+  <a href="#playbook">Run Playbook</a>
+  <a href="#befehle">Important Commands</a>
+  <a href="#monitoring">Monitoring</a>
+
+  <div class="section-label">Maintenance</div>
+  <a href="#updates">Updates</a>
+  <a href="#backup">Backup &amp; Restore</a>
+  <a href="#troubleshooting">Troubleshooting</a>
+  <a href="#sicherheit">Security</a>
+</nav>
+
+<!-- ═══════════════════════════════ CONTENT ═══════════════════════════════ -->
+<main>
+
+<h1>Nextcloud – Operations Guide</h1>
+<p class="subtitle">Nextcloud 33 on K3s (AlmaLinux 9) &middot; Last updated: June 2026</p>
+
+<!-- ─────────────────────────── OVERVIEW ─────────────────────────────── -->
+<section id="ueberblick">
+<h2>Overview</h2>
+<p>
+  Nextcloud runs on a <strong>single-node K3s cluster</strong> on AlmaLinux 9.
+  The entire infrastructure is set up and managed with an Ansible playbook
+  (<code>nextcloud-k3s.yml</code>).
+  The playbook is idempotent – it can be re-run at any time
+  without modifying data or unnecessarily interrupting services.
+</p>
+
+<div class="card-grid">
+  <div class="card">
+    <div class="label">Nextcloud</div>
+    <div class="value">33.x (nextcloud:33-fpm)</div>
+  </div>
+  <div class="card">
+    <div class="label">Operating System</div>
+    <div class="value">AlmaLinux 9</div>
+  </div>
+  <div class="card">
+    <div class="label">Kubernetes</div>
+    <div class="value">K3s (Single-Node)</div>
+  </div>
+  <div class="card">
+    <div class="label">Database</div>
+    <div class="value">MariaDB 10.11 (Host)</div>
+  </div>
+  <div class="card">
+    <div class="label">Cache / Locking</div>
+    <div class="value">Redis (Host)</div>
+  </div>
+  <div class="card">
+    <div class="label">Online Office</div>
+    <div class="value">Collabora CODE 25.04</div>
+  </div>
+</div>
+
+<div class="callout callout-info">
+  <strong>Design Decision: Single-Node</strong>
+  The server runs as a single Kubernetes node. There is no high availability.
+  Updates and restarts cause a brief downtime (typically: 30–60 seconds).
+  The <code>Recreate</code> strategy in the deployment ensures that only
+  one pod accesses the HostPath volumes at a time.
+</div>
+</section>
+
+<!-- ─────────────────────────── ARCHITECTURE ───────────────────────────── -->
+<section id="architektur">
+<h2>Architecture</h2>
+
+<h3>Overall Overview</h3>
+<div class="arch">
+<span class="c-internet">Internet / Browser</span>
+        │
+        │ HTTPS :443 / HTTP :80
+        ▼
+<span class="c-ingress">┌─────────────────────────────────────────────────────┐</span>
+<span class="c-ingress">│  ingress-nginx Community (K3s DaemonSet, hostNetwork)│</span>
+<span class="c-ingress">│  TLS termination via cert-manager (Let's Encrypt)   │</span>
+<span class="c-ingress">│  Rate-Limiting: nc_login 5r/s  (HTTP layer)         │</span>
+<span class="c-ingress">└───────────────┬─────────────────────┬───────────────┘</span>
+                │ HTTP                │ HTTP
+    nextcloud.* │             collab. │ (WebSocket)
+                ▼                     ▼
+<span class="c-pod">┌──────────────────────┐   ┌──────────────────���───┐</span>
+<span class="c-pod">│  Pod: nextcloud      │   │  Pod: collabora      │</span>
+<span class="c-pod">│  ┌────────────────┐  │   │  Collabora CODE      │</span>
+<span class="c-pod">│  │ nginx sidecar  │  │   │  25.04               │</span>
+<span class="c-pod">│  │ :80  (static + │  │   │  :9980               │</span>
+<span class="c-pod">│  │  PHP proxy)    │  │   └──────────────────────┘</span>
+<span class="c-pod">│  └───────┬────────┘  │</span>
+<span class="c-pod">│  fastcgi │ :9000     │</span>
+<span class="c-pod">│  ┌───────▼────────┐  │</span>
+<span class="c-pod">│  │ nextcloud-fpm  │  │</span>
+<span class="c-pod">│  │ PHP 8.4 + FPM  │  │</span>
+<span class="c-pod">│  └────────────────┘  │</span>
+<span class="c-pod">└──────────────────────┘</span>
+        │                │
+        │ TCP :3306       │ TCP :6379
+        ▼                ▼
+<span class="c-host">┌──────────────┐   ┌───────────┐</span>
+<span class="c-host">│  MariaDB     │   │  Redis    │</span>
+<span class="c-host">│  10.11 Host  │   │  7.x Host │</span>
+<span class="c-host">└──────────────┘   └───────────┘</span>
+        │
+<span class="c-storage">┌───────────────────────────────────────────┐</span>
+<span class="c-storage">│  HostPath Volumes (on /dev/vda4, 119 GB)  │</span>
+<span class="c-storage">│  /srv/nextcloud-www  → /var/www/html      │</span>
+<span class="c-storage">│  /data               → /var/www/html/data │</span>
+<span class="c-storage">└───────────────────────────────────────────┘</span>
+</div>
+
+<h3>Why This Approach?</h3>
+<table>
+  <tr><th>Component</th><th>Where does it run?</th><th>Rationale</th></tr>
+  <tr>
+    <td>Nextcloud PHP-FPM + nginx</td>
+    <td>K3s Pod <span class="badge badge-green">Container</span></td>
+    <td>Simple updates via image swap; no php-fpm on the host</td>
+  </tr>
+  <tr>
+    <td>Collabora CODE</td>
+    <td>K3s Pod <span class="badge badge-green">Container</span></td>
+    <td>Isolated, own TLS termination through ingress-nginx (Community)</td>
+  </tr>
+  <tr>
+    <td>MariaDB</td>
+    <td>Host service <span class="badge badge-yellow">Host</span></td>
+    <td>Database data resides directly on the filesystem; no container volume layer</td>
+  </tr>
+  <tr>
+    <td>Redis</td>
+    <td>Host service <span class="badge badge-yellow">Host</span></td>
+    <td>Simple, no persistence needed; binds to host IP for pod access</td>
+  </tr>
+  <tr>
+    <td>ingress-nginx (Community)</td>
+    <td>K3s DaemonSet <span class="badge badge-blue">hostNetwork</span></td>
+    <td>Binds directly to port 80/443 on the host; no external load balancer needed</td>
+  </tr>
+  <tr>
+    <td>cert-manager</td>
+    <td>K3s <span class="badge badge-green">Container</span></td>
+    <td>Automatic Let's Encrypt certificates; replaces certbot</td>
+  </tr>
+</table>
+
+<h3>Nextcloud Pod in Detail</h3>
+<p>
+  Both containers share the same pod (= the same network namespace and
+  the same volumes). This allows nginx to communicate with
+  PHP-FPM via <code>127.0.0.1:9000</code> without needing a Kubernetes service.
+</p>
+<div class="card">
+  <h4>Init Container: <code>init-dirs</code></h4>
+  <p>Runs once before the main containers start. Sets the ownership of the
+  HostPath directories to UID 33 (www-data in the container) and configures
+  permissions. Without this step, Nextcloud cannot write anything to <code>/var/www/html</code>.</p>
+
+  <h4>Container 1: <code>nextcloud-fpm</code></h4>
+  <p>The official <code>nextcloud:33-fpm</code> image. Runs PHP-FPM on port 9000.
+  If <code>/var/www/html</code> is empty, the Docker entrypoint automatically installs
+  Nextcloud based on the environment variables (DB, Admin, Redis).
+  During an update, <code>occ upgrade</code> runs automatically.</p>
+
+  <h4>Container 2: <code>nginx</code></h4>
+  <p>nginx sidecar (<code>nginx:1.30-alpine</code>) on port 80. Serves
+  static requests directly from the shared volume; PHP requests are forwarded via
+  FastCGI to port 9000. TLS is already terminated by ingress-nginx (Community) –
+  nginx only speaks plain HTTP.</p>
+</div>
+</section>
+
+<!-- ─────────────────────────── STORAGE ─────────────────────────────── -->
+<section id="speicher">
+<h2>Storage &amp; Data</h2>
+
+<div class="callout callout-warn">
+  <strong>Important: All directories reside on the same partition</strong>
+  <code>/dev/vda4</code> (119 GB). There are no separate volumes for app and data.
+</div>
+
+<table>
+  <tr><th>Path on Host</th><th>Mount Point in Container</th><th>Contents</th><th>Owner</th></tr>
+  <tr>
+    <td><code>/srv/nextcloud-www</code></td>
+    <td><code>/var/www/html</code></td>
+    <td>PHP app, apps, themes, <code>config/</code></td>
+    <td>root:root 755 (dir)<br>33:33 for <code>config/</code></td>
+  </tr>
+  <tr>
+    <td><code>/data</code></td>
+    <td><code>/var/www/html/data</code></td>
+    <td>User files, <code>nextcloud.log</code></td>
+    <td>33:33 (www-data in container)</td>
+  </tr>
+  <tr>
+    <td><code>/var/lib/mysql</code></td>
+    <td>–</td>
+    <td>MariaDB database (runs directly on the host)</td>
+    <td>mysql:mysql</td>
+  </tr>
+</table>
+
+<h3>Why Are App and Data Separate?</h3>
+<p>
+  Nextcloud app files (<code>/srv/nextcloud-www</code>) and user data
+  (<code>/data</code>) are intentionally split into <strong>two separate HostPath volumes</strong>
+  because:
+</p>
+<ul>
+  <li>User data can be backed up independently (daily recommended)</li>
+  <li>App files are replaced by the new image during an update</li>
+  <li>For a fresh installation, an empty <code>/srv/nextcloud-www</code> is sufficient –
+      Nextcloud installs itself on first start</li>
+</ul>
+
+<h3>Important Configuration File: config.php</h3>
+<p>
+  Nextcloud automatically reads all <code>*.php</code> files from <code>/var/www/html/config/</code>.
+  There are two sources:
+</p>
+<ul>
+  <li><code>config.php</code> – written by Nextcloud itself (initial installation)</li>
+  <li><code>custom.config.php</code> – from the Kubernetes ConfigMap
+      <code>nextcloud-custom-config</code>, managed by Ansible.
+      This file takes precedence and overrides values from <code>config.php</code>.</li>
+</ul>
+
+<div class="callout callout-info">
+  <strong>Ownership Pitfall with ConfigMap Mount</strong>
+  When Kubernetes mounts a ConfigMap subPath, it may create the parent directory
+  as root:root. Therefore <code>/srv/nextcloud-www/config/</code>
+  must be pre-created with <code>owner: 33</code> (Ansible task
+  <code>next_k3s_deploy/tasks/dirs.yml</code>).
+</div>
+</section>
+
+<!-- ─────────────────────────── NETWORK ─────────────────────────────── -->
+<section id="netzwerk">
+<h2>Network &amp; TLS</h2>
+
+<h3>IP Address Ranges</h3>
+<table>
+  <tr><th>Range</th><th>Purpose</th><th>Relevant for</th></tr>
+  <tr>
+    <td><code>10.42.0.0/16</code></td>
+    <td>K3s Pod CIDR (Flannel)</td>
+    <td>nftables rules, <code>trusted_proxies</code>, WOPI allowlist, MariaDB user grant</td>
+  </tr>
+  <tr>
+    <td><code>10.43.0.0/16</code></td>
+    <td>K3s Service CIDR</td>
+    <td>ClusterIP addresses of K8s services</td>
+  </tr>
+  <tr>
+    <td><code>82.165.165.230</code></td>
+    <td>Public host IP (test server)</td>
+    <td>DNS, WOPI allowlist, ExternalService endpoints</td>
+  </tr>
+</table>
+
+<h3>Required DNS Records</h3>
+<p>
+  DNS records must be created at the domain registrar before the first playbook run.
+  cert-manager requires them for the Let's Encrypt HTTP-01 challenge – without valid records
+  certificate issuance will fail.
+</p>
+<table>
+  <tr><th>Name (Hostname)</th><th>Type</th><th>Value</th><th>Purpose</th></tr>
+  <tr>
+    <td><code>nextcloud.example.de</code></td>
+    <td>A</td>
+    <td>Public IP of the server</td>
+    <td>Nextcloud web interface, Let's Encrypt TLS</td>
+  </tr>
+  <tr>
+    <td><code>collabora.example.de</code></td>
+    <td>A</td>
+    <td>Public IP of the server</td>
+    <td>Collabora CODE Online (office editing), own TLS certificate</td>
+  </tr>
+</table>
+<div class="callout callout-warn">
+  <strong>Collabora requires its own hostname</strong>
+  Collabora runs as a separate ingress on its own subdomain name.
+  If only one A record is created (without Collabora), the WOPI callback from Nextcloud
+  to Collabora cannot function and documents cannot be edited online.
+</div>
+<div class="callout callout-info">
+  <strong>IPv6 (optional)</strong>
+  If the server has a public IPv6 address, AAAA records can additionally be created
+  for both hostnames. The nftables firewall covers IPv4 and IPv6 via a single
+  <code>table inet filter</code> – no separate script required.
+</div>
+
+<h3>How Pods Reach the Host (MariaDB / Redis)</h3>
+<p>
+  MariaDB and Redis run as host services. Pods connect to them via
+  <strong>K8s ExternalServices</strong>: a service without a selector with manually
+  maintained endpoints pointing to the public IP of the host.
+</p>
+<pre><code>Pod → mariadb.nextcloud.svc.cluster.local (10.43.x.x)
+   → Endpoint: 82.165.165.230:3306
+   → nftables ACCEPT for 10.42.0.0/16 on :3306</code></pre>
+<p>
+  The MariaDB database user is restricted to the pod CIDR
+  (<code>'nextcloud'@'10.42.%'</code>). A direct connection from the host
+  only works as <code>root</code> via Unix socket.
+</p>
+
+<h3>TLS and Proxy Chain</h3>
+<pre><code>Internet
+  → ingress-nginx Community (Port 443, TLS terminated, sets X-Forwarded-For / -Proto)
+    → nginx sidecar (Port 80, plain HTTP)
+      → PHP-FPM (Port 9000, FastCGI)
+        fastcgi_param HTTPS on
+        fastcgi_param HTTP_SCHEME https</code></pre>
+<p>
+  Nextcloud needs to know that requests are coming through a proxy:
+</p>
+<pre><code>'trusted_proxies'       => ['10.42.0.0/16'],
+'forwarded_for_headers' => ['HTTP_X_FORWARDED_FOR'],
+'overwriteprotocol'     => 'https',</code></pre>
+<div class="callout callout-warn">
+  <strong>Important: <code>trusted_proxies</code> must contain the pod CIDR</strong>
+  If this entry is missing, Nextcloud will show the warning
+  <em>"Reverse proxy header configuration is incorrect"</em> in the admin panel.
+  ingress-nginx (Community) forwards requests with its pod IP (10.42.x.x) –
+  this must be registered as a trusted proxy.
+</div>
+
+<h3>WOPI (Collabora)</h3>
+<p>
+  Collabora calls Nextcloud's WOPI API for document editing.
+  These callbacks come from the <strong>pod IP</strong> of the Collabora pod
+  (10.42.x.x) – not from the service IP. The <code>wopi_allowlist</code>
+  must therefore contain the pod CIDR:
+</p>
+<pre><code># inventory/host_vars/&lt;host&gt;/vars.yml
+wopi_allowed_hosts:
+  - "10.42.0.0/16"   # Pod CIDR (Collabora pod → Nextcloud WOPI)
+  - "10.43.0.0/16"   # Service CIDR
+  - "collabora.inspired-as-code.de"</code></pre>
+</section>
+
+<!-- ─────────────────────────── FILES ──────────────────────────────── -->
+<section id="dateien">
+<h2>Important Files in the Repository</h2>
+
+<h3>Inventory &amp; Variables</h3>
+<table>
+  <tr><th>File</th><th>Contents</th></tr>
+  <tr>
+    <td><code>inventory/group_vars/all.yml</code></td>
+    <td>Global settings: K3s CIDRs, <strong>container image tags</strong>,
+        Helm chart versions, monitoring versions</td>
+  </tr>
+  <tr>
+    <td><code>inventory/host_vars/&lt;host&gt;/vars.yml</code></td>
+    <td>Host-specific: hostnames, IPs, DB name, paths, WOPI allowlist</td>
+  </tr>
+  <tr>
+    <td><code>inventory/host_vars/&lt;host&gt;/vault.yml</code></td>
+    <td><strong>Encrypted!</strong> Passwords: DB root, DB user, admin, Redis,
+        SMTP, Grafana. Encrypt before git commit:
+        <code>ansible-vault encrypt inventory/host_vars/test/vault.yml</code></td>
+  </tr>
+</table>
+
+<h3>Ansible Roles (Nextcloud-specific)</h3>
+<table>
+  <tr><th>Role</th><th>Task</th></tr>
+  <tr><td><code>next_packages</code></td><td>Repositories (MariaDB 10.11), packages (MariaDB, Redis, SELinux tools)</td></tr>
+  <tr><td><code>next_mariadb</code></td><td>MariaDB setup, create database and user, bind-address to 0.0.0.0</td></tr>
+  <tr><td><code>next_redis</code></td><td>Redis bind configuration (localhost + host IP)</td></tr>
+  <tr><td><code>next_selinux</code></td><td>SELinux enforcing, <code>container_file_t</code> for HostPath directories</td></tr>
+  <tr><td><code>next_k3s_deploy</code></td><td>K8s manifests: namespace, secrets, ConfigMaps, deployments, ingress, CronJob</td></tr>
+  <tr><td><code>next_config</code></td><td>Post-deploy via <code>kubectl exec occ</code>: trusted_domains, apps, WOPI config</td></tr>
+</table>
+
+<h3>Templates (generating the K8s manifests)</h3>
+<table>
+  <tr><th>Template</th><th>Generates</th><th>Important because</th></tr>
+  <tr>
+    <td><code>nextcloud-deployment.yml.j2</code></td>
+    <td>Deployment + Service</td>
+    <td>Image tags, volumes, readiness probes, environment variables</td>
+  </tr>
+  <tr>
+    <td><code>custom-config-cm.yml.j2</code></td>
+    <td>ConfigMap <code>nextcloud-custom-config</code></td>
+    <td>Nextcloud PHP configuration: Redis, proxy, locale, session</td>
+  </tr>
+  <tr>
+    <td><code>nginx-cm.yml.j2</code></td>
+    <td>ConfigMap <code>nextcloud-nginx-config</code></td>
+    <td>nginx routing, .well-known redirects, MIME types, PHP FastCGI</td>
+  </tr>
+  <tr>
+    <td><code>secret.yml.j2</code></td>
+    <td>Secret <code>nextcloud-secrets</code></td>
+    <td>DB credentials, admin password, SMTP data – injected into the pod as environment variables</td>
+  </tr>
+  <tr>
+    <td><code>external-services.yml.j2</code></td>
+    <td>Services + Endpoints for MariaDB, Redis, Grafana</td>
+    <td>Connection from the pod to the host service</td>
+  </tr>
+  <tr>
+    <td><code>collabora-deployment.yml.j2</code></td>
+    <td>Collabora Deployment + Service</td>
+    <td><code>aliasgroup1</code> env restricts allowed Nextcloud instances</td>
+  </tr>
+  <tr>
+    <td><code>cronjob.yml.j2</code></td>
+    <td>K8s CronJob</td>
+    <td>Runs <code>occ cron.php</code> every 5 minutes</td>
+  </tr>
+</table>
+</section>
+
+<!-- ─────────────────────────── VARIABLES ─────────────────────────────── -->
+<section id="variablen">
+<h2>Variables &amp; Secrets</h2>
+
+<h3>Where Credentials Are Stored</h3>
+<p>
+  All passwords are stored in <code>inventory/host_vars/&lt;host&gt;/vault.yml</code>,
+  encrypted with Ansible Vault. This file must <strong>never be committed unencrypted</strong>
+  to git.
+</p>
+<pre><code># Encrypt before committing:
+ansible-vault encrypt inventory/host_vars/test/vault.yml
+
+# Decrypt for editing:
+ansible-vault decrypt inventory/host_vars/test/vault.yml
+# (re-encrypt immediately afterwards!)
+
+# Open directly in editor (preferred):
+ansible-vault edit inventory/host_vars/test/vault.yml</code></pre>
+
+<h3>Password File for Unattended Runs</h3>
+<pre><code># .vault_pass (never commit – listed in .gitignore)
+echo "my-vault-password" > .vault_pass
+# Uncomment in ansible.cfg:
+# vault_password_file = .vault_pass</code></pre>
+
+<h3>Secrets in the K8s Cluster</h3>
+<p>
+  The vault variables flow into the K8s secret
+  <code>nextcloud-secrets</code> in the namespace <code>nextcloud</code> during the playbook run.
+  The secret is injected as environment variables into the pod.
+</p>
+<pre><code># Show secret (decoded):
+k3s kubectl get secret nextcloud-secrets -n nextcloud \
+  -o jsonpath='{.data}' | python3 -c \
+  "import sys,json,base64; [print(k,base64.b64decode(v).decode()) \
+   for k,v in json.load(sys.stdin).items()]"</code></pre>
+</section>
+
+<!-- ─────────────────────────── IMAGES ───────────────────────────────── -->
+<section id="images">
+<h2>Container Images &amp; Versions</h2>
+
+<p>
+  All image tags are centrally defined in <code>inventory/group_vars/all.yml</code>.
+  Since <code>imagePullPolicy</code> defaults to
+  <code>IfNotPresent</code> for tagged images, K3s only pulls a new image automatically
+  when the tag in the manifest has changed.
+</p>
+
+<pre><code># inventory/group_vars/all.yml
+nextcloud_image_fpm:       "nextcloud:33-fpm"      # Nextcloud PHP-FPM
+nextcloud_image_nginx:     "nginx:1.30-alpine"          # nginx Sidecar
+nextcloud_image_collabora: "collabora/code:25.04.9.4.1" # Collabora CODE
+nextcloud_image_busybox:   "busybox:1"             # Init container</code></pre>
+
+<h3>Tag Strategy</h3>
+<table>
+  <tr><th>Tag Format</th><th>Meaning</th><th>Example</th></tr>
+  <tr>
+    <td><code>33-fpm</code></td>
+    <td>Follows minor and patch updates in Nextcloud 33.x automatically on pull</td>
+    <td><code>nextcloud:33-fpm</code></td>
+  </tr>
+  <tr>
+    <td><code>34-fpm</code></td>
+    <td>Next major version – must be set explicitly</td>
+    <td>Change required in <code>all.yml</code></td>
+  </tr>
+  <tr>
+    <td><code>1.29-alpine</code></td>
+    <td>nginx minor track; patch updates come automatically</td>
+    <td><code>nginx:1.30-alpine</code></td>
+  </tr>
+  <tr>
+    <td><code>25.04</code></td>
+    <td>Collabora release cycle (quarterly)</td>
+    <td><code>collabora/code:25.04</code> → <code>25.08</code></td>
+  </tr>
+</table>
+
+<div class="callout callout-warn">
+  <strong>Patch Update Without Tag Change</strong>
+  When Docker Hub updates e.g. <code>nextcloud:33-fpm</code> from 33.0.2 to 33.0.3,
+  <em>nothing happens automatically</em> on the server. The tag is cached locally.
+  Update manually:
+  <pre style="margin-top:8px"><code>crictl pull docker.io/library/nextcloud:33-fpm
+k3s kubectl rollout restart deployment/nextcloud -n nextcloud</code></pre>
+</div>
+</section>
+
+<!-- ──────────────────────── NEXTCLOUD CONFIG ──────────────────────── -->
+<section id="nextcloud-config">
+<h2>Nextcloud Configuration</h2>
+
+<p>
+  Configuration is done in two ways:
+</p>
+<ol>
+  <li>
+    <strong>custom.config.php</strong> (via Ansible ConfigMap) –
+    static settings that are updated with every playbook run
+  </li>
+  <li>
+    <strong>occ commands</strong> (via <code>kubectl exec</code>) –
+    dynamic settings such as <code>trusted_domains</code>, WOPI URL, app installation
+  </li>
+</ol>
+
+<h3>custom.config.php – Overview of Key Values</h3>
+<pre><code>// Language
+'default_language'     => 'de',
+'default_locale'       => 'de_DE',
+'force_language'       => 'de',
+
+// Session (1 hour, no "stay logged in")
+'session_lifetime'               => 3600,
+'auto_logout'                    => true,
+'remember_login_cookie_lifetime' => 0,
+
+// Redis (cache, locking, sessions)
+'memcache.local'       => '\\OC\\Memcache\\Redis',
+'memcache.distributed' => '\\OC\\Memcache\\Redis',
+'memcache.locking'     => '\\OC\\Memcache\\Redis',
+'redis' => ['host' => 'redis', 'port' => 6379],
+
+// Reverse proxy
+'trusted_proxies'       => ['10.42.0.0/16'],
+'forwarded_for_headers' => ['HTTP_X_FORWARDED_FOR'],
+'overwriteprotocol'     => 'https',
+
+// Logging (in /data/nextcloud.log on the host)
+'loglevel'        => 4,
+'logtimezone'     => 'Europe/Berlin',
+'log_rotate_size' => 104857600,   // 100 MB
+
+// Maintenance window (1 a.m.)
+'maintenance_window_start' => 1,</code></pre>
+
+<h3>Verify Configuration After Playbook Run</h3>
+<pre><code>k3s kubectl exec -n nextcloud deployment/nextcloud -c nextcloud-fpm -- \
+  runuser -u www-data -- php /var/www/html/occ config:list system
+
+k3s kubectl exec -n nextcloud deployment/nextcloud -c nextcloud-fpm -- \
+  runuser -u www-data -- php /var/www/html/occ setupchecks</code></pre>
+</section>
+
+<!-- ─────────────────────────── PLAYBOOK ─────────────────────────────── -->
+<section id="playbook">
+<h2>Run Playbook</h2>
+
+<h3>Full Initial Run (New Server Installation)</h3>
+<ol class="steps">
+  <li>
+    Set SSH port to <code>22</code> in
+    <code>inventory/host_vars/test/vars.yml</code>:
+    <code>ansible_port: 22</code>
+  </li>
+  <li>
+    Enter vault passwords in <code>vault.yml</code> and encrypt
+  </li>
+  <li>
+    Install collections:
+    <code>ansible-galaxy collection install -r requirements.yml</code>
+  </li>
+  <li>
+    Run playbook:
+    <pre><code>ansible-playbook nextcloud-k3s.yml --limit test --ask-vault-pass</code></pre>
+  </li>
+  <li>
+    Change SSH port in <code>vars.yml</code> to <code>10022</code>
+    (after SSH hardening by <code>common_ssh</code>)
+  </li>
+</ol>
+
+<h3>Idempotent Re-Run (e.g. After Config Change)</h3>
+<pre><code>ansible-playbook nextcloud-k3s.yml --limit test --ask-vault-pass</code></pre>
+<p>
+  The playbook detects what is already correctly configured and only changes
+  what is necessary. Kubernetes manifests are only re-rolled
+  when the manifest has changed (<code>changed: "configured" in output</code>).
+</p>
+
+<h3>Run Only Specific Roles</h3>
+<pre><code># Only Nextcloud configuration (occ commands)
+ansible-playbook nextcloud-k3s.yml --limit test --tags next_config --ask-vault-pass
+
+# Only update K8s deployments
+ansible-playbook nextcloud-k3s.yml --limit test --tags next_k3s_deploy --ask-vault-pass</code></pre>
+</section>
+
+<!-- ─────────────────────────── COMMANDS ──────────────────────────────── -->
+<section id="befehle">
+<h2>Important Operations Commands</h2>
+
+<h3>Pod Status</h3>
+<pre><code># All pods in the nextcloud namespace
+k3s kubectl get pods -n nextcloud
+
+# Detailed status (events on problems)
+k3s kubectl describe pod -l app=nextcloud -n nextcloud
+
+# Logs
+k3s kubectl logs deployment/nextcloud -c nextcloud-fpm -n nextcloud --tail=50
+k3s kubectl logs deployment/nextcloud -c nginx -n nextcloud --tail=50
+k3s kubectl logs deployment/collabora -n nextcloud --tail=50</code></pre>
+
+<h3>occ Commands (Nextcloud CLI)</h3>
+<pre><code># Prefix for all occ commands:
+k3s kubectl exec -n nextcloud deployment/nextcloud -c nextcloud-fpm -- \
+  runuser -u www-data -- php /var/www/html/occ &lt;COMMAND&gt;
+
+# Examples:
+... occ status
+... occ check
+... occ setupchecks
+... occ maintenance:mode --on
+... occ maintenance:mode --off
+... occ files:scan --all
+... occ db:add-missing-indices
+... occ app:list
+... occ config:list system
+... occ config:system:get trusted_domains</code></pre>
+
+<h3>Restart Pod</h3>
+<pre><code># Nextcloud (rolls gracefully due to Recreate strategy)
+k3s kubectl rollout restart deployment/nextcloud -n nextcloud
+k3s kubectl rollout status  deployment/nextcloud -n nextcloud --timeout=300s
+
+# Collabora
+k3s kubectl rollout restart deployment/collabora -n nextcloud</code></pre>
+
+<h3>Namespace Overview</h3>
+<pre><code>k3s kubectl get all -n nextcloud</code></pre>
+
+<h3>MariaDB (Host)</h3>
+<pre><code># As root via socket (credentials in /root/.my.cnf):
+mysql test_nextcloud
+
+# Create DB dump:
+mysqldump --single-transaction test_nextcloud > /tmp/dump.sql</code></pre>
+
+<h3>Redis (Host)</h3>
+<pre><code># Test connection:
+redis-cli ping
+
+# Flush cache (e.g. after configuration change):
+redis-cli FLUSHALL</code></pre>
+</section>
+
+<!-- ─────────────────────────── MONITORING ───────────────────────────── -->
+<section id="monitoring">
+<h2>Monitoring</h2>
+
+<p>
+  The monitoring stack (Prometheus + Grafana + Node Exporter + mysqld_exporter + php-fpm_exporter)
+  runs partly as host services, partly as sidecar containers in the Nextcloud K3s pod.
+  Grafana is accessible via K3s ingress on the Nextcloud hostname under <code>/grafana/</code>.
+</p>
+
+<div class="card-grid">
+  <div class="card">
+    <div class="label">Grafana</div>
+    <div class="value"><code>https://nextcloud.*/grafana/</code></div>
+    <p style="margin-top:8px;font-size:13px;color:var(--muted)">
+      Dashboards: Node Exporter Full (1860), MySQL Overview (7362), PHP-FPM (4912)<br>
+      Login: Grafana admin password from vault.yml
+    </p>
+  </div>
+  <div class="card">
+    <div class="label">Prometheus</div>
+    <div class="value"><code>127.0.0.1:9090</code></div>
+    <p style="margin-top:8px;font-size:13px;color:var(--muted)">
+      Accessible locally only<br>
+      Retention: 30 days
+    </p>
+  </div>
+  <div class="card">
+    <div class="label">Node Exporter</div>
+    <div class="value"><code>127.0.0.1:9100</code></div>
+    <p style="margin-top:8px;font-size:13px;color:var(--muted)">
+      CPU, RAM, disk, network
+    </p>
+  </div>
+  <div class="card">
+    <div class="label">mysqld_exporter</div>
+    <div class="value"><code>127.0.0.1:9104</code> (Host)</div>
+    <p style="margin-top:8px;font-size:13px;color:var(--muted)">
+      Host service (common_mysqld_exporter); connects via TCP to the
+      host MariaDB as user <code>prometheus</code><br>
+      Prometheus job: <code>mysqld_nextcloud</code>
+    </p>
+  </div>
+  <div class="card">
+    <div class="label">php-fpm_exporter</div>
+    <div class="value"><code>127.0.0.1:30254</code> (NodePort)</div>
+    <p style="margin-top:8px;font-size:13px;color:var(--muted)">
+      Sidecar in the Nextcloud pod; Prometheus scrapes via NodePort 30254<br>
+      Prometheus job: <code>php_fpm_nextcloud</code>
+    </p>
+  </div>
+</div>
+
+<h3>MariaDB Slow Query Log</h3>
+<p>
+  The host MariaDB writes slow queries (&ge; 1 second) to
+  <code>/var/log/mariadb/slow.log</code>. The file is created automatically by MariaDB
+  and can be read via <code>journalctl</code> or directly.
+</p>
+<pre><code># Read slow query log live
+tail -f /var/log/mariadb/slow.log
+
+# Filter queries from the last 24 hours
+grep -A 3 "Query_time" /var/log/mariadb/slow.log | grep -v "^--$"
+
+# Check log size
+ls -lh /var/log/mariadb/slow.log</code></pre>
+<p style="font-size:13px;color:var(--muted)">
+  Configuration: <code>/etc/my.cnf.d/nextcloud-k3s.cnf</code> →
+  <code>slow_query_log = 1</code>, <code>long_query_time = 1</code>
+</p>
+
+<h3>PHP-FPM Slow Log</h3>
+<p>
+  PHP-FPM logs requests that take longer than 5 seconds to <code>/proc/1/fd/2</code>
+  (stderr of the pod's main process). Since <code>ptrace</code> is not
+  available in containers, no stack traces are written – only the request timestamp.
+</p>
+<pre><code># Monitor slow FPM requests
+k3s kubectl logs -n nextcloud deployment/nextcloud -c nextcloud-fpm -f | grep -i "slow"</code></pre>
+<p style="font-size:13px;color:var(--muted)">
+  Configuration: ConfigMap <code>nextcloud-fpm-pool-config</code> →
+  <code>pm.status_path = /fpm-status</code>, <code>slowlog = /proc/1/fd/2</code>,
+  <code>request_slowlog_timeout = 5s</code>
+</p>
+
+<h3>Grafana Dashboards</h3>
+
+<h4>Node Exporter Full (ID 1860) – Host Metrics</h4>
+<p>Shows the health of the entire server in real time.</p>
+<table>
+  <tr><th>Panel</th><th>What to read</th></tr>
+  <tr>
+    <td>CPU Usage</td>
+    <td>Total utilization and breakdown per core (user / system / iowait).
+        <em>iowait &gt; 20%</em> indicates a disk bottleneck.</td>
+  </tr>
+  <tr>
+    <td>Load Average (1/5/15 min)</td>
+    <td>System load relative to the number of CPU cores. Sustained above core count → server overloaded.</td>
+  </tr>
+  <tr>
+    <td>RAM / Memory</td>
+    <td>Used RAM, buffers, cache and swap.
+        Swap usage &gt; 0 indicates RAM shortage – Nextcloud/Collabora may need more memory.</td>
+  </tr>
+  <tr>
+    <td>Disk I/O</td>
+    <td>Read and write rate per device, latency.
+        High latency on <code>/srv/nextcloud-www</code> or <code>/data</code> slows uploads/downloads.</td>
+  </tr>
+  <tr>
+    <td>Disk Space</td>
+    <td>Usage of filesystems. <code>/data</code> (user files) grows continuously –
+        alert when &gt; 80% used.</td>
+  </tr>
+  <tr>
+    <td>Network Traffic</td>
+    <td>Bytes in/out per interface. Unusual spikes may indicate attacks or data leaks.</td>
+  </tr>
+</table>
+
+<h4>MySQL Overview (ID 7362) – MariaDB Database Metrics</h4>
+<p>Shows the performance of the Nextcloud database (host MariaDB, port 9104).</p>
+<table>
+  <tr><th>Panel</th><th>What to read</th></tr>
+  <tr>
+    <td>Queries per Second (QPS)</td>
+    <td>Database activity. Sudden spikes may indicate inefficient queries or attacks.</td>
+  </tr>
+  <tr>
+    <td>Slow Queries</td>
+    <td>Queries that take longer than <code>long_query_time</code> (1 s).
+        Sustained &gt; 0 → missing indices or insufficient hardware.</td>
+  </tr>
+  <tr>
+    <td>InnoDB Buffer Pool</td>
+    <td>Cache utilization and hit ratio. Hit ratio &lt; 95% → buffer pool too small,
+        many read accesses go to disk (slow).</td>
+  </tr>
+  <tr>
+    <td>Connections</td>
+    <td>Active and maximum connections. Approaching max → increase connection limit or optimize queries.</td>
+  </tr>
+  <tr>
+    <td>Table Locks / Threads running</td>
+    <td>Lock contention and parallel queries. Many waiting locks = transaction problem.</td>
+  </tr>
+  <tr>
+    <td>Aborted Connections</td>
+    <td>Interrupted connections (timeout, network errors). Persistently elevated → check network or app config.</td>
+  </tr>
+</table>
+
+<h4>PHP-FPM (ID 4912) – PHP Process Pool</h4>
+<p>Shows how well PHP-FPM handles incoming Nextcloud requests (K3s pod, NodePort 30254).</p>
+<table>
+  <tr><th>Panel</th><th>What to read</th></tr>
+  <tr>
+    <td>Active Processes</td>
+    <td>Simultaneously processing PHP workers. If this panel persistently reaches
+        <code>pm.max_children</code> → enlarge pool or upgrade server.</td>
+  </tr>
+  <tr>
+    <td>Idle Processes</td>
+    <td>Free workers. Always 0 + queue &gt; 0 = PHP-FPM is overloaded.</td>
+  </tr>
+  <tr>
+    <td>Request Queue</td>
+    <td>Waiting requests that cannot get a free worker. Any value &gt; 0 means latency for the user.</td>
+  </tr>
+  <tr>
+    <td>Requests per Second</td>
+    <td>Throughput of the PHP backend. Correlates with user numbers and sync clients.</td>
+  </tr>
+  <tr>
+    <td>Slow Requests</td>
+    <td>PHP requests that take longer than <code>request_slowlog_timeout</code> (5 s).
+        Indicates inefficient Nextcloud operations (e.g. large file scans).</td>
+  </tr>
+  <tr>
+    <td>Max Active (Peak)</td>
+    <td>Highest value since FPM started. Helps with sizing <code>pm.max_children</code>.</td>
+  </tr>
+</table>
+<div class="callout callout-info">
+  <strong>Grafana Dashboard Variables Are Initialized Automatically</strong>
+  Dashboard 1860 (Node Exporter Full) is in the modern Grafana 11 format without an <code>__inputs</code> section.
+  The variables <code>ds_prometheus</code>, <code>job</code>, <code>nodename</code> and <code>node</code>
+  are therefore set after each import via Python script by the <code>common_grafana</code> task.
+  Without this step all panels show "No data". If a dashboard is empty:
+  re-run the playbook or manually select the dropdown variables at the top of the dashboard in Grafana.
+</div>
+
+<h3>mysqld_exporter – Check Status</h3>
+<pre><code># Service status
+systemctl status mysqld_exporter
+
+# Logs
+journalctl -u mysqld_exporter -n 50
+
+# Fetch metrics directly (test)
+curl -s http://127.0.0.1:9104/metrics | grep mysql_up</code></pre>
+
+<div class="callout callout-info">
+  <strong>Adjust Grafana Hostname When Switching Scenario</strong>
+  When the server is switched from Nextcloud to WordPress (blog), the
+  <code>grafana_proxy_hostname</code> in <code>host_vars/&lt;host&gt;/vars.yml</code>
+  must be changed to the blog hostname – otherwise the /grafana/ path
+  points to the wrong ingress.
+</div>
+</section>
+
+<!-- ─────────────────────────── UPDATES ──────────────────────────────── -->
+<section id="updates">
+<h2>Updates</h2>
+
+<h3>Operating System (AlmaLinux 9)</h3>
+<p>
+  Security updates are automatically applied daily by <code>dnf-automatic</code>. For a full system update:
+</p>
+<ol class="steps">
+  <li>
+    <pre><code>ssh -p 10022 root@server
+dnf upgrade -y</code></pre>
+  </li>
+  <li>
+    Check if a reboot is needed:
+    <pre><code>needs-restarting -r</code></pre>
+  </li>
+  <li>
+    If needed: reboot the server. K3s starts automatically after the reboot,
+    pods come back up on their own.
+    <pre><code>reboot
+# Check afterwards:
+k3s kubectl get pods -n nextcloud</code></pre>
+  </li>
+</ol>
+
+<h3>Container Update: Patch Within the Same Tag</h3>
+<p>
+  When Docker Hub updates e.g. <code>nextcloud:33-fpm</code> from 33.0.2 to 33.0.3
+  and the tag in Ansible remains unchanged:
+</p>
+<ol class="steps">
+  <li>Pull new image manually:
+    <pre><code>crictl pull docker.io/library/nextcloud:33-fpm</code></pre>
+  </li>
+  <li>Restart pod (now uses the freshly pulled image):
+    <pre><code>k3s kubectl rollout restart deployment/nextcloud -n nextcloud
+k3s kubectl rollout status  deployment/nextcloud -n nextcloud --timeout=300s</code></pre>
+  </li>
+  <li>Ensure DB migrations:
+    <pre><code>ansible-playbook nextcloud-k3s.yml --limit test --tags next_config --ask-vault-pass</code></pre>
+  </li>
+</ol>
+
+<h3>Container Update: Major Version Jump (e.g. 33 → 34)</h3>
+
+<div class="callout callout-danger">
+  <strong>Backup before every major update!</strong>
+  A failed DB schema upgrade can damage the installation.
+  Always run <code>nextcloud-backup.sh</code> first.
+</div>
+
+<ol class="steps">
+  <li>Change tag in <code>inventory/group_vars/all.yml</code>:
+    <pre><code>nextcloud_image_fpm: "nextcloud:34-fpm"
+# if applicable also:
+nextcloud_image_collabora: "collabora/code:25.08"</code></pre>
+  </li>
+  <li>Run playbook – K3s pulls the new image automatically and rolls out the pod:
+    <pre><code>ansible-playbook nextcloud-k3s.yml --limit test --ask-vault-pass</code></pre>
+  </li>
+  <li>
+    The Nextcloud container runs <code>occ upgrade</code> automatically on startup.
+    The playbook run then executes the <code>next_config</code> role
+    (DB indices, WOPI config, app settings).
+  </li>
+  <li>Check admin panel for warnings:
+    <pre><code>k3s kubectl exec -n nextcloud deployment/nextcloud -c nextcloud-fpm -- \
+  runuser -u www-data -- php /var/www/html/occ setupchecks</code></pre>
+  </li>
+</ol>
+
+<div class="callout callout-info">
+  <strong>Why No Web Updater?</strong>
+  The built-in Nextcloud web updater (admin panel → update button) does <em>not</em>
+  work in container setups. It would attempt to overwrite PHP files in-place –
+  but in this setup, the app files come from the Docker image.
+  Always update via image tag change.
+</div>
+
+<h3>Where to Check for New Versions</h3>
+<table>
+  <tr><th>Component</th><th>URL</th></tr>
+  <tr><td>Nextcloud</td><td><code>https://hub.docker.com/_/nextcloud/tags</code> (filter: <code>*-fpm</code>)</td></tr>
+  <tr><td>Collabora</td><td><code>https://hub.docker.com/r/collabora/code/tags</code></td></tr>
+  <tr><td>nginx</td><td><code>https://hub.docker.com/_/nginx/tags</code> (filter: <code>*-alpine</code>)</td></tr>
+  <tr><td>ingress-nginx (Community) Helm</td><td><code>https://artifacthub.io/packages/helm/ingress-nginx/ingress-nginx</code></td></tr>
+  <tr><td>cert-manager Helm</td><td><code>https://artifacthub.io/packages/helm/cert-manager/cert-manager</code></td></tr>
+</table>
+</section>
+
+<!-- ─────────────────────────── BACKUP ───────────────────────────────── -->
+<section id="backup">
+<h2>Backup &amp; Restore</h2>
+
+<h3>What Is Backed Up</h3>
+<table>
+  <tr><th>What</th><th>Path (server)</th><th>Destination (local)</th><th>Method</th></tr>
+  <tr>
+    <td>User data</td>
+    <td><code>/data</code></td>
+    <td><code>/data/nextcloud/&lt;env&gt;/data/</code></td>
+    <td>rsync</td>
+  </tr>
+  <tr>
+    <td>App files</td>
+    <td><code>/srv/nextcloud-www</code></td>
+    <td><code>/data/nextcloud/&lt;env&gt;/nextcloud/</code></td>
+    <td>rsync (data/ excluded)</td>
+  </tr>
+  <tr>
+    <td>Database</td>
+    <td>MariaDB <code>&lt;env&gt;_nextcloud</code> (host)</td>
+    <td><code>/data/nextcloud/&lt;env&gt;/db.sql</code></td>
+    <td>mysqldump --single-transaction</td>
+  </tr>
+</table>
+
+<div class="callout callout-info">
+  <strong>MariaDB runs on the host – not in the container</strong>
+  The Nextcloud DB user is restricted to <code>'nextcloud'@'10.42.%'</code>
+  (pod IPs only). mysqldump therefore runs as <code>root</code> via Unix socket.
+  The credentials are in <code>/root/.my.cnf</code> (created by Ansible).
+  The backup script uses this connection automatically.
+</div>
+
+<h3>Run Backup</h3>
+<p>
+  The script expects the instance name as an argument.
+  The instance controls which server is contacted and where the backup is stored locally.
+</p>
+<table>
+  <tr><th>Instance</th><th>Command</th><th>Local destination</th></tr>
+  <tr><td>Test server</td>
+      <td><code>./scripts/nextcloud-backup.sh test</code></td>
+      <td><code>/data/nextcloud/test/</code></td></tr>
+  <tr><td>Sofie</td>
+      <td><code>./scripts/nextcloud-backup.sh sofie</code></td>
+      <td><code>/data/nextcloud/sofie/</code></td></tr>
+  <tr><td>CVJM</td>
+      <td><code>./scripts/nextcloud-backup.sh cvjm</code></td>
+      <td><code>/data/nextcloud/cvjm/</code></td></tr>
+</table>
+<pre><code># Example: back up test instance
+cd ~/www_k3s
+./scripts/nextcloud-backup.sh test
+
+# Process (applies to all instances):
+# 1. Enable maintenance mode  (kubectl exec occ maintenance:mode --on)
+# 2. mysqldump --single-transaction → /data/nextcloud/&lt;env&gt;/db.sql
+# 3. rsync /srv/nextcloud-www/      → /data/nextcloud/&lt;env&gt;/nextcloud/
+# 4. rsync /data/                   → /data/nextcloud/&lt;env&gt;/data/
+# 5. Disable maintenance mode</code></pre>
+<p style="font-size:13px;color:var(--muted)">
+  The script is located in the repository directory <code>scripts/nextcloud-backup.sh</code>.
+  Sofie and CVJM are only usable once IP and hostname are entered in
+  <code>inventory/host_vars/&lt;env&gt;/vars.yml</code> –
+  the script checks this and aborts with an error message if <code>changeme</code> is still present.
+</p>
+
+<h3>Restore Workflow</h3>
+<p>The restore script also expects the instance name as an argument:</p>
+<table>
+  <tr><th>Instance</th><th>Command</th><th>Source</th></tr>
+  <tr><td>Test server</td>
+      <td><code>./scripts/nextcloud-restore.sh test</code></td>
+      <td><code>/data/nextcloud/test/</code></td></tr>
+  <tr><td>Sofie</td>
+      <td><code>./scripts/nextcloud-restore.sh sofie</code></td>
+      <td><code>/data/nextcloud/sofie/</code></td></tr>
+  <tr><td>CVJM</td>
+      <td><code>./scripts/nextcloud-restore.sh cvjm</code></td>
+      <td><code>/data/nextcloud/cvjm/</code></td></tr>
+</table>
+<ol class="steps">
+  <li>
+    Set up server (infrastructure) – replace <code>test</code> with instance name:
+    <pre><code>ansible-playbook nextcloud-k3s.yml --limit test --ask-vault-pass</code></pre>
+  </li>
+  <li>
+    Run restore script (overwrites the fresh installation):
+    <pre><code>cd ~/www_k3s
+./scripts/nextcloud-restore.sh test</code></pre>
+    <p style="font-size:13px;color:var(--muted)">
+      Process: enable maintenance → stop pod → rsync app files → rsync user data →
+      SQL import → fix ownership → start pod → files:scan → disable maintenance
+    </p>
+  </li>
+  <li>
+    Run Ansible again (ensures occ config: trusted_domains, WOPI, apps):
+    <pre><code>ansible-playbook nextcloud-k3s.yml --limit test --ask-vault-pass</code></pre>
+    <p style="font-size:13px;color:var(--muted)">
+      This step is mandatory on a hostname change, otherwise recommended.
+    </p>
+  </li>
+</ol>
+
+<h3>Manual Individual Commands (Reference)</h3>
+<pre><code># Maintenance mode
+k3s kubectl exec -n nextcloud deployment/nextcloud -c nextcloud-fpm -- \
+  runuser -u www-data -- php /var/www/html/occ maintenance:mode --on
+
+# Database dump (on the server)
+mysqldump --single-transaction &lt;db_name&gt; &gt; /tmp/nc.sql
+
+# Fix ownership after manual rsync
+chown -R 33:33 /srv/nextcloud-www /data
+chmod 0755 /srv/nextcloud-www && chmod 0770 /data
+
+# Rebuild file index
+k3s kubectl exec -n nextcloud deployment/nextcloud -c nextcloud-fpm -- \
+  runuser -u www-data -- php /var/www/html/occ files:scan --all</code></pre>
+
+<div class="callout callout-warn">
+  <strong>Do not change instanceid after restore</strong>
+  The <code>instanceid</code> in <code>config.php</code> is set by Nextcloud itself on
+  first start and links the app files with the appdata directory
+  (<code>/data/appdata_&lt;instanceid&gt;/</code>). After a restore from backup
+  it is automatically correct – never overwrite it manually.
+</div>
+</section>
+
+<!-- ──────────────────────── TROUBLESHOOTING ─────────────────────────── -->
+<section id="troubleshooting">
+<h2>Troubleshooting</h2>
+
+<h3>Pod Does Not Start / Stays in CrashLoopBackOff</h3>
+<pre><code>k3s kubectl describe pod -l app=nextcloud -n nextcloud
+k3s kubectl logs deployment/nextcloud -c nextcloud-fpm -n nextcloud --previous</code></pre>
+<p>Typical causes:</p>
+<ul>
+  <li><strong>DB not reachable:</strong> MariaDB service is not running or
+      nftables service not running (<code>systemctl status nftables</code>)?</li>
+  <li><strong>config.php empty (0 bytes):</strong> First start could not
+      write to <code>config/</code> due to incorrect ownership.
+      Fix: <code>chown 33:33 /srv/nextcloud-www/config</code>,
+      delete empty file, restart pod.</li>
+  <li><strong>Redis not reachable:</strong>
+      Check <code>systemctl status redis</code> on the host</li>
+</ul>
+
+<h3>Nextcloud Page Loads But CSS/JS Is Missing (Page Looks Broken)</h3>
+<pre><code># Check MIME types of assets:
+curl -sI "https://nextcloud.example.com/core/css/server.css" | grep content-type
+# Must be: text/css
+
+curl -sI "https://nextcloud.example.com/dist/core-main.js" | grep content-type
+# Must be: application/javascript</code></pre>
+<p>
+  In the past, the cause was a <code>types {}</code> block in the nginx server context
+  that overrode all inherited MIME types. The current configuration
+  uses a dedicated location block for <code>.mjs</code>.
+</p>
+
+<h3>Admin Warning: "Reverse Proxy Header Is Incorrect"</h3>
+<p>
+  <code>trusted_proxies</code> is missing from <code>custom.config.php</code> or
+  does not contain the K3s pod CIDR (<code>10.42.0.0/16</code>).
+</p>
+<pre><code>k3s kubectl exec -n nextcloud deployment/nextcloud -c nextcloud-fpm -- \
+  runuser -u www-data -- php /var/www/html/occ config:system:get trusted_proxies</code></pre>
+
+<h3>Collabora: "Unauthorized WOPI Host"</h3>
+<p>
+  The <code>wopi_allowlist</code> does not contain the pod CIDR (10.42.x.x).
+  Collabora pods connect to Nextcloud WOPI from their pod IP.
+</p>
+<pre><code>k3s kubectl exec -n nextcloud deployment/nextcloud -c nextcloud-fpm -- \
+  runuser -u www-data -- php /var/www/html/occ \
+  config:app:get richdocuments wopi_allowlist
+
+# Fix:
+k3s kubectl exec -n nextcloud deployment/nextcloud -c nextcloud-fpm -- \
+  runuser -u www-data -- php /var/www/html/occ \
+  config:app:set richdocuments wopi_allowlist \
+  --value="10.42.0.0/16,10.43.0.0/16,collabora.example.de,82.165.165.230"</code></pre>
+
+<h3>Certificate Is Not Issued</h3>
+<pre><code># Check cert-manager logs:
+k3s kubectl logs -n cert-manager deployment/cert-manager --tail=50
+
+# Check certificate object:
+k3s kubectl describe certificate nextcloud-tls -n nextcloud
+
+# ClusterIssuer status:
+k3s kubectl describe clusterissuer letsencrypt-prod</code></pre>
+<p>
+  Common cause: port 80 is blocked by nftables or the provider.
+  cert-manager requires port 80 for the HTTP-01 challenge.
+</p>
+
+<h3>CronJob Is Not Running</h3>
+<pre><code># Status of recent jobs:
+k3s kubectl get cronjob nextcloud-cron -n nextcloud
+k3s kubectl get jobs -n nextcloud --sort-by=.metadata.creationTimestamp | tail -5
+
+# Logs of the last job pod:
+k3s kubectl logs -n nextcloud -l job-name=nextcloud-cron-&lt;id&gt;</code></pre>
+</section>
+
+<!-- ─────────────────────────── SECURITY ───────────────────────────── -->
+<section id="sicherheit">
+<h2>Security</h2>
+
+<h3>Multi-Layered Protection Strategy</h3>
+<table>
+  <tr><th>Layer</th><th>Measure</th><th>Role</th></tr>
+  <tr>
+    <td>Host network</td>
+    <td>nftables (<code>table inet filter</code>) – default policy DROP, named-set blocklist with timeout, ICMP rate limit, only 80/443/10022 open</td>
+    <td><code>common_firewall</code></td>
+  </tr>
+  <tr>
+    <td>SSH</td>
+    <td>Port 10022, key-only, hardened sshd_config, Fail2Ban</td>
+    <td><code>common_ssh</code>, <code>common_fail2ban</code></td>
+  </tr>
+  <tr>
+    <td>HTTP</td>
+    <td>Rate limiting login (5r/s), HSTS, security headers</td>
+    <td><code>common_k3s</code> (ingress-nginx Community Helm values + ingress annotations)</td>
+  </tr>
+  <tr>
+    <td>Database</td>
+    <td>User restricted to pod CIDR (<code>10.42.%</code>), MariaDB bind 0.0.0.0 + nftables</td>
+    <td><code>next_mariadb</code>, <code>common_firewall</code></td>
+  </tr>
+  <tr>
+    <td>Redis</td>
+    <td>Bind to localhost + host IP, nftables on pod CIDR</td>
+    <td><code>next_redis</code>, <code>common_firewall</code></td>
+  </tr>
+  <tr>
+    <td>SELinux</td>
+    <td>Enforcing, <code>container_file_t</code> for HostPath volumes</td>
+    <td><code>next_selinux</code></td>
+  </tr>
+  <tr>
+    <td>Audit</td>
+    <td>auditd with hardening rules (sudo, SSH, cron, kernel modules)</td>
+    <td><code>common_auditd</code></td>
+  </tr>
+  <tr>
+    <td>Rootkits</td>
+    <td>rkhunter daily scan at 03:15</td>
+    <td><code>common_rkhunter</code></td>
+  </tr>
+  <tr>
+    <td>Patches</td>
+    <td>dnf-automatic: security updates applied daily automatically</td>
+    <td><code>common_dnf_automatic</code></td>
+  </tr>
+  <tr>
+    <td>Secrets</td>
+    <td>Ansible Vault, K8s secrets (Opaque), no_log on sensitive tasks</td>
+    <td>all roles</td>
+  </tr>
+</table>
+
+<h3>Firewall in Detail</h3>
+<p>
+  The firewall is managed by the <code>common_firewall</code> role as an nftables
+  configuration. Ansible deploys <code>/etc/nftables.conf</code> from the template
+  <code>fw.nft.j2</code> and ensures the configuration is on the server <em>before</em>
+  the nftables service starts. IPv4 and IPv6 are handled in a single
+  <code>table inet filter</code> – no separate IPv6 script required.
+</p>
+<div class="callout callout-info">
+  <strong>K3s and nftables coexist without conflict</strong>
+  K3s uses the iptables subsystem internally for its <code>KUBE-*</code> chains. This
+  subsystem is separate from the nftables namespace – both run independently.
+</div>
+<table>
+  <tr><th>Feature</th><th>Detail</th></tr>
+  <tr>
+    <td>Default policy DROP</td>
+    <td><code>type filter hook input policy drop</code> – all packets that match no
+        ACCEPT rule are dropped. Applies to OUTPUT and FORWARD chains too.</td>
+  </tr>
+  <tr>
+    <td>Blocklist with timeout</td>
+    <td>Named sets <code>banned4</code> (IPv4) and <code>banned6</code> (IPv6) with a 1-day timeout.
+        Entries expire automatically. Fail2ban writes directly to these sets via
+        nftables-multiport. Manual: <code>nft add element inet filter banned4 { 1.2.3.4 }</code></td>
+  </tr>
+  <tr>
+    <td>ICMP rate limit</td>
+    <td>Echo-request max. 5/s – protects against ICMP flood.
+        ICMPv6 (NDP, router advertisement) is allowed separately.</td>
+  </tr>
+  <tr>
+    <td>K3s pod CIDR exceptions</td>
+    <td>OUTPUT and INPUT explicitly allow traffic to/from pod CIDR (10.42.0.0/16)
+        on ports 3306 (MariaDB) and 6379 (Redis) – only for K3s pods.</td>
+  </tr>
+  <tr>
+    <td>RST rate limit</td>
+    <td>TCP RST packets are limited to max. 2/s – reduces port-scan noise.</td>
+  </tr>
+</table>
+<pre><code># Monitor blocked packets live (nftables log prefix "nftables DROP")
+journalctl -k -f --grep "nftables DROP"
+
+# Show all current rules and blocklists
+nft list ruleset
+
+# Show blocklist only
+nft list set inet filter banned4
+nft list set inet filter banned6
+
+# Block an IP manually (1-day timeout expires automatically)
+nft add element inet filter banned4 { 1.2.3.4 }
+
+# Reload firewall configuration (after playbook run or manually)
+systemctl reload nftables</code></pre>
+
+<h3>Important Security Notes</h3>
+<div class="callout callout-danger">
+  <strong>Never commit vault.yml unencrypted</strong>
+  Before every <code>git commit</code> check:
+  <code>ansible-vault encrypt inventory/host_vars/test/vault.yml</code>
+</div>
+<div class="callout callout-warn">
+  <strong>MariaDB bind to 0.0.0.0</strong>
+  MariaDB listens on all interfaces so that pods can connect via the host IP.
+  Protection is provided exclusively by nftables (only pod CIDR allowed on port 3306)
+  and the DB user grant (<code>'nextcloud'@'10.42.%'</code>). Never expose port 3306 publicly.
+</div>
+<div class="callout callout-warn">
+  <strong>StrictHostKeyChecking=no in ansible.cfg</strong>
+  Disables host key verification when establishing SSH connections. Suitable for
+  test servers with changing IPs, but not recommended for production servers.
+  For production: set <code>StrictHostKeyChecking=accept-new</code>.
+</div>
+</section>
+
+</main>
+</body>
+</html>

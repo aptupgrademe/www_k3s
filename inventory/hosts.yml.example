@@ -1,0 +1,16 @@
+all:
+  children:
+    blog:                         # WordPress servers
+      hosts:
+        www.example.de:           # rename to your actual hostname
+          ansible_host: CHANGE_ME # public IPv4 of the server
+        test:
+          ansible_host: CHANGE_ME # public IPv4 of the test server
+    nextcloud:                    # Nextcloud servers
+      hosts:
+        instance1:                # rename to your actual instance name
+          ansible_host: CHANGE_ME # public IPv4
+        instance2:
+          ansible_host: CHANGE_ME # public IPv4
+        test:
+          ansible_host: CHANGE_ME # shared with blog test server

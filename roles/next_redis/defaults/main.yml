@@ -1,0 +1,3 @@
+---
+# No role-level defaults.  Redis bind address comes from inventory
+# (nextcloud_ipv4 in host_vars/<host>/vars.yml).

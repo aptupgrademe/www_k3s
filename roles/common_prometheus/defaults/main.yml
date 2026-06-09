@@ -1,0 +1,4 @@
+---
+# Override in group_vars/all.yml to update across all hosts at once
+prometheus_version: "3.2.1"
+prometheus_retention: "30d"

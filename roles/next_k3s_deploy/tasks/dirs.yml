@@ -1,0 +1,37 @@
+---
+# =============================================================================
+# Host-side directories for K3s HostPath volumes
+# =============================================================================
+
+# The Nextcloud FPM container writes Nextcloud's PHP files here on first run.
+# Using a HostPath PV guarantees data persists across pod restarts.
+- name: Dirs | Create Nextcloud www directory (HostPath for app files)
+  ansible.builtin.file:
+    path: "{{ nextcloud_k3s_www_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# Pre-create the config directory as uid 33 (www-data inside the container).
+# Without this the kubelet creates it as root when mounting the custom-config
+# ConfigMap (subPath), which prevents Nextcloud from writing config.php.
+- name: Dirs | Create Nextcloud config directory (must be writable by www-data uid 33)
+  ansible.builtin.file:
+    path: "{{ nextcloud_k3s_www_dir }}/config"
+    state: directory
+    owner: 33
+    group: 33
+    mode: "0755"
+
+# User data must be writable by www-data (uid 33) inside the FPM container.
+# Owner is set to 33 here so occ and Nextcloud can write without relying solely
+# on the init container chown, which only runs on pod creation (not on every
+# Ansible run).
+- name: Dirs | Create Nextcloud data directory (HostPath for user data)
+  ansible.builtin.file:
+    path: "{{ nextcloud_data_dir }}"
+    state: directory
+    owner: 33
+    group: 33
+    mode: "0770"

@@ -1,0 +1,60 @@
+---
+# -----------------------------------------------------------------------------
+# WOPI (Collabora / Nextcloud Office) configuration via occ
+#
+# Collabora connects back to Nextcloud from its pod IP (k3s_pod_cidr, 10.42.x.x).
+# The allowlist must therefore include the pod CIDR, not just the service CIDR.
+# Required entries in host_vars/<host>/vars.yml:
+#   wopi_allowed_hosts:
+#     - "{{ k3s_pod_cidr }}"      # Collabora pod → Nextcloud WOPI callbacks
+#     - "{{ k3s_service_cidr }}"  # kept for completeness
+#     - "{{ collabora_hostname }}"
+# -----------------------------------------------------------------------------
+
+- name: WOPI | Get current WOPI allowlist
+  ansible.builtin.command: >
+    k3s kubectl exec deployment/nextcloud
+    --namespace nextcloud
+    --container nextcloud-fpm
+    --
+    runuser -u www-data -- php /var/www/html/occ
+    config:app:get richdocuments wopi_allowlist
+  register: current_wopi_allowlist
+  changed_when: false
+  failed_when: false
+
+- name: WOPI | Set WOPI allowlist
+  ansible.builtin.command: >
+    k3s kubectl exec deployment/nextcloud
+    --namespace nextcloud
+    --container nextcloud-fpm
+    --
+    runuser -u www-data -- php /var/www/html/occ
+    config:app:set richdocuments wopi_allowlist
+    --value="{{ wopi_allowed_hosts | join(',') }}"
+  when: current_wopi_allowlist.stdout | trim != wopi_allowed_hosts | join(',')
+  changed_when: true
+
+- name: WOPI | Get current Collabora URL
+  ansible.builtin.command: >
+    k3s kubectl exec deployment/nextcloud
+    --namespace nextcloud
+    --container nextcloud-fpm
+    --
+    runuser -u www-data -- php /var/www/html/occ
+    config:app:get richdocuments wopi_url
+  register: current_wopi_url
+  changed_when: false
+  failed_when: false
+
+- name: WOPI | Set Collabora URL
+  ansible.builtin.command: >
+    k3s kubectl exec deployment/nextcloud
+    --namespace nextcloud
+    --container nextcloud-fpm
+    --
+    runuser -u www-data -- php /var/www/html/occ
+    config:app:set richdocuments wopi_url
+    --value="{{ collabora_url }}"
+  when: current_wopi_url.stdout | trim != collabora_url
+  changed_when: true

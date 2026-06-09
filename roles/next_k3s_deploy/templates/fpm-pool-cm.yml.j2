@@ -1,0 +1,14 @@
+# PHP-FPM pool monitoring config ConfigMap – managed by Ansible (next_k3s_deploy)
+# Mounted as /usr/local/etc/php-fpm.d/z-monitoring.conf in the nextcloud-fpm container.
+# PHP-FPM loads all *.conf files from php-fpm.d/ alphabetically; z-* runs last.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nextcloud-fpm-pool-config
+  namespace: nextcloud
+data:
+  z-monitoring.conf: |
+    [www]
+    pm.status_path = /fpm-status
+    slowlog = /proc/1/fd/2
+    request_slowlog_timeout = 5s

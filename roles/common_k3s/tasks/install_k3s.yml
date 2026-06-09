@@ -1,0 +1,122 @@
+---
+# =============================================================================
+# K3s installation
+# =============================================================================
+# K3s is a lightweight Kubernetes distribution ideal for single-node setups.
+# We disable Traefik (K3s default ingress) because we install F5 nginx-ingress
+# instead – this preserves our existing Nginx rate-limiting and header config.
+# ServiceLB (Klipper) is also disabled; F5 nginx-ingress uses hostNetwork=true
+# and binds directly to the host's ports 80/443.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# Packages required by K3s on RHEL 9
+# -----------------------------------------------------------------------------
+- name: K3s | Install container-selinux (required for K3s SELinux support)
+  ansible.builtin.dnf:
+    name:
+      - container-selinux
+    state: present
+
+
+# -----------------------------------------------------------------------------
+# K3s config file – written before install so flags apply even on re-runs
+# -----------------------------------------------------------------------------
+- name: K3s | Ensure /etc/rancher/k3s directory exists
+  ansible.builtin.file:
+    path: /etc/rancher/k3s
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: K3s | Deploy /etc/rancher/k3s/config.yaml
+  ansible.builtin.copy:
+    dest: /etc/rancher/k3s/config.yaml
+    owner: root
+    group: root
+    mode: "0600"
+    content: |
+      disable:
+        - traefik
+        - servicelb
+      flannel-backend: vxlan
+      write-kubeconfig-mode: "0644"
+  notify: Restart k3s service
+
+
+# -----------------------------------------------------------------------------
+# Install K3s
+# -----------------------------------------------------------------------------
+- name: K3s | Check if k3s binary already exists
+  ansible.builtin.stat:
+    path: /usr/local/bin/k3s
+  register: k3s_binary
+
+# Split into two steps to avoid SSH timeout on slow connections:
+# 1. Download the k3s binary directly via get_url (controlled timeout, progress visible).
+# 2. Run the install script with INSTALL_K3S_SKIP_DOWNLOAD=true so it only
+#    sets up the service files without fetching the binary again.
+- name: K3s | Download k3s binary
+  ansible.builtin.get_url:
+    url: https://github.com/k3s-io/k3s/releases/latest/download/k3s
+    dest: /usr/local/bin/k3s
+    mode: "0755"
+    owner: root
+    group: root
+  when: not k3s_binary.stat.exists
+  timeout: 600
+
+- name: K3s | Download K3s install script
+  ansible.builtin.get_url:
+    url: https://get.k3s.io
+    dest: /tmp/k3s-install.sh
+    mode: "0755"
+  when: not k3s_binary.stat.exists
+  timeout: 60
+
+- name: K3s | Run K3s installer (skip binary download, flags from config.yaml)
+  ansible.builtin.shell: INSTALL_K3S_SKIP_DOWNLOAD=true /tmp/k3s-install.sh
+  args:
+    creates: /etc/systemd/system/k3s.service
+  when: not k3s_binary.stat.exists
+
+
+# -----------------------------------------------------------------------------
+# Service
+# -----------------------------------------------------------------------------
+- name: K3s | Ensure k3s service is enabled and started
+  ansible.builtin.service:
+    name: k3s
+    state: started
+    enabled: true
+
+- name: K3s | Wait for the API server to become available
+  ansible.builtin.command: k3s kubectl get nodes
+  register: k3s_nodes
+  until: k3s_nodes.rc == 0
+  retries: 30
+  delay: 5
+  changed_when: false
+
+
+# -----------------------------------------------------------------------------
+# kubeconfig for root
+# -----------------------------------------------------------------------------
+- name: K3s | Ensure /root/.kube directory exists
+  ansible.builtin.file:
+    path: /root/.kube
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: K3s | Copy kubeconfig to /root/.kube/config
+  ansible.builtin.copy:
+    src: /etc/rancher/k3s/k3s.yaml
+    dest: /root/.kube/config
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0600"

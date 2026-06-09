@@ -1,0 +1,163 @@
+# MariaDB Deployment + Service – managed by Ansible (blog_k3s_deploy)
+# Data is persisted on the host via HostPath volume ({{ blog_k3s_db_dir }}).
+# Image version is controlled by blog_image_mariadb in group_vars/all.yml.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mariadb
+  namespace: wordpress
+  labels:
+    app: mariadb
+spec:
+  replicas: 1
+  # Recreate ensures only one pod accesses the HostPath volume at a time.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mariadb
+  template:
+    metadata:
+      labels:
+        app: mariadb
+    spec:
+      # -------------------------------------------------------------------
+      # Init container: fix HostPath directory ownership
+      # mariadb runs as mysql user (uid 999, gid 999).
+      # -------------------------------------------------------------------
+      initContainers:
+      - name: init-dirs
+        image: {{ blog_image_busybox }}
+        command:
+        - sh
+        - -c
+        - |
+          chown 999:999 /var/lib/mysql
+          chmod 0755 /var/lib/mysql
+        volumeMounts:
+        - name: mariadb-data
+          mountPath: /var/lib/mysql
+
+      containers:
+      - name: mariadb
+        image: {{ blog_image_mariadb }}
+        args:
+        - --slow-query-log=1
+        - --slow-query-log-file=/var/lib/mysql/slow.log
+        - --long-query-time=1
+        # Cache hot InnoDB pages in RAM – 512 M fits comfortably inside the 1 Gi
+        # container limit and avoids the image default of ~128 M.
+        - --innodb-buffer-pool-size=512M
+        env:
+        - name: MARIADB_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: wordpress-secrets
+              key: db-root-password
+        - name: MARIADB_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: wordpress-secrets
+              key: db-name
+        - name: MARIADB_USER
+          valueFrom:
+            secretKeyRef:
+              name: wordpress-secrets
+              key: db-user
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: wordpress-secrets
+              key: db-password
+        # Required when upgrading from a previous major version (e.g. 10.x → 11.x).
+        # Runs mariadb-upgrade on first start to migrate auth tables and system schema.
+        - name: MARIADB_AUTO_UPGRADE
+          value: "1"
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mariadb-data
+          mountPath: /var/lib/mysql
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - >
+              mysqladmin ping -h 127.0.0.1
+              -u root -p"${MARIADB_ROOT_PASSWORD}" 2>/dev/null
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          failureThreshold: 6
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - >
+              mysqladmin ping -h 127.0.0.1
+              -u root -p"${MARIADB_ROOT_PASSWORD}" 2>/dev/null
+          initialDelaySeconds: 30
+          periodSeconds: 20
+          failureThreshold: 3
+
+      # -------------------------------------------------------------------
+      # Container 2: mysqld_exporter – Prometheus metrics for MariaDB
+      # v0.19.0 requires --config.my-cnf; DATA_SOURCE_NAME is no longer supported.
+      # Credentials are read from a key in the wordpress-secrets Secret.
+      # -------------------------------------------------------------------
+      - name: mysqld-exporter
+        image: {{ blog_image_mysqld_exporter }}
+        args:
+        - --config.my-cnf=/etc/mysqld_exporter.cnf
+        - --web.listen-address=:9104
+        ports:
+        - containerPort: 9104
+          name: metrics
+        volumeMounts:
+        - name: mysqld-exporter-config
+          mountPath: /etc/mysqld_exporter.cnf
+          subPath: mysqld-exporter-cnf
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "25m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+
+      volumes:
+      - name: mariadb-data
+        hostPath:
+          path: {{ blog_k3s_db_dir }}
+          type: DirectoryOrCreate
+      - name: mysqld-exporter-config
+        secret:
+          secretName: wordpress-secrets
+          defaultMode: 0444
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mariadb
+  namespace: wordpress
+  labels:
+    app: mariadb
+spec:
+  selector:
+    app: mariadb
+  ports:
+  - name: mysql
+    port: 3306
+    targetPort: 3306
+    protocol: TCP
+  type: ClusterIP

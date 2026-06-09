@@ -1,0 +1,28 @@
+# External Services – managed by Ansible (blog_k3s_deploy)
+# Headless K8s Service + Endpoints exposing Grafana (host-side) to pods
+# in the wordpress namespace.
+# MariaDB runs inside K3s (mariadb Deployment) – no external service needed.
+---
+# --- Grafana (proxied via blog Ingress at /grafana/) ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: wordpress
+spec:
+  ports:
+  - port: 3000
+    targetPort: 3000
+    protocol: TCP
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: grafana
+  namespace: wordpress
+subsets:
+- addresses:
+  - ip: {{ blog_ipv4 }}
+  ports:
+  - port: 3000
+    protocol: TCP

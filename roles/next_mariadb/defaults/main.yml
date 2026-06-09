@@ -1,0 +1,9 @@
+---
+# Credentials and database name are set per host in host_vars/<host>/vault.yml:
+#   mysql_root_password, nextcloud_pass
+# and in host_vars/<host>/vars.yml:
+#   nextcloud_db, nextcloud_user
+
+# InnoDB buffer pool – set to ~25% of total RAM.
+# On a 4 GB server: 1024M, on 2 GB: 512M, on 1 GB: 256M.
+mariadb_innodb_buffer_pool_size: "256M"

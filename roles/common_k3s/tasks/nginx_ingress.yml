@@ -1,0 +1,82 @@
+---
+# =============================================================================
+# ingress-nginx – Kubernetes community Ingress Controller inside K3s
+# =============================================================================
+# Runs as a DaemonSet with hostNetwork=true so it binds directly to the host's
+# ports 80 and 443.
+#
+# Chart: ingress-nginx/ingress-nginx (https://kubernetes.github.io/ingress-nginx)
+# =============================================================================
+
+- name: ingress-nginx | Remove F5 nginx-stable/nginx-ingress release if present
+  # The GitHub-imported version switched to the F5 chart (nginx-stable/nginx-ingress).
+  # Detect it by chart name prefix "nginx-ingress-" and uninstall before
+  # reinstalling the community chart to avoid incompatible schema conflicts.
+  ansible.builtin.shell: |
+    set -o pipefail
+    CHART=$(helm list -n ingress-nginx -o json 2>/dev/null \
+      | python3 -c "import json,sys; r=json.load(sys.stdin); \
+        [print(x['chart']) for x in r if x['name']=='ingress-nginx']" 2>/dev/null || true)
+    if echo "$CHART" | grep -q '^nginx-ingress-'; then
+      helm uninstall ingress-nginx --namespace ingress-nginx
+      echo "uninstalled"
+    else
+      echo "skipped"
+    fi
+  args:
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: old_uninstall
+  changed_when: "'uninstalled' in old_uninstall.stdout"
+
+- name: ingress-nginx | Add ingress-nginx Helm repository
+  ansible.builtin.command: >
+    helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: nginx_repo
+  changed_when: "'has been added' in nginx_repo.stdout"
+  failed_when: >
+    nginx_repo.rc != 0 and
+    'already exists' not in nginx_repo.stderr | lower
+
+- name: ingress-nginx | Update Helm repositories
+  ansible.builtin.command: helm repo update
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: false
+
+- name: ingress-nginx | Template Helm values
+  ansible.builtin.template:
+    src: ingress-nginx-values.yml.j2
+    dest: /tmp/ingress-nginx-values.yml
+    mode: "0644"
+
+# upgrade --install is idempotent: installs on first run, upgrades on re-run.
+- name: ingress-nginx | Install/upgrade ingress-nginx via Helm
+  ansible.builtin.command: >
+    helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx
+    --namespace ingress-nginx
+    --create-namespace
+    --version {{ ingress_nginx_chart_version }}
+    --values /tmp/ingress-nginx-values.yml
+    --wait
+    --timeout 300s
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: true
+
+- name: ingress-nginx | Remove temporary values file
+  ansible.builtin.file:
+    path: /tmp/ingress-nginx-values.yml
+    state: absent
+
+- name: ingress-nginx | Wait for ingress-nginx DaemonSet pod to be ready
+  ansible.builtin.command: >
+    k3s kubectl wait pod
+    --selector app.kubernetes.io/name=ingress-nginx
+    --namespace ingress-nginx
+    --for=condition=ready
+    --timeout=120s
+  changed_when: false

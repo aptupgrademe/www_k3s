@@ -1,0 +1,78 @@
+# =============================================================================
+# Playbook: nextcloud-k3s.yml
+# Purpose:  Full infrastructure deployment and configuration.
+#           Idempotent – safe to re-run on an existing installation.
+#
+# Run this playbook to:
+#   - Provision a new server from scratch
+#   - Apply configuration changes (vars, templates, occ settings)
+#   - Roll out new image tags or Helm chart versions after editing
+#     inventory/group_vars/all.yml
+#
+# -----------------------------------------------------------------------------
+# Update workflow – see also nextcloud-update.yml:
+#
+#   Patch update (same tag, e.g. 33.0.2 → 33.0.3):
+#     → ansible-playbook nextcloud-update.yml --limit <host>
+#
+#   Version bump (tag/chart change in group_vars/all.yml):
+#     → ansible-playbook nextcloud-k3s.yml --limit <host>
+#
+#   Full maintenance cycle (patch + version bumps):
+#     → run nextcloud-update.yml first, then nextcloud-k3s.yml
+# -----------------------------------------------------------------------------
+#
+# First run on a fresh server: ansible_port must be 22 in host_vars.
+# After SSH hardening: change ansible_port to 10022.
+#
+# Production hosts (cvjm, sofie) require host_vars and encrypted vault.yml
+# before running without --limit.
+#
+# Usage:
+# -----------------------------------------------------------------------------
+#
+#   # First-time setup (fresh server, ansible_port: 22):
+#   ansible-playbook nextcloud-k3s.yml --limit <host> --ask-vault-pass
+#
+#   # Re-run after config changes or updates:
+#   ansible-playbook nextcloud-k3s.yml --limit <host> --ask-vault-pass
+#
+#   # Specific host examples:
+#   ansible-playbook nextcloud-k3s.yml --limit test  --ask-vault-pass
+#   ansible-playbook nextcloud-k3s.yml --limit cvjm  --ask-vault-pass
+#   ansible-playbook nextcloud-k3s.yml --limit sofie --ask-vault-pass
+#
+#   # All nextcloud hosts at once:
+#   ansible-playbook nextcloud-k3s.yml --ask-vault-pass
+#
+# Prerequisites:
+#   1. cp inventory/hosts.yml.example           inventory/hosts.yml
+#   2. cp inventory/host_vars/<h>/vars.yml.example  .../vars.yml  → fill in
+#   3. cp inventory/host_vars/<h>/vault.yml.example .../vault.yml → fill in
+#   4. ansible-vault encrypt inventory/host_vars/<host>/vault.yml
+# =============================================================================
+- name: Install packages and configure server
+  hosts: nextcloud
+  gather_facts: false
+  become: false
+
+
+  roles:
+    - next_packages         # Repositories, packages (MariaDB 10.11, Redis) – nginx/PHP run in K3s pods
+    - common_ssh            # SSH hardening (port, key-only auth)
+    - common_firewall       # nftables IPv4/IPv6 rules (incl. K3s pod CIDR exceptions)
+    - next_mariadb          # MariaDB setup + Nextcloud database and user
+    - next_selinux          # SELinux enforcing + container_file_t contexts for K3s HostPath vols  ← before deploy!
+    - common_k3s            # K3s single-node cluster + Helm + cert-manager + nginx-ingress (F5)
+    - next_k3s_deploy       # Nextcloud + Collabora K8s workloads + Ingress
+    - next_redis            # Redis (caching, file locking, sessions)
+    - next_config           # Post-install: occ config via kubectl exec
+    - common_node_exporter  # Node Exporter (metrics collector, port 9100)
+    - common_mysqld_exporter # mysqld_exporter (MariaDB metrics, port 9104)
+    - common_prometheus     # Prometheus (scrapes localhost:9100/9104 + K3s NodePorts, port 9090)
+    - common_grafana        # Grafana (dashboard, port 3000)
+    - common_fail2ban       # Fail2Ban: SSH + Nextcloud login protection
+    - common_msmtp          # msmtp sendmail relay (used by rkhunter, cron, dnf-automatic)
+    - common_dnf_automatic  # Automatic security-only updates via dnf-automatic
+    - common_rkhunter       # Rootkit detection with daily scan
+    - common_auditd         # Linux Audit Daemon with security-relevant rules

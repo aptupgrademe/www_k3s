@@ -1,0 +1,34 @@
+---
+# test – Sensitive credentials (used for both Nextcloud and WordPress test scenarios)
+# 1. Copy this file:  cp vault.yml.example vault.yml
+# 2. Fill in your values below
+# 3. Encrypt before committing to your private repo:
+#      ansible-vault encrypt inventory/host_vars/test/vault.yml
+
+# --- Let's Encrypt ---
+email: "admin@example.de"
+
+# --- MariaDB (shared root password for both scenarios) ---
+mysql_root_password: "changeme"
+
+# --- Nextcloud database ---
+nextcloud_pass: "changeme"
+
+# --- Nextcloud admin account ---
+nextcloud_admin_user: "admin"
+nextcloud_admin_pass: "changeme"
+
+# --- WordPress database ---
+blog_db_pass: "changeme"
+
+# --- WordPress admin account ---
+blog_admin_user: "admin"
+blog_admin_pass: "changeme"
+
+# --- Grafana ---
+grafana_basic_auth_user: "admin"
+grafana_admin_pass:      "changeme"
+
+# --- Mail / SMTP ---
+mail_smtpname:     "homelab@example.de"
+mail_smtppassword: "changeme"

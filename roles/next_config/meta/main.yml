@@ -1,0 +1,6 @@
+---
+galaxy_info:
+  role_name: next_config
+  description: Post-install Nextcloud optimizations (DB indices, MIME migrations)
+  min_ansible_version: "2.12"
+dependencies: []

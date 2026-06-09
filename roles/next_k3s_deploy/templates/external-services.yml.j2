@@ -1,0 +1,76 @@
+# External Services for host-side services – managed by Ansible (next_k3s_deploy)
+# These Services expose MariaDB, Redis and Grafana (running on the host) to
+# pods inside the nextcloud namespace.  Manually-managed Endpoints point to
+# the server's public IP.  nftables rules limit access to the K3s pod CIDR.
+---
+# --- MariaDB ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mariadb
+  namespace: nextcloud
+spec:
+  ports:
+  - port: 3306
+    targetPort: 3306
+    protocol: TCP
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: mariadb
+  namespace: nextcloud
+subsets:
+- addresses:
+  - ip: {{ nextcloud_ipv4 }}
+  ports:
+  - port: 3306
+    protocol: TCP
+---
+# --- Redis ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: nextcloud
+spec:
+  ports:
+  - port: 6379
+    targetPort: 6379
+    protocol: TCP
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: redis
+  namespace: nextcloud
+subsets:
+- addresses:
+  - ip: {{ nextcloud_ipv4 }}
+  ports:
+  - port: 6379
+    protocol: TCP
+---
+# --- Grafana (proxied via Nextcloud Ingress at /grafana/) ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: nextcloud
+spec:
+  ports:
+  - port: 3000
+    targetPort: 3000
+    protocol: TCP
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: grafana
+  namespace: nextcloud
+subsets:
+- addresses:
+  - ip: {{ nextcloud_ipv4 }}
+  ports:
+  - port: 3000
+    protocol: TCP

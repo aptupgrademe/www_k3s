@@ -1,0 +1,174 @@
+#!/usr/sbin/nft -f
+# Managed by Ansible (common_firewall) – do not edit manually.
+
+flush ruleset
+
+# =============================================================================
+# table inet filter – covers IPv4 and IPv6 in a single ruleset
+# =============================================================================
+table inet filter {
+
+  # ---------------------------------------------------------------------------
+  # Blocklists with 24-hour auto-expiry.
+  # Populate externally (e.g. fail2ban or manually):
+  #   nft add element inet filter banned4 { 1.2.3.4 }
+  #   nft add element inet filter banned6 { 2001:db8::1 }
+  # ---------------------------------------------------------------------------
+  set banned4 {
+    type ipv4_addr
+    flags timeout
+    timeout 1d
+    comment "attacker / port-scanner blocklist (IPv4)"
+  }
+
+  set banned6 {
+    type ipv6_addr
+    flags timeout
+    timeout 1d
+    comment "attacker / port-scanner blocklist (IPv6)"
+  }
+
+  # ===========================================================================
+  # INPUT
+  # ===========================================================================
+  chain input {
+    type filter hook input priority filter; policy drop;
+
+    # Loopback
+    iif lo accept
+
+    # Established / related connections
+    ct state established,related accept
+
+    # Drop invalid connection-tracking state
+    ct state invalid drop
+
+    # Drop XMAS packets (all standard TCP flags set)
+    tcp flags & (fin|syn|rst|psh|ack|urg) == fin|syn|rst|psh|ack|urg drop
+
+    # Drop NULL packets (no TCP flags set)
+    tcp flags & (fin|syn|rst|psh|ack|urg) == 0x0 drop
+
+    # Anti-spoofing: reject new TCP packets that carry SYN+ACK (handshake reply)
+    ct state new tcp flags & (syn|ack) == syn|ack reject with tcp reset
+
+    # RST flood: allow at most 1 RST/s, drop the rest
+    tcp flags & (syn|ack|fin|rst) == rst limit rate 1/second accept
+    tcp flags & (syn|ack|fin|rst) == rst drop
+
+    # Blocklist check (before K3s ACCEPT rules so banned IPs are always dropped)
+    ip  saddr @banned4 drop
+    ip6 saddr @banned6 drop
+
+    # -------------------------------------------------------------------------
+    # K3s / Kubernetes CNI exceptions
+    # Must appear before the private-range DROP rules below so that pod traffic
+    # ({{ k3s_pod_cidr }}) is not inadvertently blocked.
+    # -------------------------------------------------------------------------
+
+    # Allow K3s pods to reach MariaDB on the host
+    ip saddr {{ k3s_pod_cidr }} tcp dport 3306 accept
+
+    # Allow K3s pods to reach Redis on the host
+    ip saddr {{ k3s_pod_cidr }} tcp dport 6379 accept
+
+    # Allow the host to probe its own services
+    # (kubelet liveness/readiness probes for hostNetwork pods, e.g. ingress-nginx on port 10254)
+    ip saddr {{ server_ipv4 }} accept
+
+    # -------------------------------------------------------------------------
+    # Block private and reserved IPv4 source ranges
+    # -------------------------------------------------------------------------
+    ip saddr {
+      0.0.0.0/8, 10.0.0.0/8, 127.0.0.0/8, 169.254.0.0/16,
+      172.16.0.0/12, 192.168.0.0/16, 224.0.0.0/4, 240.0.0.0/5
+    } drop
+
+    # -------------------------------------------------------------------------
+    # ICMP (IPv4) – only useful types
+    # -------------------------------------------------------------------------
+    icmp type { destination-unreachable, echo-request, time-exceeded, parameter-problem } accept
+
+    # -------------------------------------------------------------------------
+    # ICMPv6 – required for correct IPv6 operation (NDP, path MTU discovery)
+    # -------------------------------------------------------------------------
+    icmpv6 type {
+      destination-unreachable, packet-too-big, time-exceeded, parameter-problem,
+      router-advertisement, router-solicitation,
+      nd-neighbor-solicitation, nd-neighbor-advertisement,
+      echo-request, echo-reply
+    } accept
+
+    # -------------------------------------------------------------------------
+    # Incoming: web server (ingress-nginx with hostNetwork=true)
+    # TCP 80/443: HTTP + HTTPS  |  UDP 443: QUIC (HTTP/3)
+    # -------------------------------------------------------------------------
+    ip  daddr {{ server_ipv4 }} tcp dport { 80, 443 } ct state new accept
+    ip  daddr {{ server_ipv4 }} udp dport 443          ct state new accept
+    ip6 daddr {{ server_ipv6 }} tcp dport { 80, 443 } accept
+    ip6 daddr {{ server_ipv6 }} udp dport 443          accept
+
+    # Incoming: management (SSH on non-standard port)
+    ip  daddr {{ server_ipv4 }} tcp dport 10022 ct state new accept
+    ip6 daddr {{ server_ipv6 }} tcp dport 10022         accept
+
+    # Log everything else before the policy drop (rate-limited)
+    limit rate 2/minute log prefix "nftables DROP IN:  " level warn flags all
+  }
+
+  # ===========================================================================
+  # FORWARD – K3s inter-pod and pod-to-service traffic
+  # K3s manages its own KUBE-* chains in iptables (separate subsystem);
+  # the nftables FORWARD chain only needs to pass pod CIDR traffic.
+  # ===========================================================================
+  chain forward {
+    type filter hook forward priority filter; policy drop;
+
+    ct state invalid drop
+
+    # Blocklist check on forwarded traffic
+    ip  saddr @banned4 drop
+    ip6 saddr @banned6 drop
+
+    # K3s pod traffic (both directions)
+    ip saddr {{ k3s_pod_cidr }} accept
+    ip daddr {{ k3s_pod_cidr }} accept
+
+    limit rate 2/minute log prefix "nftables DROP FWD: " level warn flags all
+  }
+
+  # ===========================================================================
+  # OUTPUT
+  # ===========================================================================
+  chain output {
+    type filter hook output priority filter; policy drop;
+
+    oif lo accept
+    ct state established,related accept
+    ct state invalid drop
+
+    # ICMPv6 output is required for IPv6 (NDP, path MTU discovery, etc.)
+    ip6 nexthdr ipv6-icmp accept
+
+    # DNS (UDP + TCP for large responses)
+    udp dport 53  ct state new accept
+    tcp dport 53  ct state new accept
+
+    # NTP
+    udp dport 123 ct state new accept
+
+    # HTTP / HTTPS (package downloads, ACME, external APIs)
+    tcp dport { 80, 443 } ct state new accept
+    udp dport 443          ct state new accept  # QUIC outgoing
+
+    # SMTP submission (Nextcloud mail)
+    tcp dport 465 ct state new accept  # TLS
+    tcp dport 587 ct state new accept  # STARTTLS
+
+    # K3s API server (hostNetwork pods + kubectl)
+    tcp dport 6443 ct state new accept
+
+    # Log everything else before the policy drop (rate-limited)
+    limit rate 2/minute log prefix "nftables DROP OUT: " level warn flags all
+  }
+}

@@ -1,0 +1,5 @@
+- name: Validate sshd config
+  ansible.builtin.command: sshd -t
+  changed_when: false
+# Note: sshd is NOT restarted during the Ansible run.
+# The new sshd_config takes effect on the next system reboot.

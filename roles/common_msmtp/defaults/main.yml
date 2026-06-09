@@ -1,0 +1,8 @@
+---
+# SMTP relay configuration – non-sensitive defaults
+# Sensitive values (mail_smtpname, mail_smtppassword) must be in vault.yml
+msmtp_host:     "{{ mail_smtphost }}"
+msmtp_port:     "{{ mail_smtpport }}"
+msmtp_from:     "{{ mail_from_address }}"
+msmtp_user:     "{{ mail_smtpname }}"
+msmtp_password: "{{ mail_smtppassword }}"

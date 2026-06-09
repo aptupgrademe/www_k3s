@@ -1,0 +1,5 @@
+---
+# Passed to rkhunter MAIL-ON-WARNING; uses the host's 'email' variable from vault
+# Override if a separate monitoring address is desired:
+# rkhunter_mail: "monitoring@example.com"
+rkhunter_mail: "{{ email }}"

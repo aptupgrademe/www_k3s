@@ -1,0 +1,61 @@
+---
+# =============================================================================
+# Host variables – sofie (Nextcloud only)
+#
+# Usage:
+#   1. cp vars.yml.example vars.yml
+#   2. Fill in all CHANGE_ME values
+#   ansible-playbook nextcloud-k3s.yml --limit sofie --ask-vault-pass
+#
+# Sensitive credentials (passwords) are in vault.yml – see vault.yml.example
+# =============================================================================
+
+# --- Connection ---
+ansible_user: root
+ansible_port: 22
+
+# --- Network ---
+server_ipv4: "CHANGE_ME"    # e.g. 1.2.3.4
+server_ipv6: "CHANGE_ME"    # e.g. 2001:db8::1  – or remove if no public IPv6
+
+# ===========================================================================
+# NEXTCLOUD scenario
+# ===========================================================================
+
+# --- Network aliases ---
+nextcloud_ipv4: "{{ server_ipv4 }}"
+nextcloud_ipv6: "{{ server_ipv6 }}"
+
+# --- Database ---
+nextcloud_db:   "sofie_nextcloud"
+nextcloud_user: "nextcloud"      # DB username (password → vault.yml)
+
+# --- Hostnames and URLs ---
+nextcloud_hostname: "CHANGE_ME"                    # e.g. nextcloud.example.de
+collabora_hostname: "CHANGE_ME"                    # e.g. collabora.example.de
+nextcloud_url:      "https://{{ nextcloud_hostname }}"
+collabora_url:      "https://{{ collabora_hostname }}"
+
+# --- Paths ---
+nextcloud_data_dir: "/data"
+
+# --- WOPI allowlist ---
+wopi_allowed_hosts:
+  - "{{ k3s_pod_cidr }}"
+  - "{{ k3s_service_cidr }}"
+  - "{{ collabora_hostname }}"
+  - "{{ nextcloud_ipv4 }}"
+
+# ===========================================================================
+# SHARED
+# ===========================================================================
+
+# --- Grafana ---
+grafana_proxy_hostname: "{{ nextcloud_hostname }}"
+
+# --- Mail / SMTP ---
+mail_from_address: "nextcloud"           # local part only (before @)
+mail_domain:       "CHANGE_ME"           # e.g. example.de
+mail_smtphost:     "CHANGE_ME"           # e.g. smtp.strato.de
+mail_smtpport:     "587"
+mail_smtpauth:     true

@@ -1,0 +1,65 @@
+# Ingress for WordPress blog – managed by Ansible (blog_k3s_deploy)
+# cert-manager issues the Let's Encrypt TLS certificate automatically.
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wordpress
+  namespace: wordpress
+  annotations:
+    # TLS certificate issued by cert-manager
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # Force HTTPS
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # Security headers added to every response
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+      add_header X-Frame-Options "SAMEORIGIN" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header Referrer-Policy "same-origin" always;
+      add_header X-Permitted-Cross-Domain-Policies "none" always;
+    # Rate-limit wp-login.php (5 r/s per IP, burst 5) + block xmlrpc
+    nginx.ingress.kubernetes.io/server-snippet: |
+      location = /xmlrpc.php {
+        deny all;
+        return 403;
+      }
+      location = /wp-login.php {
+        limit_req zone=wp_login burst=5 nodelay;
+        proxy_pass http://wordpress.wordpress.svc.cluster.local;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+      }
+    # Upload size and timeouts
+    nginx.ingress.kubernetes.io/proxy-body-size: "500m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - {{ blog_hostname }}
+    secretName: wordpress-tls
+  rules:
+  - host: {{ blog_hostname }}
+    http:
+      paths:
+      # Grafana is proxied at /grafana/ – Grafana handles the prefix itself
+      # (serve_from_sub_path = true in grafana.ini)
+      - path: /grafana
+        pathType: Prefix
+        backend:
+          service:
+            name: grafana
+            port:
+              number: 3000
+      # Everything else goes to WordPress
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: wordpress
+            port:
+              number: 80

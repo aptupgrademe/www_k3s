@@ -1,0 +1,3 @@
+---
+# No handlers needed: services are started directly in the task file
+# (ansible.builtin.service with state: started).

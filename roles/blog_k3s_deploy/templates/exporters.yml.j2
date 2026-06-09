@@ -1,0 +1,41 @@
+# Exporter NodePort Services – managed by Ansible (blog_k3s_deploy)
+# These expose mysqld_exporter (mariadb pod) and php-fpm_exporter (wordpress pod)
+# to host-side Prometheus via NodePort. Prometheus scrapes 127.0.0.1:3010x/302xx.
+---
+# mysqld_exporter – port 9104 in mariadb pod → NodePort 30104 on host
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysqld-exporter
+  namespace: wordpress
+  labels:
+    app: mariadb
+spec:
+  selector:
+    app: mariadb
+  ports:
+  - name: metrics
+    port: 9104
+    targetPort: 9104
+    nodePort: 30104
+    protocol: TCP
+  type: NodePort
+---
+# php-fpm_exporter – port 9253 in wordpress pod → NodePort 30253 on host
+apiVersion: v1
+kind: Service
+metadata:
+  name: php-fpm-exporter
+  namespace: wordpress
+  labels:
+    app: wordpress
+spec:
+  selector:
+    app: wordpress
+  ports:
+  - name: metrics
+    port: 9253
+    targetPort: 9253
+    nodePort: 30253
+    protocol: TCP
+  type: NodePort

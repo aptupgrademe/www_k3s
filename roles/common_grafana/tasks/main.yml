@@ -1,0 +1,327 @@
+---
+# =============================================================================
+# Role: common_grafana
+# Purpose: Install Grafana OSS on AlmaLinux 9, configure a Prometheus
+#          datasource and import dashboard 1860 (Node Exporter Full).
+#          Grafana is exposed via K3s Ingress at /grafana/ on the main hostname.
+#          Access is protected by Grafana's own admin password (no host-level proxy auth).
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# Repository and package
+# -----------------------------------------------------------------------------
+- name: Grafana | Add official Grafana repository
+  ansible.builtin.copy:
+    dest: /etc/yum.repos.d/grafana.repo
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [grafana]
+      name=Grafana OSS
+      baseurl=https://rpm.grafana.com
+      repo_gpgcheck=1
+      enabled=1
+      gpgcheck=1
+      gpgkey=https://rpm.grafana.com/gpg.key
+      sslverify=1
+      sslcacert=/etc/pki/tls/certs/ca-bundle.crt
+      exclude=*beta*
+
+- name: Grafana | Install grafana-oss
+  ansible.builtin.dnf:
+    name: grafana
+    state: present
+
+
+# -----------------------------------------------------------------------------
+# Configuration
+# -----------------------------------------------------------------------------
+# admin_user and admin_password are only evaluated by Grafana on first start
+# (before the internal database is initialised).  On an existing installation
+# these lines have no effect – the credentials are stored in the DB.
+# NOTE: admin_user only takes effect on the very first Grafana start (before
+# the internal SQLite DB is created).  On an existing installation the user
+# in the DB is not renamed – change it manually via the Grafana UI or CLI.
+- name: Grafana | Set admin username in grafana.ini
+  ansible.builtin.lineinfile:
+    path: /etc/grafana/grafana.ini
+    regexp: '^;?\s*admin_user\s*='
+    line: "admin_user = {{ grafana_basic_auth_user }}"
+    state: present
+  notify: restart grafana
+
+- name: Grafana | Set admin password in grafana.ini
+  ansible.builtin.lineinfile:
+    path: /etc/grafana/grafana.ini
+    regexp: '^;?\s*admin_password\s*='
+    line: "admin_password = {{ grafana_admin_pass }}"
+    state: present
+  notify: restart grafana
+
+# Disable the "change password on first login" prompt when password is managed
+- name: Grafana | Disable forced password change on login
+  ansible.builtin.lineinfile:
+    path: /etc/grafana/grafana.ini
+    regexp: '^;?\s*disable_initial_admin_creation\s*='
+    line: "disable_initial_admin_creation = false"
+    state: present
+
+# Bind to all interfaces so K3s pods can reach Grafana via the host IP
+# (the K3s External Service Endpoint points to the host's public IP).
+# Access is restricted to the K3s pod CIDR by nftables (common_firewall).
+- name: Grafana | Bind to all interfaces (required for K3s pod access)
+  ansible.builtin.lineinfile:
+    path: /etc/grafana/grafana.ini
+    regexp: '^;?\s*http_addr\s*='
+    line: "http_addr = 0.0.0.0"
+    state: present
+  notify: restart grafana
+
+# Required so Grafana generates correct redirect URLs when served via K3s Ingress at /grafana/
+- name: Grafana | Set root_url for K3s Ingress subpath proxy
+  ansible.builtin.lineinfile:
+    path: /etc/grafana/grafana.ini
+    regexp: '^;?\s*root_url\s*='
+    line: "root_url = https://{{ grafana_proxy_hostname }}/grafana/"
+    state: present
+  notify: restart grafana
+
+- name: Grafana | Enable serve_from_sub_path
+  ansible.builtin.lineinfile:
+    path: /etc/grafana/grafana.ini
+    regexp: '^;?\s*serve_from_sub_path\s*='
+    line: "serve_from_sub_path = true"
+    state: present
+  notify: restart grafana
+
+
+# -----------------------------------------------------------------------------
+# Enable and start Grafana (must be running before API calls)
+# -----------------------------------------------------------------------------
+- name: Grafana | Enable and start service
+  ansible.builtin.systemd:
+    name: grafana-server
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Grafana | Wait for API to become available
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:3000/api/health"
+    status_code: 200
+  register: grafana_health
+  until: grafana_health.status == 200
+  retries: 30
+  delay: 3
+
+
+# -----------------------------------------------------------------------------
+# Prometheus datasource
+# -----------------------------------------------------------------------------
+- name: Grafana | Check if Prometheus datasource already exists
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:3000/api/datasources/name/Prometheus"
+    method: GET
+    user: "{{ grafana_basic_auth_user }}"
+    password: "{{ grafana_admin_pass }}"
+    force_basic_auth: true
+    status_code: [200, 404]
+  register: grafana_ds_check
+
+- name: Grafana | Create Prometheus datasource
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:3000/api/datasources"
+    method: POST
+    user: "{{ grafana_basic_auth_user }}"
+    password: "{{ grafana_admin_pass }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      name: "Prometheus"
+      type: "prometheus"
+      url: "http://127.0.0.1:9090"
+      access: "proxy"
+      isDefault: true
+    status_code: 200
+  when: grafana_ds_check.status == 404
+
+
+# -----------------------------------------------------------------------------
+# Dashboard 1860 – Node Exporter Full
+# -----------------------------------------------------------------------------
+- name: Grafana | Download dashboard 1860 from Grafana.com
+  ansible.builtin.get_url:
+    url: "https://grafana.com/api/dashboards/1860/revisions/latest/download"
+    dest: /tmp/grafana-dashboard-1860.json
+    mode: "0644"
+    force: false          # skip download if file already present
+
+- name: Grafana | Read dashboard JSON from remote host
+  ansible.builtin.slurp:
+    src: /tmp/grafana-dashboard-1860.json
+  register: dashboard_1860_raw
+
+- name: Grafana | Import dashboard 1860 via Grafana API
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:3000/api/dashboards/import"
+    method: POST
+    user: "{{ grafana_basic_auth_user }}"
+    password: "{{ grafana_admin_pass }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      # Fixed uid ensures overwrite: true always replaces the same dashboard
+      # instead of creating a new one on each playbook run.
+      dashboard: "{{ dashboard_1860_raw.content | b64decode | from_json | combine({'uid': 'rYdddlPWk'}) }}"
+      overwrite: true
+      inputs:
+        - name: "DS_PROMETHEUS"
+          type: "datasource"
+          pluginId: "prometheus"
+          value: "Prometheus"
+      folderId: 0
+    status_code: 200
+  register: import_1860
+
+# Dashboard 1860 uses the modern Grafana 11 format (no __inputs section).
+# The ds_prometheus datasource variable and the node/job chain are not
+# initialised by the import API, so panels show "No data" on first open.
+# We write a small Python script to the server, run it, then delete it.
+- name: Grafana | Write Node Exporter Full variable patch script
+  ansible.builtin.copy:
+    dest: /tmp/gf_patch_1860.py
+    mode: "0700"
+    owner: root
+    content: |
+      import json, urllib.request, base64, os
+      BASE = "http://127.0.0.1:3000"
+      USER = os.environ["GF_USER"]
+      PASS = os.environ["GF_PASS"]
+      DASH_UID = os.environ["GF_DASH_UID"]
+      HOSTNAME = os.environ["GF_HOSTNAME"]
+
+      def api(path, method="GET", body=None):
+          req = urllib.request.Request(f"{BASE}{path}", method=method)
+          creds = base64.b64encode(f"{USER}:{PASS}".encode()).decode()
+          req.add_header("Authorization", f"Basic {creds}")
+          req.add_header("Content-Type", "application/json")
+          data = json.dumps(body).encode() if body else None
+          with urllib.request.urlopen(req, data=data) as r:
+              return json.load(r)
+
+      prom_uid = api("/api/datasources/name/Prometheus")["uid"]
+      d        = api(f"/api/dashboards/uid/{DASH_UID}")
+      dash     = d["dashboard"]
+      meta     = d["meta"]
+
+      defaults = {
+          "ds_prometheus": {
+              "current": {"selected": True, "text": "Prometheus", "value": prom_uid},
+              "options":  [{"selected": True, "text": "Prometheus", "value": prom_uid}],
+          },
+          "job":      {"current": {"selected": True, "text": "node",      "value": "node"}},
+          "nodename": {"current": {"selected": True, "text": "localhost",  "value": "localhost"}},
+          "node":     {"current": {"selected": True, "text": HOSTNAME,     "value": HOSTNAME}},
+      }
+      for var in dash.get("templating", {}).get("list", []):
+          if var.get("name") in defaults:
+              var.update(defaults[var["name"]])
+
+      r = api("/api/dashboards/db", method="POST", body={
+          "dashboard": dash, "overwrite": True,
+          "folderId":  meta.get("folderId", 0),
+      })
+      print(r.get("status", "?"))
+
+- name: Grafana | Patch Node Exporter Full variable defaults
+  ansible.builtin.command: python3 /tmp/gf_patch_1860.py
+  environment:
+    GF_USER:     "{{ grafana_basic_auth_user }}"
+    GF_PASS:     "{{ grafana_admin_pass }}"
+    GF_DASH_UID: "{{ import_1860.json.uid }}"
+    GF_HOSTNAME: "{{ inventory_hostname }}"
+  changed_when: false
+  no_log: true
+
+- name: Grafana | Remove Node Exporter Full patch script
+  ansible.builtin.file:
+    path: /tmp/gf_patch_1860.py
+    state: absent
+
+
+# -----------------------------------------------------------------------------
+# Dashboard 7362 – MySQL Overview (mysqld_exporter / MariaDB)
+# -----------------------------------------------------------------------------
+- name: Grafana | Download dashboard 7362 from Grafana.com
+  ansible.builtin.get_url:
+    url: "https://grafana.com/api/dashboards/7362/revisions/latest/download"
+    dest: /tmp/grafana-dashboard-7362.json
+    mode: "0644"
+    force: false
+
+- name: Grafana | Read dashboard JSON 7362 from remote host
+  ansible.builtin.slurp:
+    src: /tmp/grafana-dashboard-7362.json
+  register: dashboard_7362_raw
+
+- name: Grafana | Import dashboard 7362 via Grafana API
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:3000/api/dashboards/import"
+    method: POST
+    user: "{{ grafana_basic_auth_user }}"
+    password: "{{ grafana_admin_pass }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      dashboard: "{{ dashboard_7362_raw.content | b64decode | from_json | combine({'uid': 'MQWgroiiz'}) }}"
+      overwrite: true
+      inputs:
+        - name: "DS_PROMETHEUS"
+          type: "datasource"
+          pluginId: "prometheus"
+          value: "Prometheus"
+      folderId: 0
+    status_code: 200
+
+
+# -----------------------------------------------------------------------------
+# Dashboard 4912 – PHP-FPM (php-fpm_exporter)
+# -----------------------------------------------------------------------------
+- name: Grafana | Download dashboard 4912 from Grafana.com
+  ansible.builtin.get_url:
+    url: "https://grafana.com/api/dashboards/4912/revisions/latest/download"
+    dest: /tmp/grafana-dashboard-4912.json
+    mode: "0644"
+    force: false
+
+- name: Grafana | Read dashboard JSON 4912 from remote host
+  ansible.builtin.slurp:
+    src: /tmp/grafana-dashboard-4912.json
+  register: dashboard_4912_raw
+
+- name: Grafana | Import dashboard 4912 via Grafana API
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:3000/api/dashboards/import"
+    method: POST
+    user: "{{ grafana_basic_auth_user }}"
+    password: "{{ grafana_admin_pass }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      dashboard: "{{ dashboard_4912_raw.content | b64decode | from_json | combine({'uid': 'f67a223d-b1b6-4f5a-8c5d-233a7a8aeb98'}) }}"
+      overwrite: true
+      inputs:
+        - name: "DS_PROMETHEUS"
+          type: "datasource"
+          pluginId: "prometheus"
+          value: "Prometheus"
+      folderId: 0
+    status_code: 200
+
+
+# Note: Grafana is proxied via K3s Ingress at /grafana/
+# Access control is handled by Grafana's own admin_password (set above).
+# No host-level Nginx or htpasswd file needed.
+

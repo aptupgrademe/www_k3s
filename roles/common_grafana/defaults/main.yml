@@ -1,0 +1,8 @@
+---
+# Sensitive – set in host_vars/<host>/vault.yml:
+# grafana_admin_pass:       "CHANGE_ME"   # Grafana admin UI password
+# grafana_basic_auth_user:  "CHANGE_ME"   # nginx Basic Auth username for /grafana/
+# grafana_basic_auth_pass:  "CHANGE_ME"   # nginx Basic Auth password for /grafana/
+
+# Non-sensitive – set in host_vars/<host>/vars.yml:
+# grafana_proxy_hostname:   "CHANGE_ME"   # hostname under which nginx serves /grafana/ (set to nextcloud_hostname or blog_hostname)

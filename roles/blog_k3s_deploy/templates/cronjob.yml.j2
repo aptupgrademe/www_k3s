@@ -1,0 +1,65 @@
+# WordPress CronJob – managed by Ansible (blog_k3s_deploy)
+# Runs WordPress scheduled events every 5 minutes.
+# Replaces the system cron entry + DISABLE_WP_CRON is set to true in wp-config.
+# Uses wp-cron.php directly (no WP-CLI needed, simpler and more reliable).
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: wordpress-cron
+  namespace: wordpress
+  labels:
+    app: wordpress
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: wp-cron
+            image: {{ blog_image_wordpress }}
+            command:
+            - php
+            - /var/www/html/wp-cron.php
+            env:
+            - name: WORDPRESS_DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-secrets
+                  key: db-host
+            - name: WORDPRESS_DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-secrets
+                  key: db-name
+            - name: WORDPRESS_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-secrets
+                  key: db-user
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-secrets
+                  key: db-password
+            volumeMounts:
+            - name: wordpress-www
+              mountPath: /var/www/html
+              readOnly: true
+            resources:
+              requests:
+                memory: "64Mi"
+                cpu: "25m"
+              limits:
+                memory: "128Mi"
+                cpu: "250m"
+          volumes:
+          - name: wordpress-www
+            hostPath:
+              path: {{ blog_k3s_www_dir }}
+              type: Directory

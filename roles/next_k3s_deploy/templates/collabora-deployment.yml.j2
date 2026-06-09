@@ -1,0 +1,76 @@
+# Collabora CODE Deployment + Service – managed by Ansible (next_k3s_deploy)
+# SSL is disabled (terminated by F5 nginx-ingress).
+# aliasgroup1 restricts which Nextcloud instances may use this Collabora server.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: collabora
+  namespace: nextcloud
+  labels:
+    app: collabora
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: collabora
+  template:
+    metadata:
+      labels:
+        app: collabora
+    spec:
+      containers:
+      - name: collabora
+        image: {{ nextcloud_image_collabora }}
+        securityContext:
+          allowPrivilegeEscalation: false
+        env:
+        # Restrict to requests originating from our Nextcloud instance
+        - name: aliasgroup1
+          value: "https://{{ nextcloud_hostname }}"
+        # TLS terminated by F5 nginx-ingress, not by Collabora itself
+        - name: extra_params
+          value: "--o:ssl.enable=false --o:ssl.termination=true"
+        - name: DONT_GEN_SSL_CERT
+          value: "true"
+        ports:
+        - containerPort: 9980
+          name: http
+        resources:
+          requests:
+            memory: "1Gi"     # Collabora idle ~600-800 MB; 1 GB reflects real startup cost
+            cpu: "500m"
+          limits:
+            memory: "3Gi"     # 8 GB host: 3 GB gives comfortable headroom for multi-user editing
+            cpu: "2000m"
+        readinessProbe:
+          httpGet:
+            path: /hosting/discovery
+            port: 9980
+          initialDelaySeconds: 20
+          periodSeconds: 15
+          failureThreshold: 5
+        livenessProbe:
+          httpGet:
+            path: /hosting/discovery
+            port: 9980
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: collabora
+  namespace: nextcloud
+  labels:
+    app: collabora
+spec:
+  selector:
+    app: collabora
+  ports:
+  - name: http
+    port: 9980
+    targetPort: 9980
+    protocol: TCP
+  type: ClusterIP

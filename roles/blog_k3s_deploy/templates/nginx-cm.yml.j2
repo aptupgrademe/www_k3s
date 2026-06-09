@@ -1,0 +1,109 @@
+# Nginx ConfigMap for the WordPress sidecar – managed by Ansible (blog_k3s_deploy)
+# TLS is terminated by F5 nginx-ingress; this block handles port 80 only.
+# PHP requests are forwarded to the FPM container via 127.0.0.1:9000.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-nginx-config
+  namespace: wordpress
+data:
+  default.conf: |
+    server {
+        listen 80;
+        server_tokens off;
+
+        root /var/www/html;
+        index index.php index.html;
+
+        client_max_body_size 500m;
+
+        # Trust X-Forwarded-* headers from F5 nginx-ingress (K3s pod CIDR)
+        set_real_ip_from {{ k3s_pod_cidr }};
+        real_ip_header   X-Forwarded-For;
+        real_ip_recursive on;
+
+        # -------------------------------------------------------
+        # Security: block sensitive files
+        # -------------------------------------------------------
+        location = /xmlrpc.php          { deny all; }
+        location = /wp-config.php       { deny all; }
+        location ~ /\.                  { deny all; }
+        location ~* \.(bak|orig|swp|hta|sql)$ { deny all; }
+
+        # -------------------------------------------------------
+        # WordPress pretty permalinks
+        # -------------------------------------------------------
+        location / {
+            try_files $uri $uri/ /index.php?$args;
+        }
+
+        # -------------------------------------------------------
+        # PHP-FPM (FPM listens on TCP 9000 in the same pod)
+        # -------------------------------------------------------
+        location ~ \.php$ {
+            include        fastcgi_params;
+            fastcgi_param  SCRIPT_FILENAME  $document_root$fastcgi_script_name;
+            # TLS is terminated at F5 nginx-ingress; tell PHP it's HTTPS
+            fastcgi_param  HTTPS            on;
+            fastcgi_param  HTTP_SCHEME      https;
+            fastcgi_pass   127.0.0.1:9000;
+            fastcgi_read_timeout          300s;
+            fastcgi_intercept_errors      on;
+            fastcgi_request_buffering     off;
+        }
+
+        # -------------------------------------------------------
+        # Static asset caching
+        # -------------------------------------------------------
+        location ~* \.(css|js|png|jpg|jpeg|gif|ico|svg|webp|avif|woff2?|ttf|eot|otf)$ {
+            expires 30d;
+            add_header Cache-Control "public, max-age=2592000";
+            log_not_found off;
+            access_log    off;
+        }
+
+        # Serve PGP public key as a direct download
+        location = /publickey.asc {
+            default_type application/pgp-keys;
+            add_header Content-Disposition "attachment; filename=\"publickey.asc\"";
+        }
+
+        location = /robots.txt  { allow all; log_not_found off; access_log off; }
+        location = /favicon.ico { log_not_found off; access_log off; }
+
+        access_log /dev/stdout;
+        error_log  /dev/stderr warn;
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-php-config
+  namespace: wordpress
+data:
+  uploads.ini: |
+    upload_max_filesize = 500M
+    post_max_size       = 500M
+    memory_limit        = 512M
+    max_execution_time  = 300
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-fpm-pool-config
+  namespace: wordpress
+data:
+  z-monitoring.conf: |
+    [www]
+    pm.status_path = /fpm-status
+    slowlog        = /proc/1/fd/2
+    ; Worker pool tuned for 8 GB host – 8 workers × ~64 MB ≈ 512 MB,
+    ; safely below the 768 Mi container limit.
+    pm                   = dynamic
+    pm.max_children      = 8
+    pm.start_servers     = 2
+    pm.min_spare_servers = 1
+    pm.max_spare_servers = 4
+    ; Recycle workers after 500 requests to prevent slow PHP memory leaks.
+    pm.max_requests      = 500
+    request_slowlog_timeout = 5s

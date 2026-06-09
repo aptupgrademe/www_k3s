@@ -1,0 +1,5 @@
+---
+# Set to true to run occ maintenance:repair --include-expensive after deployment.
+# Applies pending MIME type migrations and similar one-time upgrade steps.
+# Skipped by default because it can take several minutes on large instances.
+nextcloud_run_repair: false

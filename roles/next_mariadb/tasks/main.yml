@@ -1,0 +1,177 @@
+---
+# =============================================================================
+# Role: next_mariadb
+# Purpose: Ensure MariaDB is running and create the Nextcloud database + user.
+#          MariaDB binds to 0.0.0.0 so K3s pods can reach it via the node IP.
+#          nftables rules (common_firewall) restrict port 3306 to the K3s pod
+#          CIDR ({{ k3s_pod_cidr }}) and localhost.
+# Target:  AlmaLinux 9
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# Service
+# -----------------------------------------------------------------------------
+- name: Ensure MariaDB and Python MySQL driver are installed
+  ansible.builtin.dnf:
+    name:
+      - mariadb-server
+      - python3-PyMySQL
+    state: present
+
+- name: Ensure MariaDB service is enabled and started
+  ansible.builtin.service:
+    name: mariadb
+    state: started
+    enabled: true
+
+- name: Wait for MariaDB socket to appear
+  ansible.builtin.wait_for:
+    path: /var/lib/mysql/mysql.sock
+    state: present
+    timeout: 30
+
+
+# -----------------------------------------------------------------------------
+# Bind MariaDB to 0.0.0.0 so K3s pods can connect via the node IP.
+# Pods reach MariaDB via a K8s ExternalService whose Endpoints point to the
+# host's public IP. Access is restricted to the K3s pod CIDR by nftables.
+# -----------------------------------------------------------------------------
+- name: MariaDB | Ensure custom config directory exists
+  ansible.builtin.file:
+    path: /etc/my.cnf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: MariaDB | Configure bind-address to 0.0.0.0 (allow K3s pod connections)
+  ansible.builtin.copy:
+    dest: /etc/my.cnf.d/nextcloud-k3s.cnf
+    content: |
+      # Managed by Ansible (next_mariadb)
+      # Bind to all interfaces so K3s pods can connect via the node IP.
+      # nftables rules (common_firewall) restrict port 3306 to the K3s pod CIDR.
+      [mysqld]
+      bind-address                   = 0.0.0.0
+      # Buffer pool: cache hot InnoDB pages in RAM. Tune via mariadb_innodb_buffer_pool_size.
+      innodb_buffer_pool_size        = {{ mariadb_innodb_buffer_pool_size }}
+      # O_DIRECT bypasses the OS page cache for data files (avoids double buffering).
+      innodb_flush_method            = O_DIRECT
+      # Flush logs to disk every second rather than on every COMMIT.
+      # Risk: up to 1 second of committed transactions lost on hard crash.
+      # Benefit: significantly faster write throughput for Nextcloud workloads.
+      innodb_flush_log_at_trx_commit = 2
+      # Slow query log – written to the MariaDB error log (picked up by journald).
+      # Queries taking longer than long_query_time seconds are logged.
+      slow_query_log                 = 1
+      slow_query_log_file            = /var/log/mariadb/slow.log
+      long_query_time                = 1
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart MariaDB
+
+
+# -----------------------------------------------------------------------------
+# Socket detection
+# -----------------------------------------------------------------------------
+- name: Check if /var/lib/mysql/mysql.sock exists
+  ansible.builtin.stat:
+    path: /var/lib/mysql/mysql.sock
+  register: mysql_sock_varlib
+
+- name: Set MariaDB socket fact
+  ansible.builtin.set_fact:
+    mariadb_socket: "{{ '/var/lib/mysql/mysql.sock' if mysql_sock_varlib.stat.exists else '/run/mysqld/mysqld.sock' }}"
+
+
+# -----------------------------------------------------------------------------
+# Idempotency check
+# -----------------------------------------------------------------------------
+- name: Check if the Nextcloud database exists
+  ansible.builtin.shell: |
+    mysql --protocol=socket --socket="{{ mariadb_socket }}" -u root -p"{{ mysql_root_password }}" \
+        -e "SHOW DATABASES LIKE '{{ nextcloud_db }}';" | grep -Fx "{{ nextcloud_db }}"
+  register: db_check
+  failed_when: false
+  changed_when: false
+  no_log: true
+
+
+# -----------------------------------------------------------------------------
+# Initial setup (only when database does not yet exist)
+# -----------------------------------------------------------------------------
+- name: Set root password (via unix socket)
+  community.mysql.mysql_user:
+    name: root
+    host: localhost
+    password: "{{ mysql_root_password }}"
+    login_unix_socket: "{{ mariadb_socket }}"
+    check_implicit_admin: true
+    priv: "*.*:ALL,GRANT"
+    state: present
+    column_case_sensitive: false
+  when: db_check.rc != 0
+  no_log: true
+
+- name: Create /root/.my.cnf for root access with password
+  ansible.builtin.copy:
+    dest: /root/.my.cnf
+    content: |
+      [client]
+      user=root
+      password={{ mysql_root_password }}
+    owner: root
+    group: root
+    mode: "0600"
+  when: db_check.rc != 0
+  no_log: true
+
+- name: Create Nextcloud database
+  community.mysql.mysql_db:
+    name: "{{ nextcloud_db }}"
+    state: present
+    login_unix_socket: "{{ mariadb_socket }}"
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+  when: db_check.rc != 0
+  no_log: true
+
+# host is restricted to the first two octets of the pod CIDR (e.g. '10.42.%').
+# This limits logins to pod IPs at the DB level, independent of nftables.
+# NOTE: if k3s_pod_cidr ever changes, the old user must be dropped and recreated manually.
+- name: Create Nextcloud database user (host restricted to K3s pod CIDR)
+  community.mysql.mysql_user:
+    name: "{{ nextcloud_user }}"
+    host: "{{ k3s_pod_cidr.split('.')[:2] | join('.') }}.%"
+    password: "{{ nextcloud_pass }}"
+    priv: "{{ nextcloud_db }}.*:ALL"
+    state: present
+    login_unix_socket: "{{ mariadb_socket }}"
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+    column_case_sensitive: false
+  when: db_check.rc != 0
+  no_log: true
+
+
+# -----------------------------------------------------------------------------
+# Prometheus exporter user (idempotent – CREATE USER IF NOT EXISTS)
+# mysqld_exporter (common_mysqld_exporter role) connects via localhost TCP
+# with these minimal read-only privileges.
+# -----------------------------------------------------------------------------
+- name: MariaDB | Create Prometheus exporter user
+  community.mysql.mysql_user:
+    name: prometheus
+    host: "127.0.0.1"
+    password: "{{ mysql_root_password }}"
+    priv: "*.*:PROCESS,REPLICATION CLIENT,SELECT"
+    state: present
+    column_case_sensitive: false
+    login_unix_socket: "{{ mariadb_socket }}"
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+  no_log: true
+
+

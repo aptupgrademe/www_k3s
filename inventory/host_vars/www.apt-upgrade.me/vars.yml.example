@@ -1,0 +1,55 @@
+---
+# =============================================================================
+# Host variables – WordPress blog (production)
+#
+# Usage:
+#   1. cp vars.yml.example vars.yml
+#   2. Fill in all CHANGE_ME values
+#   ansible-playbook blog.yml --limit www.apt-upgrade.me --ask-vault-pass
+#
+# Sensitive credentials (passwords) are in vault.yml – see vault.yml.example
+# =============================================================================
+
+# --- Connection ---
+ansible_user: root
+ansible_port: 10022                      # 22 on first run, 10022 after SSH hardening
+
+# --- Network ---
+server_ipv4: "CHANGE_ME"    # e.g. 1.2.3.4
+server_ipv6: "CHANGE_ME"    # e.g. 2001:db8::1  – or remove if no public IPv6
+
+# --- Network aliases ---
+blog_ipv4: "{{ server_ipv4 }}"
+blog_ipv6: "{{ server_ipv6 }}"
+
+# --- Database ---
+blog_db:      "wordpress_db"
+blog_db_user: "wordpress"       # DB username (password → vault.yml)
+
+# --- Hostnames and URLs ---
+blog_hostname: "CHANGE_ME"                        # e.g. www.example.de
+blog_url:      "https://{{ blog_hostname }}"
+
+# --- WordPress site ---
+blog_title:       "CHANGE_ME"
+blog_admin_email: "{{ email }}"
+
+# --- Plugins ---
+blog_wordpress_plugins:
+  - all-in-one-wp-migration
+  - classic-editor
+  - limit-login-attempts-reloaded
+
+# --- Paths ---
+blog_k3s_www_dir: /srv/wordpress-www
+blog_k3s_db_dir:  /srv/wordpress-db
+
+# --- Grafana ---
+grafana_proxy_hostname: "{{ blog_hostname }}"
+
+# --- Mail / SMTP ---
+mail_from_address: "homelab"             # local part only (before @)
+mail_domain:       "CHANGE_ME"           # e.g. example.de
+mail_smtphost:     "CHANGE_ME"           # e.g. smtp.strato.de
+mail_smtpport:     "587"
+mail_smtpauth:     true

@@ -1,0 +1,71 @@
+# =============================================================================
+# K3s / Kubernetes cluster settings
+# =============================================================================
+
+# CIDR for K3s pods (Flannel default).  Used in:
+#   - nftables rules (common_firewall) to allow pod → host access
+#   - Nginx sidecar set_real_ip_from directive
+k3s_pod_cidr: "10.42.0.0/16"
+
+# CIDR for K3s Services.  Collabora's ClusterIP is in this range;
+# add it to wopi_allowed_hosts in host_vars so Nextcloud accepts WOPI callbacks.
+k3s_service_cidr: "10.43.0.0/16"
+
+# HostPath directory for Nextcloud application files (PHP, apps, config, themes).
+nextcloud_k3s_www_dir: /srv/nextcloud-www
+
+# HostPath directory for WordPress application files (PHP core, wp-content).
+blog_k3s_www_dir: /srv/wordpress-www
+
+# HostPath directory for MariaDB data files (InnoDB, system tables).
+blog_k3s_db_dir: /srv/wordpress-db
+
+# =============================================================================
+# Helm chart versions – update here to roll out across all hosts
+# Verify latest: https://artifacthub.io/packages/helm/ingress-nginx/ingress-nginx
+#                https://artifacthub.io/packages/helm/cert-manager/cert-manager
+# =============================================================================
+ingress_nginx_chart_version: "4.15.1"
+cert_manager_chart_version:  "1.20.2"
+
+# =============================================================================
+# Monitoring stack versions – update here to roll out across all hosts
+# =============================================================================
+node_exporter_version: "1.11.1"
+prometheus_version:    "3.12.0"
+prometheus_retention:  "30d"
+# grafana_admin_pass: set per host in host_vars/<host>/vault.yml
+
+# =============================================================================
+# Container image versions – pin explicitly so upgrades are a conscious choice.
+# imagePullPolicy defaults to IfNotPresent for tagged images, meaning K3s will
+# NOT pull a new version automatically – only when you change the tag here and
+# re-run the playbook (which triggers a rollout restart).
+#
+# Check for new versions:
+#   Nextcloud:  https://hub.docker.com/_/nextcloud/tags  (filter: *-fpm)
+#   Collabora:  https://hub.docker.com/r/collabora/code/tags
+#   WordPress:  https://hub.docker.com/_/wordpress/tags  (filter: *-fpm)
+#   MariaDB:    https://hub.docker.com/_/mariadb/tags
+#   Nginx:      https://hub.docker.com/_/nginx/tags      (filter: *-alpine)
+# =============================================================================
+nextcloud_image_fpm:       "nextcloud:33-fpm"
+nextcloud_image_nginx:     "nginx:1.30-alpine"
+nextcloud_image_collabora: "collabora/code:26.04.1.4.1"
+nextcloud_image_busybox:   "busybox:1"
+blog_image_busybox:        "busybox:1"
+
+blog_image_wordpress:      "wordpress:7.0-fpm"
+blog_image_mariadb:        "mariadb:10.11"
+blog_image_nginx:          "nginx:1.30-alpine"
+
+# =============================================================================
+# Monitoring exporters – host + sidecar images
+# Check for new versions:
+#   mysqld_exporter:  https://github.com/prometheus/mysqld_exporter/releases
+#   php-fpm_exporter: https://github.com/hipages/php-fpm_exporter/releases
+# =============================================================================
+mysqld_exporter_version:      "0.19.0"
+blog_image_mysqld_exporter:   "prom/mysqld-exporter:v0.19.0"
+blog_image_fpm_exporter:      "hipages/php-fpm_exporter:2.2.0"
+nextcloud_image_fpm_exporter: "hipages/php-fpm_exporter:2.2.0"

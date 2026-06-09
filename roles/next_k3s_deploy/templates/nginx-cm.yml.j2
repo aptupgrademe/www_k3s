@@ -1,0 +1,104 @@
+# Nginx ConfigMap for the sidecar container – managed by Ansible (next_k3s_deploy)
+# TLS is terminated by F5 nginx-ingress; this server block handles port 80 only.
+# PHP requests are proxied to the FPM container via 127.0.0.1:9000 (shared pod network).
+# Real-IP extraction is intentionally left to Nextcloud via trusted_proxies (custom.config.php),
+# not handled by nginx's real_ip module, so that Nextcloud's proxy-header check passes.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nextcloud-nginx-config
+  namespace: nextcloud
+data:
+  default.conf: |
+    server {
+        listen 80;
+        server_tokens off;
+
+        root /var/www/html;
+        index index.php index.html;
+
+        client_max_body_size 512m;
+
+        # -------------------------------------------------------
+        # .well-known
+        # -------------------------------------------------------
+        location ^~ /.well-known {
+            location = /.well-known/carddav        { return 301 /remote.php/dav/; }
+            location = /.well-known/caldav         { return 301 /remote.php/dav/; }
+            location = /.well-known/acme-challenge { try_files $uri =404; }
+            location = /.well-known/pki-validation { try_files $uri =404; }
+            return 301 /index.php$request_uri;
+        }
+
+        # try_files fallback to /index.php (not /index.php/.well-known/…) so the
+        # hidden-file deny rule "location ~ /\." does not fire on the rewritten URL.
+        # Nextcloud routes via REQUEST_URI (unchanged by try_files), not PATH_INFO.
+        location = /.well-known/webfinger { try_files $uri /index.php$is_args$args; }
+        location = /.well-known/nodeinfo  { try_files $uri /index.php$is_args$args; }
+
+        # -------------------------------------------------------
+        # Main routing
+        # -------------------------------------------------------
+        location / {
+            try_files $uri $uri/ /index.php$request_uri;
+        }
+
+        # Block access to sensitive directories
+        location ^~ /build/      { deny all; }
+        location ^~ /tests/      { deny all; }
+        location ^~ /config/     { deny all; }
+        location ^~ /lib/        { deny all; }
+        location ^~ /3rdparty/   { deny all; }
+        location ^~ /templates/  { deny all; }
+        location ^~ /data/       { deny all; }
+        location ^~ /.git/       { deny all; }
+        location ~ /\.           { deny all; }
+        location ~* ^/(?:data|config|lib|3rdparty|templates|tests)/ { deny all; }
+
+        location = /robots.txt  { allow all; log_not_found off; access_log off; }
+        location = /favicon.ico { log_not_found off; access_log off; }
+
+        location ~* \.(?:bak|orig|save|swp|hta)$ { deny all; }
+
+        # -------------------------------------------------------
+        # PHP-FPM  (FPM listens on TCP 9000 in the same pod)
+        # -------------------------------------------------------
+        location ~ \.php(?:$|/) {
+            include        fastcgi_params;
+            fastcgi_split_path_info ^(.+?\.php)(/.*)$;
+            fastcgi_param  SCRIPT_FILENAME  $document_root$fastcgi_script_name;
+            fastcgi_param  PATH_INFO        $fastcgi_path_info;
+            # TLS is terminated at F5 nginx-ingress; tell PHP it's HTTPS
+            fastcgi_param  HTTPS            on;
+            fastcgi_param  HTTP_SCHEME      https;
+            fastcgi_pass   127.0.0.1:9000;
+            fastcgi_intercept_errors      on;
+            fastcgi_request_buffering     off;
+            fastcgi_read_timeout          300s;
+        }
+
+        # -------------------------------------------------------
+        # Static asset caching
+        # -------------------------------------------------------
+        # .mjs must be handled separately: nginx:alpine's mime.types does not
+        # include .mjs, and a server-level types{} block would replace ALL
+        # inherited types. Instead we use default_type in a dedicated location.
+        location ~* \.mjs$ {
+            types { }
+            default_type text/javascript;
+            try_files $uri /index.php$request_uri;
+            expires 6M;
+            add_header Cache-Control "public, max-age=15552000, immutable";
+            access_log off;
+        }
+
+        location ~* \.(?:css|js|svg|gif|png|jpe?g|ico|webp|avif|woff2?|ttf|eot|otf)$ {
+            try_files $uri /index.php$request_uri;
+            expires 6M;
+            add_header Cache-Control "public, max-age=15552000, immutable";
+            access_log off;
+        }
+
+        access_log /dev/stdout;
+        error_log  /dev/stderr warn;
+    }

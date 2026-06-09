@@ -1,0 +1,51 @@
+# Nextcloud CronJob – managed by Ansible (next_k3s_deploy)
+# Runs occ cron.php every 5 minutes inside the nextcloud-fpm container.
+# The nextcloud-www and nextcloud-data HostPath volumes must be mounted so
+# cron.php can access app files and user data without touching the live pod.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nextcloud-cron
+  namespace: nextcloud
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: cron
+            image: {{ nextcloud_image_fpm }}
+            securityContext:
+              allowPrivilegeEscalation: false
+            command:
+            - runuser
+            - -u
+            - www-data
+            - --
+            - php
+            - /var/www/html/cron.php
+            volumeMounts:
+            - name: nextcloud-www
+              mountPath: /var/www/html
+            - name: nextcloud-data
+              mountPath: /var/www/html/data
+            - name: custom-config
+              mountPath: /var/www/html/config/custom.config.php
+              subPath: custom.config.php
+          volumes:
+          - name: nextcloud-www
+            hostPath:
+              path: {{ nextcloud_k3s_www_dir }}
+              type: DirectoryOrCreate
+          - name: nextcloud-data
+            hostPath:
+              path: {{ nextcloud_data_dir }}
+              type: DirectoryOrCreate
+          - name: custom-config
+            configMap:
+              name: nextcloud-custom-config

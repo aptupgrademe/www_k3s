@@ -1,0 +1,23 @@
+---
+# =============================================================================
+# Role: next_config
+# Purpose: Post-deploy Nextcloud configuration via occ.
+#          All occ commands run inside the nextcloud-fpm container via
+#          kubectl exec; no host-level PHP or nginx is involved.
+# =============================================================================
+
+# Wait for the pod to be ready before issuing occ commands.
+# On first start the official image auto-installs, which can take a few minutes.
+- name: Config | Wait for Nextcloud pod to be ready (up to 5 min)
+  ansible.builtin.command: >
+    k3s kubectl wait pod
+    --selector app=nextcloud
+    --namespace nextcloud
+    --for=condition=ready
+    --timeout=300s
+  changed_when: false
+
+- ansible.builtin.import_tasks: nc_config.yml
+- ansible.builtin.import_tasks: db_maintenance.yml
+- ansible.builtin.import_tasks: apps.yml
+- ansible.builtin.import_tasks: wopi.yml

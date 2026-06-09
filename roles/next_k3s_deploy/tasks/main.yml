@@ -1,0 +1,18 @@
+---
+# =============================================================================
+# Role: next_k3s_deploy
+# Purpose: Deploy Nextcloud (FPM + Nginx sidecar) and Collabora CODE as
+#          Kubernetes workloads, plus Ingress resources with cert-manager TLS.
+#          MariaDB and Redis remain on the host and are exposed as K8s Services
+#          with manually managed Endpoints.
+# Target:  K3s single-node on AlmaLinux 9
+# =============================================================================
+
+- ansible.builtin.import_tasks: dirs.yml
+- ansible.builtin.import_tasks: namespace_secrets.yml
+- ansible.builtin.import_tasks: external_services.yml
+- ansible.builtin.import_tasks: nextcloud.yml
+- ansible.builtin.import_tasks: collabora.yml
+- ansible.builtin.import_tasks: ingress.yml
+- ansible.builtin.import_tasks: cronjob.yml
+- ansible.builtin.import_tasks: exporters.yml

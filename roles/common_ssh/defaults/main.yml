@@ -1,0 +1,3 @@
+---
+# SSH port and key settings are defined in inventory (host_vars/<host>/vars.yml:
+# ansible_port).  The sshd_config file is in roles/common_ssh/files/sshd_config.

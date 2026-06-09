@@ -1,0 +1,76 @@
+---
+# =============================================================================
+# Role: blog_packages (K3s-only mode)
+# Purpose: Minimal host-level packages for the blog server.
+#          All application services (MariaDB, WordPress, Nginx) run inside K3s.
+#          Only nftables and SSH remain on the host.
+#
+#          All packages below are available in the default AlmaLinux 9
+#          BaseOS/AppStream repos – no EPEL or CRB needed.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# EPEL  (fail2ban lives here)
+# -----------------------------------------------------------------------------
+- name: Install EPEL repository
+  ansible.builtin.dnf:
+    name: epel-release
+    state: present
+
+
+# -----------------------------------------------------------------------------
+# System update
+# -----------------------------------------------------------------------------
+- name: Upgrade all system packages
+  ansible.builtin.dnf:
+    name: "*"
+    state: latest
+    update_cache: true
+
+
+# -----------------------------------------------------------------------------
+# Package installation
+# -----------------------------------------------------------------------------
+- name: Install host packages
+  ansible.builtin.dnf:
+    name:
+      # --- Firewall ---
+      - nftables
+
+      # --- SELinux tooling ---
+      - policycoreutils
+      - policycoreutils-python-utils
+      - selinux-policy-targeted
+      - container-selinux        # K3s container SELinux policy (AppStream)
+
+      # --- Utilities ---
+      - curl
+      - tar
+      - git
+      - cronie
+      - nano
+    state: present
+
+
+# -----------------------------------------------------------------------------
+# Services
+# -----------------------------------------------------------------------------
+- name: Enable and start crond
+  ansible.builtin.service:
+    name: crond
+    state: started
+    enabled: true
+
+- name: Disable and stop firewalld (conflicts with direct nftables management)
+  ansible.builtin.service:
+    name: firewalld
+    state: stopped
+    enabled: false
+  failed_when: false
+
+- name: Mask firewalld (prevents it from being started by other services)
+  ansible.builtin.systemd:
+    name: firewalld
+    masked: true
+  failed_when: false
