@@ -512,7 +512,7 @@
   <tr>
     <td><code>10.42.0.0/16</code></td>
     <td>K3s Pod-CIDR (Flannel)</td>
-    <td>iptables-Regeln, <code>trusted_proxies</code>, WOPI-Allowlist, MariaDB-User-Grant</td>
+    <td>nftables-Regeln, <code>trusted_proxies</code>, WOPI-Allowlist, MariaDB-User-Grant</td>
   </tr>
   <tr>
     <td><code>10.43.0.0/16</code></td>
@@ -556,7 +556,7 @@
 <div class="callout callout-info">
   <strong>IPv6 (optional)</strong>
   Falls der Server eine öffentliche IPv6-Adresse hat, können zusätzlich AAAA-Records
-  für beide Hostnamen angelegt werden. Die Firewall-Regeln (<code>fw_ipv6.sh</code>)
+  für beide Hostnamen angelegt werden. Die Firewall-Regeln (<code>/etc/nftables.conf</code>)
   sind bereits konfiguriert.
 </div>
 
@@ -568,7 +568,7 @@
 </p>
 <pre><code>Pod → mariadb.nextcloud.svc.cluster.local (10.43.x.x)
    → Endpoint: 82.165.165.230:3306
-   → iptables ACCEPT für 10.42.0.0/16 auf :3306</code></pre>
+   → nftables accept für 10.42.0.0/16 auf :3306</code></pre>
 <p>
   Der MariaDB-Datenbanknutzer ist auf den Pod-CIDR eingeschränkt
   (<code>'nextcloud'@'10.42.%'</code>). Eine direkte Verbindung vom Host
@@ -1382,7 +1382,7 @@ k3s kubectl logs deployment/nextcloud -c nextcloud-fpm -n nextcloud --previous</
 <p>Typische Ursachen:</p>
 <ul>
   <li><strong>DB nicht erreichbar:</strong> MariaDB-Service läuft nicht oder
-      iptables-Regeln fehlen (nach Reboot?)</li>
+      nftables-Regeln fehlen (nach Reboot?)</li>
   <li><strong>config.php leer (0 Byte):</strong> Erster Start konnte
       <code>config/</code> nicht beschreiben wegen falscher Ownership.
       Lösung: <code>chown 33:33 /srv/nextcloud-www/config</code>,
@@ -1437,7 +1437,7 @@ k3s kubectl describe certificate nextcloud-tls -n nextcloud
 # ClusterIssuer-Status:
 k3s kubectl describe clusterissuer letsencrypt-prod</code></pre>
 <p>
-  Häufige Ursache: Port 80 ist durch iptables oder den Provider blockiert.
+  Häufige Ursache: Port 80 ist durch nftables oder den Provider blockiert.
   cert-manager benötigt Port 80 für den HTTP-01-Challenge.
 </p>
 
@@ -1459,7 +1459,7 @@ k3s kubectl logs -n nextcloud -l job-name=nextcloud-cron-&lt;id&gt;</code></pre>
   <tr><th>Ebene</th><th>Maßnahme</th><th>Rolle</th></tr>
   <tr>
     <td>Host-Netzwerk</td>
-    <td>iptables IPv4/IPv6 – Default-Policy DROP, Portscan-Blocker, ICMP-Rate-Limit, nur 80/443/10022 offen</td>
+    <td>nftables (<code>table inet</code>) – Default-Policy DROP, dynamische Blocklists mit Timeout, ICMP-Rate-Limit, nur 80/443/10022 offen</td>
     <td><code>common_firewall</code></td>
   </tr>
   <tr>
@@ -1474,12 +1474,12 @@ k3s kubectl logs -n nextcloud -l job-name=nextcloud-cron-&lt;id&gt;</code></pre>
   </tr>
   <tr>
     <td>Datenbank</td>
-    <td>User nur aus Pod-CIDR (<code>10.42.%</code>), MariaDB bind 0.0.0.0 + iptables</td>
+    <td>User nur aus Pod-CIDR (<code>10.42.%</code>), MariaDB bind 0.0.0.0 + nftables</td>
     <td><code>next_mariadb</code>, <code>common_firewall</code></td>
   </tr>
   <tr>
     <td>Redis</td>
-    <td>Bind auf localhost + Host-IP, iptables auf Pod-CIDR</td>
+    <td>Bind auf localhost + Host-IP, nftables auf Pod-CIDR</td>
     <td><code>next_redis</code>, <code>common_firewall</code></td>
   </tr>
   <tr>
@@ -1511,55 +1511,57 @@ k3s kubectl logs -n nextcloud -l job-name=nextcloud-cron-&lt;id&gt;</code></pre>
 
 <h3>Firewall im Detail</h3>
 <p>
-  Das Skript <code>/root/fw/fw_ipv4.sh</code> (aus <code>common_firewall</code>) wird per
-  <code>@reboot</code>-Cronjob nach jedem Neustart angewendet. K3s fügt danach seine eigenen
-  <code>KUBE-*</code>-Chains oben in die INPUT/OUTPUT-Chains ein.
+  Das Regelwerk (<code>/etc/nftables.conf</code>) wird von Ansible aus dem Template
+  <code>common_firewall/templates/fw.nft.j2</code> gerendert und vom
+  <code>nftables</code>-Systemd-Dienst beim Booten geladen. K3s verwaltet seine
+  eigenen <code>KUBE-*</code>-Chains in iptables (getrenntes Subsystem) – es gibt
+  keine Lock-Konflikte mit nftables.
 </p>
 <table>
   <tr><th>Feature</th><th>Detail</th></tr>
   <tr>
     <td>Default-Policy DROP</td>
-    <td>INPUT, OUTPUT und FORWARD werden sofort nach dem Flush auf DROP gesetzt –
-        kein Fenster, in dem ungeschützter Traffic durchkommt</td>
+    <td>INPUT, OUTPUT und FORWARD haben Policy DROP – alles nicht explizit
+        erlaubte wird verworfen</td>
   </tr>
   <tr>
-    <td>Portscan-Blocker</td>
-    <td>Jedes Paket, das keine ACCEPT-Regel trifft, trägt die Quell-IP in
-        <code>/proc/net/xt_recent/portscan</code> ein. Beim nächsten Paket dieser IP
-        greift <code>--rcheck</code> ganz oben → 24h Sperre.
-        Prüfen: <code>cat /proc/net/xt_recent/portscan</code></td>
+    <td>Dynamische Blocklists</td>
+    <td>Native nftables Sets (<code>banned4</code> / <code>banned6</code>) mit
+        24h Auto-Expiry. fail2ban schreibt erkannte Angreifer direkt in diese Sets.
+        Prüfen: <code>nft list set inet filter banned4</code></td>
   </tr>
   <tr>
-    <td>ICMP Rate-Limit</td>
-    <td>Echo-Request max. 5/s, Burst 10 – schützt gegen ICMP-Flood von vielen
-        Quellen. Bestehende Ping-Sessions laufen über ESTABLISHED weiter.</td>
+    <td>Malformed-Packet-Drop</td>
+    <td>XMAS-Pakete (alle TCP-Flags gesetzt) und NULL-Pakete (keine TCP-Flags)
+        werden sofort verworfen – typische Port-Scanner-Fingerprinting-Techniken</td>
+  </tr>
+  <tr>
+    <td>RST-Flood-Schutz</td>
+    <td>RST-Pakete werden auf 1/s gedrosselt – verhindert RST-basierte DoS-Angriffe</td>
   </tr>
   <tr>
     <td>Kein server_ipv4-Whitelist</td>
-    <td>Die frühere Regel <code>-s server_ipv4 -j ACCEPT</code> wurde entfernt –
-        externe Pakete mit gespoofter Server-IP wurden dadurch akzeptiert.
-        Lokaler Traffic läuft sicher über Loopback (<code>-i lo -j ACCEPT</code>).</td>
+    <td>Die Host-eigene IP wird nur für spezifische Ports akzeptiert (Grafana :3000,
+        kubelet-Probes :10254) – kein blanket ACCEPT, der Spoofing ermöglicht</td>
   </tr>
   <tr>
-    <td>K3s OUTPUT-CIDR</td>
-    <td>OUTPUT erlaubt explizit Traffic zu Pod-CIDR (10.42.0.0/16) und
-        Service-CIDR (10.43.0.0/16) – nötig für Kubelet-Probes, kube-proxy,
-        Metrics-Server. Ohne diese Regeln bricht K3s-intern Port 10250.</td>
-  </tr>
-  <tr>
-    <td>IPv6 DROP-Policy</td>
-    <td><code>ip6tables</code> startet direkt mit Policy DROP, ICMPv6 rate-limited,
-        echo-reply nur für ESTABLISHED/RELATED</td>
+    <td>IPv4/IPv6 in einem Regelwerk</td>
+    <td><code>table inet</code> deckt beide Protokollstacks ab –
+        kein separates ip6tables erforderlich</td>
   </tr>
 </table>
 <pre><code># Geblockte Pakete live verfolgen
-journalctl -k -f --grep "IPTables-Dropped"
+journalctl -k -f --grep "nftables DROP"
 
-# Portscan-Blockliste anzeigen
-cat /proc/net/xt_recent/portscan | awk '{print $1}'
+# Aktives Regelwerk anzeigen
+nft list ruleset
 
-# Firewall-Regeln neu laden (nach Reboot passiert das automatisch)
-/root/fw/fw_ipv4.sh && /root/fw/fw_ipv6.sh</code></pre>
+# Blocklists anzeigen
+nft list set inet filter banned4
+nft list set inet filter banned6
+
+# Firewall-Regelwerk neu laden
+systemctl reload nftables</code></pre>
 
 <h3>Wichtige Sicherheitshinweise</h3>
 <div class="callout callout-danger">
@@ -1570,7 +1572,7 @@ cat /proc/net/xt_recent/portscan | awk '{print $1}'
 <div class="callout callout-warn">
   <strong>MariaDB-Bind auf 0.0.0.0</strong>
   MariaDB lauscht auf allen Interfaces, damit Pods via Host-IP verbinden können.
-  Der Schutz erfolgt ausschließlich durch iptables (nur Pod-CIDR erlaubt)
+  Der Schutz erfolgt ausschließlich durch nftables (nur Pod-CIDR erlaubt)
   und den DB-User-Grant (<code>'nextcloud'@'10.42.%'</code>). Niemals Port 3306
   öffentlich freigeben.
 </div>

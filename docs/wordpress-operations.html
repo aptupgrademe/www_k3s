@@ -492,7 +492,7 @@ ls -la /srv/wordpress-db</code></pre>
   <tr>
     <td><code>10.42.0.0/16</code></td>
     <td>K3s Pod CIDR (Flannel)</td>
-    <td>iptables rules, <code>set_real_ip_from</code> in the nginx sidecar</td>
+    <td>nftables rules, <code>set_real_ip_from</code> in the nginx sidecar</td>
   </tr>
   <tr>
     <td><code>10.43.0.0/16</code></td>
@@ -524,7 +524,7 @@ ls -la /srv/wordpress-db</code></pre>
 <div class="callout callout-info">
   <strong>IPv6 (optional)</strong>
   If the server has a public IPv6 address, an additional AAAA record can
-  be added. The firewall rules (<code>fw_ipv6.sh</code>) are already configured.
+  be added. The firewall rules (<code>/etc/nftables.conf</code>) are already configured.
 </div>
 
 <h3>TLS and Proxy Chain</h3>
@@ -1343,7 +1343,7 @@ k3s kubectl describe certificate wordpress-tls -n wordpress
 # ClusterIssuer status:
 k3s kubectl describe clusterissuer letsencrypt-prod</code></pre>
 <p>
-  Common cause: port 80 is blocked by iptables or the provider.
+  Common cause: port 80 is blocked by nftables or the provider.
   cert-manager requires port 80 for the HTTP-01 challenge (even if the site
   should only be reachable via HTTPS).
 </p>
@@ -1376,7 +1376,7 @@ k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
   <tr><th>Layer</th><th>Measure</th><th>Role</th></tr>
   <tr>
     <td>Host Network</td>
-    <td>iptables IPv4/IPv6 – default policy DROP, port scan blocker, ICMP rate limit, only 80/443/10022 open</td>
+    <td>nftables (<code>table inet</code>) – default policy DROP, dynamic blocklists with timeout, ICMP rate limit, only 80/443/10022 open</td>
     <td><code>common_firewall</code></td>
   </tr>
   <tr>
@@ -1433,55 +1433,57 @@ k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
 
 <h3>Firewall in Detail</h3>
 <p>
-  The script <code>/root/fw/fw_ipv4.sh</code> (from <code>common_firewall</code>) is applied via
-  an <code>@reboot</code> cron job after every restart. K3s then inserts its own
-  <code>KUBE-*</code> chains at the top of the INPUT/OUTPUT chains.
+  The ruleset (<code>/etc/nftables.conf</code>) is rendered by Ansible from the template
+  <code>common_firewall/templates/fw.nft.j2</code> and loaded by the
+  <code>nftables</code> systemd service at boot. K3s manages its own
+  <code>KUBE-*</code> chains in iptables (a separate subsystem) — there is no
+  lock contention with nftables.
 </p>
 <table>
   <tr><th>Feature</th><th>Detail</th></tr>
   <tr>
-    <td>Default Policy DROP</td>
-    <td>INPUT, OUTPUT and FORWARD are immediately set to DROP after the flush –
-        no window in which unprotected traffic passes through</td>
+    <td>Default policy DROP</td>
+    <td>INPUT, OUTPUT and FORWARD use policy DROP — anything not explicitly
+        allowed is silently discarded</td>
   </tr>
   <tr>
-    <td>Port Scan Blocker</td>
-    <td>Only after 5 SYN packets within 3600 s (1 h) is the source IP entered into
-        <code>/proc/net/xt_recent/portscan</code>. On the next packet from that IP
-        <code>--rcheck</code> triggers at the top → 1-hour block.
-        Check: <code>cat /proc/net/xt_recent/portscan</code></td>
+    <td>Dynamic blocklists</td>
+    <td>Native nftables sets (<code>banned4</code> / <code>banned6</code>) with
+        24h auto-expiry. fail2ban writes detected attackers directly into these sets.
+        Check: <code>nft list set inet filter banned4</code></td>
   </tr>
   <tr>
-    <td>ICMP Rate Limit</td>
-    <td>Echo-request max. 5/s, burst 10 – protects against ICMP flood from many
-        sources. Existing ping sessions continue via ESTABLISHED.</td>
+    <td>Malformed packet drop</td>
+    <td>XMAS packets (all TCP flags set) and NULL packets (no TCP flags) are dropped
+        immediately — typical port scanner fingerprinting techniques</td>
+  </tr>
+  <tr>
+    <td>RST flood protection</td>
+    <td>RST packets are rate-limited to 1/s — prevents RST-based DoS attacks</td>
   </tr>
   <tr>
     <td>No server_ipv4 whitelist</td>
-    <td>The former rule <code>-s server_ipv4 -j ACCEPT</code> was removed –
-        external packets with spoofed server IP were thereby accepted.
-        Local traffic runs safely via loopback (<code>-i lo -j ACCEPT</code>).</td>
+    <td>The host's own IP is only accepted for specific ports (Grafana :3000,
+        kubelet probes :10254) — no blanket ACCEPT that would allow spoofing</td>
   </tr>
   <tr>
-    <td>K3s OUTPUT CIDR</td>
-    <td>OUTPUT explicitly allows traffic to pod CIDR (10.42.0.0/16) and
-        service CIDR (10.43.0.0/16) – required for kubelet probes, kube-proxy,
-        metrics server. Without these rules K3s-internal port 10250 breaks.</td>
-  </tr>
-  <tr>
-    <td>IPv6 DROP Policy</td>
-    <td><code>ip6tables</code> starts directly with policy DROP, ICMPv6 rate-limited,
-        echo-reply only for ESTABLISHED/RELATED</td>
+    <td>IPv4/IPv6 in one ruleset</td>
+    <td><code>table inet</code> covers both protocol stacks —
+        no separate ip6tables required</td>
   </tr>
 </table>
-<pre><code># Monitor dropped packets live
-journalctl -k -f --grep "IPTables-Dropped"
+<pre><code># Monitor blocked packets live
+journalctl -k -f --grep "nftables DROP"
 
-# Show port scan blocklist
-cat /proc/net/xt_recent/portscan | awk '{print $1}'
+# Show active ruleset
+nft list ruleset
 
-# Reload firewall rules (happens automatically after reboot)
-/root/fw/fw_ipv4.sh && /root/fw/fw_ipv6.sh</code></pre>
+# Show blocklists
+nft list set inet filter banned4
+nft list set inet filter banned6
+
+# Reload firewall ruleset
+systemctl reload nftables</code></pre>
 
 <h3>Important Security Notes</h3>
 <div class="callout callout-danger">
