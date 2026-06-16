@@ -96,14 +96,5 @@ data:
   z-monitoring.conf: |
     [www]
     pm.status_path = /fpm-status
-    slowlog        = /proc/1/fd/2
-    ; Worker pool tuned for 8 GB host – 8 workers × ~64 MB ≈ 512 MB,
-    ; safely below the 768 Mi container limit.
-    pm                   = dynamic
-    pm.max_children      = 8
-    pm.start_servers     = 2
-    pm.min_spare_servers = 1
-    pm.max_spare_servers = 4
-    ; Recycle workers after 500 requests to prevent slow PHP memory leaks.
-    pm.max_requests      = 500
+    slowlog = /proc/1/fd/2
     request_slowlog_timeout = 5s

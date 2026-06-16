@@ -1,5 +1,6 @@
 # Ingress for WordPress blog – managed by Ansible (blog_k3s_deploy)
 # cert-manager issues the Let's Encrypt TLS certificate automatically.
+# wp-login.php rate-limiting is applied via nginx.org annotations.
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -10,16 +11,16 @@ metadata:
     # TLS certificate issued by cert-manager
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
     # Force HTTPS
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    # Security headers added to every response
-    nginx.ingress.kubernetes.io/configuration-snippet: |
+    nginx.org/ssl-redirect: "true"
+    # Security headers added to every response in the location context
+    nginx.org/location-snippets: |
       add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
       add_header X-Frame-Options "SAMEORIGIN" always;
       add_header X-Content-Type-Options "nosniff" always;
       add_header Referrer-Policy "same-origin" always;
       add_header X-Permitted-Cross-Domain-Policies "none" always;
     # Rate-limit wp-login.php (5 r/s per IP, burst 5) + block xmlrpc
-    nginx.ingress.kubernetes.io/server-snippet: |
+    nginx.org/server-snippets: |
       location = /xmlrpc.php {
         deny all;
         return 403;
@@ -32,10 +33,12 @@ metadata:
         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
       }
-    # Upload size and timeouts
-    nginx.ingress.kubernetes.io/proxy-body-size: "500m"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    # Upload size
+    nginx.org/client-max-body-size: "500m"
+    nginx.org/proxy-read-timeout: "300s"
+    nginx.org/proxy-send-timeout: "300s"
+    # Regex path matching for Grafana sub-path
+    nginx.org/path-regex: "case_sensitive"
 spec:
   ingressClassName: nginx
   tls:
@@ -46,10 +49,9 @@ spec:
   - host: {{ blog_hostname }}
     http:
       paths:
-      # Grafana is proxied at /grafana/ – Grafana handles the prefix itself
-      # (serve_from_sub_path = true in grafana.ini)
-      - path: /grafana
-        pathType: Prefix
+      # Grafana is proxied at /grafana/ to the host-side Grafana service.
+      - path: /grafana(/|$)
+        pathType: ImplementationSpecific
         backend:
           service:
             name: grafana

@@ -46,9 +46,6 @@ spec:
         - --slow-query-log=1
         - --slow-query-log-file=/var/lib/mysql/slow.log
         - --long-query-time=1
-        # Cache hot InnoDB pages in RAM – 512 M fits comfortably inside the 1 Gi
-        # container limit and avoids the image default of ~128 M.
-        - --innodb-buffer-pool-size=512M
         env:
         - name: MARIADB_ROOT_PASSWORD
           valueFrom:
@@ -82,11 +79,11 @@ spec:
           mountPath: /var/lib/mysql
         resources:
           requests:
-            memory: "256Mi"
-            cpu: "200m"
+            memory: "128Mi"
+            cpu: "100m"
           limits:
-            memory: "1Gi"
-            cpu: "1000m"
+            memory: "512Mi"
+            cpu: "500m"
         readinessProbe:
           exec:
             command:

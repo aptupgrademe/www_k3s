@@ -280,7 +280,7 @@
 <main>
 
 <h1>Nextcloud – Operations Guide</h1>
-<p class="subtitle">Nextcloud 33 on K3s (AlmaLinux 9) &middot; Last updated: June 2026</p>
+<p class="subtitle">Nextcloud 33 on K3s (AlmaLinux 9) &middot; Last updated: May 2026</p>
 
 <!-- ─────────────────────────── OVERVIEW ─────────────────────────────── -->
 <section id="ueberblick">
@@ -340,7 +340,7 @@
         │ HTTPS :443 / HTTP :80
         ▼
 <span class="c-ingress">┌─────────────────────────────────────────────────────┐</span>
-<span class="c-ingress">│  ingress-nginx Community (K3s DaemonSet, hostNetwork)│</span>
+<span class="c-ingress">│  nginx-ingress F5 (K3s DaemonSet, hostNetwork=true) │</span>
 <span class="c-ingress">│  TLS termination via cert-manager (Let's Encrypt)   │</span>
 <span class="c-ingress">│  Rate-Limiting: nc_login 5r/s  (HTTP layer)         │</span>
 <span class="c-ingress">└───────────────┬─────────────────────┬───────────────┘</span>
@@ -386,7 +386,7 @@
   <tr>
     <td>Collabora CODE</td>
     <td>K3s Pod <span class="badge badge-green">Container</span></td>
-    <td>Isolated, own TLS termination through ingress-nginx (Community)</td>
+    <td>Isolated, own TLS termination through nginx-ingress (F5)</td>
   </tr>
   <tr>
     <td>MariaDB</td>
@@ -399,7 +399,7 @@
     <td>Simple, no persistence needed; binds to host IP for pod access</td>
   </tr>
   <tr>
-    <td>ingress-nginx (Community)</td>
+    <td>nginx-ingress (F5)</td>
     <td>K3s DaemonSet <span class="badge badge-blue">hostNetwork</span></td>
     <td>Binds directly to port 80/443 on the host; no external load balancer needed</td>
   </tr>
@@ -431,7 +431,7 @@
   <h4>Container 2: <code>nginx</code></h4>
   <p>nginx sidecar (<code>nginx:1.30-alpine</code>) on port 80. Serves
   static requests directly from the shared volume; PHP requests are forwarded via
-  FastCGI to port 9000. TLS is already terminated by ingress-nginx (Community) –
+  FastCGI to port 9000. TLS is already terminated by nginx-ingress (F5) –
   nginx only speaks plain HTTP.</p>
 </div>
 </section>
@@ -511,7 +511,7 @@
   <tr>
     <td><code>10.42.0.0/16</code></td>
     <td>K3s Pod CIDR (Flannel)</td>
-    <td>nftables rules, <code>trusted_proxies</code>, WOPI allowlist, MariaDB user grant</td>
+    <td>iptables rules, <code>trusted_proxies</code>, WOPI allowlist, MariaDB user grant</td>
   </tr>
   <tr>
     <td><code>10.43.0.0/16</code></td>
@@ -555,8 +555,8 @@
 <div class="callout callout-info">
   <strong>IPv6 (optional)</strong>
   If the server has a public IPv6 address, AAAA records can additionally be created
-  for both hostnames. The nftables firewall covers IPv4 and IPv6 via a single
-  <code>table inet filter</code> – no separate script required.
+  for both hostnames. The firewall rules (<code>fw_ipv6.sh</code>)
+  are already configured.
 </div>
 
 <h3>How Pods Reach the Host (MariaDB / Redis)</h3>
@@ -567,7 +567,7 @@
 </p>
 <pre><code>Pod → mariadb.nextcloud.svc.cluster.local (10.43.x.x)
    → Endpoint: 82.165.165.230:3306
-   → nftables ACCEPT for 10.42.0.0/16 on :3306</code></pre>
+   → iptables ACCEPT for 10.42.0.0/16 on :3306</code></pre>
 <p>
   The MariaDB database user is restricted to the pod CIDR
   (<code>'nextcloud'@'10.42.%'</code>). A direct connection from the host
@@ -576,7 +576,7 @@
 
 <h3>TLS and Proxy Chain</h3>
 <pre><code>Internet
-  → ingress-nginx Community (Port 443, TLS terminated, sets X-Forwarded-For / -Proto)
+  → nginx-ingress (F5) (Port 443, TLS terminated, sets X-Forwarded-For / -Proto)
     → nginx sidecar (Port 80, plain HTTP)
       → PHP-FPM (Port 9000, FastCGI)
         fastcgi_param HTTPS on
@@ -591,7 +591,7 @@
   <strong>Important: <code>trusted_proxies</code> must contain the pod CIDR</strong>
   If this entry is missing, Nextcloud will show the warning
   <em>"Reverse proxy header configuration is incorrect"</em> in the admin panel.
-  ingress-nginx (Community) forwards requests with its pod IP (10.42.x.x) –
+  nginx-ingress (F5) forwards requests with its pod IP (10.42.x.x) –
   this must be registered as a trusted proxy.
 </div>
 
@@ -1234,7 +1234,7 @@ nextcloud_image_collabora: "collabora/code:25.08"</code></pre>
   <tr><td>Nextcloud</td><td><code>https://hub.docker.com/_/nextcloud/tags</code> (filter: <code>*-fpm</code>)</td></tr>
   <tr><td>Collabora</td><td><code>https://hub.docker.com/r/collabora/code/tags</code></td></tr>
   <tr><td>nginx</td><td><code>https://hub.docker.com/_/nginx/tags</code> (filter: <code>*-alpine</code>)</td></tr>
-  <tr><td>ingress-nginx (Community) Helm</td><td><code>https://artifacthub.io/packages/helm/ingress-nginx/ingress-nginx</code></td></tr>
+  <tr><td>nginx-ingress (F5) Helm</td><td><code>https://artifacthub.io/packages/helm/nginx-stable/nginx-ingress</code></td></tr>
   <tr><td>cert-manager Helm</td><td><code>https://artifacthub.io/packages/helm/cert-manager/cert-manager</code></td></tr>
 </table>
 </section>
@@ -1380,7 +1380,7 @@ k3s kubectl logs deployment/nextcloud -c nextcloud-fpm -n nextcloud --previous</
 <p>Typical causes:</p>
 <ul>
   <li><strong>DB not reachable:</strong> MariaDB service is not running or
-      nftables service not running (<code>systemctl status nftables</code>)?</li>
+      iptables rules are missing (after reboot?)</li>
   <li><strong>config.php empty (0 bytes):</strong> First start could not
       write to <code>config/</code> due to incorrect ownership.
       Fix: <code>chown 33:33 /srv/nextcloud-www/config</code>,
@@ -1435,7 +1435,7 @@ k3s kubectl describe certificate nextcloud-tls -n nextcloud
 # ClusterIssuer status:
 k3s kubectl describe clusterissuer letsencrypt-prod</code></pre>
 <p>
-  Common cause: port 80 is blocked by nftables or the provider.
+  Common cause: port 80 is blocked by iptables or the provider.
   cert-manager requires port 80 for the HTTP-01 challenge.
 </p>
 
@@ -1457,7 +1457,7 @@ k3s kubectl logs -n nextcloud -l job-name=nextcloud-cron-&lt;id&gt;</code></pre>
   <tr><th>Layer</th><th>Measure</th><th>Role</th></tr>
   <tr>
     <td>Host network</td>
-    <td>nftables (<code>table inet filter</code>) – default policy DROP, named-set blocklist with timeout, ICMP rate limit, only 80/443/10022 open</td>
+    <td>iptables IPv4/IPv6 – default policy DROP, port scan blocker, ICMP rate limit, only 80/443/10022 open</td>
     <td><code>common_firewall</code></td>
   </tr>
   <tr>
@@ -1468,16 +1468,16 @@ k3s kubectl logs -n nextcloud -l job-name=nextcloud-cron-&lt;id&gt;</code></pre>
   <tr>
     <td>HTTP</td>
     <td>Rate limiting login (5r/s), HSTS, security headers</td>
-    <td><code>common_k3s</code> (ingress-nginx Community Helm values + ingress annotations)</td>
+    <td><code>common_k3s</code> (nginx-ingress (F5) Helm values + ingress annotations)</td>
   </tr>
   <tr>
     <td>Database</td>
-    <td>User restricted to pod CIDR (<code>10.42.%</code>), MariaDB bind 0.0.0.0 + nftables</td>
+    <td>User restricted to pod CIDR (<code>10.42.%</code>), MariaDB bind 0.0.0.0 + iptables</td>
     <td><code>next_mariadb</code>, <code>common_firewall</code></td>
   </tr>
   <tr>
     <td>Redis</td>
-    <td>Bind to localhost + host IP, nftables on pod CIDR</td>
+    <td>Bind to localhost + host IP, iptables on pod CIDR</td>
     <td><code>next_redis</code>, <code>common_firewall</code></td>
   </tr>
   <tr>
@@ -1509,60 +1509,55 @@ k3s kubectl logs -n nextcloud -l job-name=nextcloud-cron-&lt;id&gt;</code></pre>
 
 <h3>Firewall in Detail</h3>
 <p>
-  The firewall is managed by the <code>common_firewall</code> role as an nftables
-  configuration. Ansible deploys <code>/etc/nftables.conf</code> from the template
-  <code>fw.nft.j2</code> and ensures the configuration is on the server <em>before</em>
-  the nftables service starts. IPv4 and IPv6 are handled in a single
-  <code>table inet filter</code> – no separate IPv6 script required.
+  The script <code>/root/fw/fw_ipv4.sh</code> (from <code>common_firewall</code>) is applied via
+  <code>@reboot</code> cron job after every restart. K3s then inserts its own
+  <code>KUBE-*</code> chains at the top of the INPUT/OUTPUT chains.
 </p>
-<div class="callout callout-info">
-  <strong>K3s and nftables coexist without conflict</strong>
-  K3s uses the iptables subsystem internally for its <code>KUBE-*</code> chains. This
-  subsystem is separate from the nftables namespace – both run independently.
-</div>
 <table>
   <tr><th>Feature</th><th>Detail</th></tr>
   <tr>
     <td>Default policy DROP</td>
-    <td><code>type filter hook input policy drop</code> – all packets that match no
-        ACCEPT rule are dropped. Applies to OUTPUT and FORWARD chains too.</td>
+    <td>INPUT, OUTPUT and FORWARD are set to DROP immediately after the flush –
+        no window during which unprotected traffic passes through</td>
   </tr>
   <tr>
-    <td>Blocklist with timeout</td>
-    <td>Named sets <code>banned4</code> (IPv4) and <code>banned6</code> (IPv6) with a 1-day timeout.
-        Entries expire automatically. Fail2ban writes directly to these sets via
-        nftables-multiport. Manual: <code>nft add element inet filter banned4 { 1.2.3.4 }</code></td>
+    <td>Port scan blocker</td>
+    <td>Any packet that does not match an ACCEPT rule adds the source IP to
+        <code>/proc/net/xt_recent/portscan</code>. On the next packet from that IP,
+        <code>--rcheck</code> fires at the top → 24h block.
+        Check: <code>cat /proc/net/xt_recent/portscan</code></td>
   </tr>
   <tr>
     <td>ICMP rate limit</td>
-    <td>Echo-request max. 5/s – protects against ICMP flood.
-        ICMPv6 (NDP, router advertisement) is allowed separately.</td>
+    <td>Echo-request max. 5/s, burst 10 – protects against ICMP flood from many
+        sources. Existing ping sessions continue via ESTABLISHED.</td>
   </tr>
   <tr>
-    <td>K3s pod CIDR exceptions</td>
-    <td>OUTPUT and INPUT explicitly allow traffic to/from pod CIDR (10.42.0.0/16)
-        on ports 3306 (MariaDB) and 6379 (Redis) – only for K3s pods.</td>
+    <td>No server_ipv4 whitelist</td>
+    <td>The former rule <code>-s server_ipv4 -j ACCEPT</code> was removed –
+        external packets with spoofed server IP were accepted by it.
+        Local traffic safely goes over loopback (<code>-i lo -j ACCEPT</code>).</td>
   </tr>
   <tr>
-    <td>RST rate limit</td>
-    <td>TCP RST packets are limited to max. 2/s – reduces port-scan noise.</td>
+    <td>K3s OUTPUT CIDR</td>
+    <td>OUTPUT explicitly allows traffic to pod CIDR (10.42.0.0/16) and
+        service CIDR (10.43.0.0/16) – needed for kubelet probes, kube-proxy,
+        metrics server. Without these rules, K3s-internal port 10250 breaks.</td>
+  </tr>
+  <tr>
+    <td>IPv6 DROP policy</td>
+    <td><code>ip6tables</code> starts directly with policy DROP, ICMPv6 rate-limited,
+        echo-reply only for ESTABLISHED/RELATED</td>
   </tr>
 </table>
-<pre><code># Monitor blocked packets live (nftables log prefix "nftables DROP")
-journalctl -k -f --grep "nftables DROP"
+<pre><code># Monitor blocked packets live
+journalctl -k -f --grep "IPTables-Dropped"
 
-# Show all current rules and blocklists
-nft list ruleset
+# Show port scan blocklist
+cat /proc/net/xt_recent/portscan | awk '{print $1}'
 
-# Show blocklist only
-nft list set inet filter banned4
-nft list set inet filter banned6
-
-# Block an IP manually (1-day timeout expires automatically)
-nft add element inet filter banned4 { 1.2.3.4 }
-
-# Reload firewall configuration (after playbook run or manually)
-systemctl reload nftables</code></pre>
+# Reload firewall rules (happens automatically after reboot)
+/root/fw/fw_ipv4.sh && /root/fw/fw_ipv6.sh</code></pre>
 
 <h3>Important Security Notes</h3>
 <div class="callout callout-danger">
@@ -1573,7 +1568,7 @@ systemctl reload nftables</code></pre>
 <div class="callout callout-warn">
   <strong>MariaDB bind to 0.0.0.0</strong>
   MariaDB listens on all interfaces so that pods can connect via the host IP.
-  Protection is provided exclusively by nftables (only pod CIDR allowed on port 3306)
+  Protection is provided exclusively by iptables (only pod CIDR allowed)
   and the DB user grant (<code>'nextcloud'@'10.42.%'</code>). Never expose port 3306 publicly.
 </div>
 <div class="callout callout-warn">

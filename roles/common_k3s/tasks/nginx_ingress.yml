@@ -1,23 +1,29 @@
 ---
 # =============================================================================
-# ingress-nginx – Kubernetes community Ingress Controller inside K3s
+# nginx-ingress – F5 NGINX Ingress Controller inside K3s
 # =============================================================================
 # Runs as a DaemonSet with hostNetwork=true so it binds directly to the host's
-# ports 80 and 443.
+# ports 80 and 443.  Replaces the retired kubernetes/ingress-nginx controller.
 #
-# Chart: ingress-nginx/ingress-nginx (https://kubernetes.github.io/ingress-nginx)
+# Chart: nginx-stable/nginx-ingress (https://helm.nginx.com/stable)
+# Maintained by F5/NGINX – the same team that maintains nginx itself.
+#
+# Rate-limit zones (nc_login, wp_login) are defined in the Helm values via
+# controller.config.entries.http-snippets so Ingress server-snippets
+# annotations can reference them.
 # =============================================================================
 
-- name: ingress-nginx | Remove F5 nginx-stable/nginx-ingress release if present
-  # The GitHub-imported version switched to the F5 chart (nginx-stable/nginx-ingress).
-  # Detect it by chart name prefix "nginx-ingress-" and uninstall before
-  # reinstalling the community chart to avoid incompatible schema conflicts.
+- name: ingress-nginx | Remove old kubernetes/ingress-nginx release if present
+  # The old community chart (kubernetes/ingress-nginx) was retired in 2026.
+  # Detect it by chart name prefix "ingress-nginx-" and uninstall before
+  # installing the F5 replacement, so Helm does not try to upgrade across
+  # incompatible chart schemas.
   ansible.builtin.shell: |
     set -o pipefail
     CHART=$(helm list -n ingress-nginx -o json 2>/dev/null \
       | python3 -c "import json,sys; r=json.load(sys.stdin); \
         [print(x['chart']) for x in r if x['name']=='ingress-nginx']" 2>/dev/null || true)
-    if echo "$CHART" | grep -q '^nginx-ingress-'; then
+    if echo "$CHART" | grep -q '^ingress-nginx-'; then
       helm uninstall ingress-nginx --namespace ingress-nginx
       echo "uninstalled"
     else
@@ -30,9 +36,9 @@
   register: old_uninstall
   changed_when: "'uninstalled' in old_uninstall.stdout"
 
-- name: ingress-nginx | Add ingress-nginx Helm repository
+- name: ingress-nginx | Add nginx-stable Helm repository
   ansible.builtin.command: >
-    helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+    helm repo add nginx-stable https://helm.nginx.com/stable
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   register: nginx_repo
@@ -54,9 +60,9 @@
     mode: "0644"
 
 # upgrade --install is idempotent: installs on first run, upgrades on re-run.
-- name: ingress-nginx | Install/upgrade ingress-nginx via Helm
+- name: ingress-nginx | Install/upgrade nginx-ingress via Helm
   ansible.builtin.command: >
-    helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx
+    helm upgrade --install ingress-nginx nginx-stable/nginx-ingress
     --namespace ingress-nginx
     --create-namespace
     --version {{ ingress_nginx_chart_version }}
@@ -72,10 +78,10 @@
     path: /tmp/ingress-nginx-values.yml
     state: absent
 
-- name: ingress-nginx | Wait for ingress-nginx DaemonSet pod to be ready
+- name: ingress-nginx | Wait for nginx-ingress DaemonSet pod to be ready
   ansible.builtin.command: >
     k3s kubectl wait pod
-    --selector app.kubernetes.io/name=ingress-nginx
+    --selector app.kubernetes.io/name=nginx-ingress
     --namespace ingress-nginx
     --for=condition=ready
     --timeout=120s

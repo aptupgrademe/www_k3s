@@ -281,7 +281,7 @@
 <main>
 
 <h1>WordPress – Operations&shy;Guide</h1>
-<p class="subtitle">WordPress 7.0 on K3s (AlmaLinux 9) &middot; Last updated: June 2026</p>
+<p class="subtitle">WordPress 7.0 on K3s (AlmaLinux 9) &middot; Last updated: May 2026</p>
 
 <!-- ─────────────────────────── OVERVIEW ─────────────────────────────── -->
 <section id="ueberblick">
@@ -317,7 +317,7 @@
   </div>
   <div class="card">
     <div class="label">Ingress</div>
-    <div class="value">ingress-nginx Community 4.15.1</div>
+    <div class="value">nginx-ingress F5 2.5.1</div>
   </div>
 </div>
 
@@ -341,7 +341,7 @@
         │ HTTPS :443 / HTTP :80
         ▼
 <span class="c-ingress">┌─────────────────────────────────────────────────────┐</span>
-<span class="c-ingress">│  ingress-nginx Community (K3s DaemonSet, hostNetwork)│</span>
+<span class="c-ingress">│  nginx-ingress F5 (K3s DaemonSet, hostNetwork=true) │</span>
 <span class="c-ingress">│  TLS termination via cert-manager (Let's Encrypt)   │</span>
 <span class="c-ingress">│  Rate-Limiting: wp_login 5r/s, xmlrpc.php → 403     │</span>
 <span class="c-ingress">└──────────────────────────┬──────────────────────────┘</span>
@@ -395,7 +395,7 @@
     <td>Unlike Nextcloud, the DB runs in a container here; data on HostPath</td>
   </tr>
   <tr>
-    <td>ingress-nginx (Community)</td>
+    <td>nginx-ingress (F5)</td>
     <td>K3s DaemonSet <span class="badge badge-blue">hostNetwork</span></td>
     <td>Binds directly to port 80/443 on the host; no external load balancer needed</td>
   </tr>
@@ -423,7 +423,7 @@
   <h4>Container 2: <code>nginx</code></h4>
   <p>nginx sidecar (<code>nginx:1.30-alpine</code>) on port 80. Serves
   static requests directly from the shared volume; PHP requests are forwarded via
-  FastCGI to port 9000. TLS is already terminated by ingress-nginx (Community)
+  FastCGI to port 9000. TLS is already terminated by nginx-ingress (F5)
   – this nginx only speaks plain HTTP.</p>
 </div>
 
@@ -492,7 +492,7 @@ ls -la /srv/wordpress-db</code></pre>
   <tr>
     <td><code>10.42.0.0/16</code></td>
     <td>K3s Pod CIDR (Flannel)</td>
-    <td>nftables rules, <code>set_real_ip_from</code> in the nginx sidecar</td>
+    <td>iptables rules, <code>set_real_ip_from</code> in the nginx sidecar</td>
   </tr>
   <tr>
     <td><code>10.43.0.0/16</code></td>
@@ -523,19 +523,18 @@ ls -la /srv/wordpress-db</code></pre>
 </table>
 <div class="callout callout-info">
   <strong>IPv6 (optional)</strong>
-  If the server has a public IPv6 address, an additional AAAA record can be added.
-  The nftables firewall covers IPv4 and IPv6 via a single <code>table inet filter</code> –
-  no separate script required.
+  If the server has a public IPv6 address, an additional AAAA record can
+  be added. The firewall rules (<code>fw_ipv6.sh</code>) are already configured.
 </div>
 
 <h3>TLS and Proxy Chain</h3>
 <pre><code>Internet
-  → ingress-nginx Community (Port 443, TLS terminated, sets X-Forwarded-For / -Proto)
+  → nginx-ingress F5 (Port 443, TLS terminated, sets X-Forwarded-For / -Proto)
     → nginx sidecar (Port 80, plain HTTP)
       → PHP-FPM (Port 9000, FastCGI)</code></pre>
 
 <p>
-  ingress-nginx forwards requests from its pod namespace (10.42.x.x).
+  nginx-ingress forwards requests from its pod namespace (10.42.x.x).
   The nginx sidecar is configured to read the real client IP from the
   <code>X-Forwarded-For</code> header:
 </p>
@@ -546,74 +545,44 @@ real_ip_recursive on;</code></pre>
 
 <h3>Rate Limiting and Security at the Ingress</h3>
 <p>
-  Security measures are defined directly in the Ingress via <code>nginx.ingress.kubernetes.io/</code>
-  annotations (community ingress-nginx):
+  Security measures are defined directly in the Ingress via <code>nginx.org/</code> annotations:
 </p>
 <table>
   <tr><th>Measure</th><th>Annotation / Configuration</th><th>Value</th></tr>
   <tr>
     <td>HTTPS redirect</td>
-    <td><code>nginx.ingress.kubernetes.io/ssl-redirect</code></td>
+    <td><code>nginx.org/ssl-redirect</code></td>
     <td>true – HTTP is redirected to HTTPS</td>
   </tr>
   <tr>
     <td>Block xmlrpc.php</td>
-    <td><code>nginx.ingress.kubernetes.io/server-snippet</code></td>
+    <td><code>nginx.org/server-snippets</code></td>
     <td><code>deny all; return 403;</code> – prevents XML-RPC brute-force</td>
   </tr>
   <tr>
     <td>wp-login.php rate limit</td>
-    <td><code>nginx.ingress.kubernetes.io/server-snippet</code></td>
+    <td><code>nginx.org/server-snippets</code></td>
     <td>5 r/s per IP, burst 5 – prevents login brute-force</td>
   </tr>
   <tr>
     <td>Security headers</td>
-    <td><code>nginx.ingress.kubernetes.io/configuration-snippet</code></td>
+    <td><code>nginx.org/location-snippets</code></td>
     <td>HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy</td>
   </tr>
   <tr>
     <td>Upload limit</td>
-    <td><code>nginx.ingress.kubernetes.io/proxy-body-size</code></td>
+    <td><code>nginx.org/client-max-body-size</code></td>
     <td>500m – for media uploads via the WP backend</td>
   </tr>
 </table>
 
 <div class="callout callout-info">
   <strong>Rate-limit zones defined in the controller</strong>
-  The zone <code>wp_login</code> is defined in the Helm values of the ingress-nginx controller
-  (<code>controller.config.http-snippet</code>) and is thus globally available for all ingress
-  resources. The actual application of the zone is done via the
-  <code>server-snippet</code> annotation in the WordPress ingress.
+  The zone <code>wp_login</code> is defined in the Helm values of the nginx-ingress controller
+  (<code>http-snippets</code>) and is thus globally available for all ingress resources.
+  The actual application of the zone is done via the
+  <code>server-snippets</code> annotation in the WordPress ingress.
 </div>
-
-<h3>Ingress Controller: Community vs. F5 – Background</h3>
-<div class="callout callout-warn">
-  <strong>Important: Two incompatible nginx ingress projects</strong>
-  There are two completely different nginx ingress controllers for Kubernetes:
-  <ul style="margin-top:8px">
-    <li><strong>Community:</strong> <code>ingress-nginx/ingress-nginx</code> – annotations prefixed with <code>nginx.ingress.kubernetes.io/</code></li>
-    <li><strong>F5/NGINX Inc.:</strong> <code>nginx-stable/nginx-ingress</code> – annotations prefixed with <code>nginx.org/</code>, master/minion model</li>
-  </ul>
-  The two projects are <em>not compatible</em>. The community controller is used here.
-</div>
-<p>
-  In May 2026 a GitHub merge accidentally switched to the F5 controller
-  (<code>nginx-stable/nginx-ingress 2.5.1</code>). This caused:
-</p>
-<ul>
-  <li><strong>TLS errors:</strong> cert-manager's ACME HTTP-01 solver uses community annotations;
-      the F5 controller ignores these → certificate could not be renewed.</li>
-  <li><strong>Grafana routing:</strong> The F5-specific annotation <code>nginx.org/path-regex</code>
-      is not recognized by the community controller → <code>/grafana</code> path served WordPress
-      instead of Grafana.</li>
-</ul>
-<p>
-  The fix: revert to community <code>ingress-nginx/ingress-nginx 4.15.1</code>.
-  All annotations in <code>ingress.yml.j2</code> were migrated from <code>nginx.org/</code> to
-  <code>nginx.ingress.kubernetes.io/</code>. The Grafana path was changed from
-  <code>ImplementationSpecific</code> with regex to simple <code>Prefix: /grafana</code>
-  (works thanks to <code>serve_from_sub_path = true</code> in Grafana's configuration).
-</p>
 </section>
 
 <!-- ─────────────────────────── FILES ──────────────────────────────── -->
@@ -645,7 +614,7 @@ real_ip_recursive on;</code></pre>
   <tr><th>Role</th><th>Task</th></tr>
   <tr><td><code>blog_packages</code></td><td>Install packages (e.g. SELinux tools)</td></tr>
   <tr><td><code>blog_selinux</code></td><td>SELinux enforcing, <code>container_file_t</code> for HostPath directories</td></tr>
-  <tr><td><code>common_k3s</code></td><td>K3s, Helm, cert-manager, ingress-nginx (Community) – common base</td></tr>
+  <tr><td><code>common_k3s</code></td><td>K3s, Helm, cert-manager, nginx-ingress (F5) – common base</td></tr>
   <tr><td><code>blog_k3s_deploy</code></td><td>K8s manifests: namespace, secrets, ConfigMaps, deployments, ingress, CronJob</td></tr>
   <tr><td><code>blog_wordpress</code></td><td>Post-deploy: WP-CLI commands (admin, plugins, settings)</td></tr>
 </table>
@@ -762,7 +731,7 @@ blog_image_nginx:     "nginx:1.30-alpine"   # nginx Sidecar</code></pre>
   <tr><td>WordPress</td><td><code>https://hub.docker.com/_/wordpress/tags</code> (filter: <code>*-fpm</code>)</td></tr>
   <tr><td>MariaDB</td><td><code>https://hub.docker.com/_/mariadb/tags</code></td></tr>
   <tr><td>nginx</td><td><code>https://hub.docker.com/_/nginx/tags</code> (filter: <code>*-alpine</code>)</td></tr>
-  <tr><td>ingress-nginx (Community) Helm</td><td><code>https://artifacthub.io/packages/helm/ingress-nginx/ingress-nginx</code></td></tr>
+  <tr><td>nginx-ingress (F5) Helm</td><td><code>https://artifacthub.io/packages/helm/nginx-stable/nginx-ingress</code></td></tr>
   <tr><td>cert-manager Helm</td><td><code>https://artifacthub.io/packages/helm/cert-manager/cert-manager</code></td></tr>
 </table>
 
@@ -1374,7 +1343,7 @@ k3s kubectl describe certificate wordpress-tls -n wordpress
 # ClusterIssuer status:
 k3s kubectl describe clusterissuer letsencrypt-prod</code></pre>
 <p>
-  Common cause: port 80 is blocked by nftables or the provider.
+  Common cause: port 80 is blocked by iptables or the provider.
   cert-manager requires port 80 for the HTTP-01 challenge (even if the site
   should only be reachable via HTTPS).
 </p>
@@ -1407,7 +1376,7 @@ k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
   <tr><th>Layer</th><th>Measure</th><th>Role</th></tr>
   <tr>
     <td>Host Network</td>
-    <td>nftables (<code>table inet filter</code>) – default policy DROP, named-set blocklist with timeout, ICMP rate limit, only 80/443/10022 open</td>
+    <td>iptables IPv4/IPv6 – default policy DROP, port scan blocker, ICMP rate limit, only 80/443/10022 open</td>
     <td><code>common_firewall</code></td>
   </tr>
   <tr>
@@ -1464,66 +1433,55 @@ k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
 
 <h3>Firewall in Detail</h3>
 <p>
-  The firewall is managed by the <code>common_firewall</code> role as an nftables
-  configuration. Ansible deploys <code>/etc/nftables.conf</code> from the template
-  <code>fw.nft.j2</code> and ensures the configuration is on the server <em>before</em>
-  the nftables service starts. IPv4 and IPv6 are handled in a single
-  <code>table inet filter</code> – no separate IPv6 script required.
+  The script <code>/root/fw/fw_ipv4.sh</code> (from <code>common_firewall</code>) is applied via
+  an <code>@reboot</code> cron job after every restart. K3s then inserts its own
+  <code>KUBE-*</code> chains at the top of the INPUT/OUTPUT chains.
 </p>
-<div class="callout callout-info">
-  <strong>K3s and nftables coexist without conflict</strong>
-  K3s uses the iptables subsystem internally for its <code>KUBE-*</code> chains. This
-  subsystem is separate from the nftables namespace – both run independently.
-</div>
 <table>
   <tr><th>Feature</th><th>Detail</th></tr>
   <tr>
     <td>Default Policy DROP</td>
-    <td><code>type filter hook input policy drop</code> – all packets that match no
-        ACCEPT rule are dropped. Applies to OUTPUT and FORWARD chains too.</td>
+    <td>INPUT, OUTPUT and FORWARD are immediately set to DROP after the flush –
+        no window in which unprotected traffic passes through</td>
   </tr>
   <tr>
-    <td>Blocklist with Timeout</td>
-    <td>Named sets <code>banned4</code> (IPv4) and <code>banned6</code> (IPv6) with a 1-day timeout.
-        Entries expire automatically. Fail2ban writes directly to these sets via
-        nftables-multiport. Manual: <code>nft add element inet filter banned4 { 1.2.3.4 }</code></td>
+    <td>Port Scan Blocker</td>
+    <td>Only after 5 SYN packets within 3600 s (1 h) is the source IP entered into
+        <code>/proc/net/xt_recent/portscan</code>. On the next packet from that IP
+        <code>--rcheck</code> triggers at the top → 1-hour block.
+        Check: <code>cat /proc/net/xt_recent/portscan</code></td>
   </tr>
   <tr>
     <td>ICMP Rate Limit</td>
-    <td>Echo-request max. 5/s – protects against ICMP flood.
-        ICMPv6 (NDP, router advertisement) is allowed separately.</td>
+    <td>Echo-request max. 5/s, burst 10 – protects against ICMP flood from many
+        sources. Existing ping sessions continue via ESTABLISHED.</td>
   </tr>
   <tr>
-    <td>Anti-Spoofing</td>
-    <td>Private address ranges (RFC 1918 / RFC 4193) are blocked on the WAN interface;
-        loopback traffic uses an explicit <code>lo</code> rule.</td>
+    <td>No server_ipv4 whitelist</td>
+    <td>The former rule <code>-s server_ipv4 -j ACCEPT</code> was removed –
+        external packets with spoofed server IP were thereby accepted.
+        Local traffic runs safely via loopback (<code>-i lo -j ACCEPT</code>).</td>
   </tr>
   <tr>
-    <td>K3s Pod CIDR Exceptions</td>
-    <td>OUTPUT explicitly allows traffic to pod CIDR (10.42.0.0/16) and service CIDR
-        (10.43.0.0/16) – required for kubelet probes and kube-proxy.
-        Ports 3306 (MariaDB) and 6379 (Redis) are only reachable from the pod CIDR.</td>
+    <td>K3s OUTPUT CIDR</td>
+    <td>OUTPUT explicitly allows traffic to pod CIDR (10.42.0.0/16) and
+        service CIDR (10.43.0.0/16) – required for kubelet probes, kube-proxy,
+        metrics server. Without these rules K3s-internal port 10250 breaks.</td>
   </tr>
   <tr>
-    <td>RST Rate Limit</td>
-    <td>TCP RST packets are limited to max. 2/s – reduces port-scan noise.</td>
+    <td>IPv6 DROP Policy</td>
+    <td><code>ip6tables</code> starts directly with policy DROP, ICMPv6 rate-limited,
+        echo-reply only for ESTABLISHED/RELATED</td>
   </tr>
 </table>
-<pre><code># Monitor dropped packets live (nftables log prefix "nftables DROP")
-journalctl -k -f --grep "nftables DROP"
+<pre><code># Monitor dropped packets live
+journalctl -k -f --grep "IPTables-Dropped"
 
-# Show all current rules and blocklists
-nft list ruleset
+# Show port scan blocklist
+cat /proc/net/xt_recent/portscan | awk '{print $1}'
 
-# Show blocklist only
-nft list set inet filter banned4
-nft list set inet filter banned6
-
-# Block an IP manually (1-day timeout expires automatically)
-nft add element inet filter banned4 { 1.2.3.4 }
-
-# Reload firewall configuration (after playbook run or manually)
-systemctl reload nftables</code></pre>
+# Reload firewall rules (happens automatically after reboot)
+/root/fw/fw_ipv4.sh && /root/fw/fw_ipv6.sh</code></pre>
 
 <h3>Important Security Notes</h3>
 <div class="callout callout-danger">

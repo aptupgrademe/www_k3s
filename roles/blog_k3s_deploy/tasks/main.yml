@@ -4,7 +4,7 @@
 # Purpose: Deploy the complete WordPress stack into K3s.
 #          All services (MariaDB, WordPress PHP-FPM, Nginx) run as K8s
 #          workloads in the 'wordpress' namespace.
-#          Only nftables and SSH remain on the host.
+#          Only iptables and SSH remain on the host.
 # =============================================================================
 
 - name: blog_k3s_deploy | HostPath directories

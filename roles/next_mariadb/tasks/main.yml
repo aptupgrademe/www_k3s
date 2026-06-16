@@ -3,7 +3,7 @@
 # Role: next_mariadb
 # Purpose: Ensure MariaDB is running and create the Nextcloud database + user.
 #          MariaDB binds to 0.0.0.0 so K3s pods can reach it via the node IP.
-#          nftables rules (common_firewall) restrict port 3306 to the K3s pod
+#          iptables rules (common_firewall) restrict port 3306 to the K3s pod
 #          CIDR ({{ k3s_pod_cidr }}) and localhost.
 # Target:  AlmaLinux 9
 # =============================================================================
@@ -35,7 +35,7 @@
 # -----------------------------------------------------------------------------
 # Bind MariaDB to 0.0.0.0 so K3s pods can connect via the node IP.
 # Pods reach MariaDB via a K8s ExternalService whose Endpoints point to the
-# host's public IP. Access is restricted to the K3s pod CIDR by nftables.
+# host's public IP. Access is restricted to the K3s pod CIDR by iptables.
 # -----------------------------------------------------------------------------
 - name: MariaDB | Ensure custom config directory exists
   ansible.builtin.file:
@@ -51,7 +51,7 @@
     content: |
       # Managed by Ansible (next_mariadb)
       # Bind to all interfaces so K3s pods can connect via the node IP.
-      # nftables rules (common_firewall) restrict port 3306 to the K3s pod CIDR.
+      # iptables rules (common_firewall) restrict port 3306 to the K3s pod CIDR.
       [mysqld]
       bind-address                   = 0.0.0.0
       # Buffer pool: cache hot InnoDB pages in RAM. Tune via mariadb_innodb_buffer_pool_size.
@@ -139,7 +139,7 @@
   no_log: true
 
 # host is restricted to the first two octets of the pod CIDR (e.g. '10.42.%').
-# This limits logins to pod IPs at the DB level, independent of nftables.
+# This limits logins to pod IPs at the DB level, independent of iptables.
 # NOTE: if k3s_pod_cidr ever changes, the old user must be dropped and recreated manually.
 - name: Create Nextcloud database user (host restricted to K3s pod CIDR)
   community.mysql.mysql_user:

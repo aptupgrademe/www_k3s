@@ -102,7 +102,8 @@
       - container-selinux
 
       # --- Firewall ---
-      - nftables
+      - iptables
+      - iptables-services
 
       # --- Utility packages ---
       - curl
@@ -137,9 +138,9 @@
 
 
 # -----------------------------------------------------------------------------
-# STEP 8: Disable firewalld (we manage rules via nftables directly)
+# STEP 8: Disable firewalld (we manage rules via iptables-services)
 # -----------------------------------------------------------------------------
-- name: Disable and stop firewalld (conflicts with direct nftables management)
+- name: Disable and stop firewalld (conflicts with iptables-services)
   ansible.builtin.service:
     name: firewalld
     state: stopped

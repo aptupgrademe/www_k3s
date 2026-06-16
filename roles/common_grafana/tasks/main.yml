@@ -70,7 +70,7 @@
 
 # Bind to all interfaces so K3s pods can reach Grafana via the host IP
 # (the K3s External Service Endpoint points to the host's public IP).
-# Access is restricted to the K3s pod CIDR by nftables (common_firewall).
+# Access is restricted to the K3s pod CIDR by iptables (common_firewall).
 - name: Grafana | Bind to all interfaces (required for K3s pod access)
   ansible.builtin.lineinfile:
     path: /etc/grafana/grafana.ini

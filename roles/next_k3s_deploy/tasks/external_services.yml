@@ -6,7 +6,7 @@
 # headless-like Services backed by manually-managed Endpoints that point to
 # the host's public IP.  Pods connect to e.g. mariadb.nextcloud.svc.cluster.local
 # which resolves to the node's IP.
-# nftables rules (common_firewall) restrict access to these ports to the K3s
+# iptables rules (common_firewall) restrict access to these ports to the K3s
 # pod CIDR ({{ k3s_pod_cidr }}) only.
 # =============================================================================
 

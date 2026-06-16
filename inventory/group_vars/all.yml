@@ -3,7 +3,7 @@
 # =============================================================================
 
 # CIDR for K3s pods (Flannel default).  Used in:
-#   - nftables rules (common_firewall) to allow pod → host access
+#   - iptables rules (common_firewall) to allow pod → host access
 #   - Nginx sidecar set_real_ip_from directive
 k3s_pod_cidr: "10.42.0.0/16"
 
@@ -22,17 +22,17 @@ blog_k3s_db_dir: /srv/wordpress-db
 
 # =============================================================================
 # Helm chart versions – update here to roll out across all hosts
-# Verify latest: https://artifacthub.io/packages/helm/ingress-nginx/ingress-nginx
+# Verify latest: https://artifacthub.io/packages/helm/nginx-stable/nginx-ingress  (F5)
 #                https://artifacthub.io/packages/helm/cert-manager/cert-manager
 # =============================================================================
-ingress_nginx_chart_version: "4.15.1"
+ingress_nginx_chart_version: "2.5.1"
 cert_manager_chart_version:  "1.20.2"
 
 # =============================================================================
 # Monitoring stack versions – update here to roll out across all hosts
 # =============================================================================
 node_exporter_version: "1.11.1"
-prometheus_version:    "3.12.0"
+prometheus_version:    "3.11.3"
 prometheus_retention:  "30d"
 # grafana_admin_pass: set per host in host_vars/<host>/vault.yml
 
@@ -51,7 +51,7 @@ prometheus_retention:  "30d"
 # =============================================================================
 nextcloud_image_fpm:       "nextcloud:33-fpm"
 nextcloud_image_nginx:     "nginx:1.30-alpine"
-nextcloud_image_collabora: "collabora/code:26.04.1.4.1"
+nextcloud_image_collabora: "collabora/code:25.04.9.4.1"
 nextcloud_image_busybox:   "busybox:1"
 blog_image_busybox:        "busybox:1"
 

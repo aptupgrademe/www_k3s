@@ -66,15 +66,18 @@ table inet filter {
     # ({{ k3s_pod_cidr }}) is not inadvertently blocked.
     # -------------------------------------------------------------------------
 
-    # Allow K3s pods to reach MariaDB on the host
+{% if 'nextcloud' in group_names %}
+    # Allow K3s pods to reach MariaDB on the host (Nextcloud: next_mariadb runs on host)
     ip saddr {{ k3s_pod_cidr }} tcp dport 3306 accept
 
-    # Allow K3s pods to reach Redis on the host
+    # Allow K3s pods to reach Redis on the host (Nextcloud: next_redis runs on host)
     ip saddr {{ k3s_pod_cidr }} tcp dport 6379 accept
 
-    # Allow the host to probe its own services
-    # (kubelet liveness/readiness probes for hostNetwork pods, e.g. ingress-nginx on port 10254)
-    ip saddr {{ server_ipv4 }} accept
+{% endif %}
+    # Allow the host to reach its own services via the public IP.
+    # ingress-nginx (hostNetwork) uses server_ipv4 as source when forwarding to
+    # ExternalServices (e.g. Grafana :3000); kubelet probes ingress-nginx on :10254.
+    ip saddr {{ server_ipv4 }} tcp dport { 3000, 10254 } accept
 
     # -------------------------------------------------------------------------
     # Block private and reserved IPv4 source ranges
