@@ -32,7 +32,7 @@ cert_manager_chart_version:  "1.20.2"
 # Monitoring stack versions – update here to roll out across all hosts
 # =============================================================================
 node_exporter_version: "1.11.1"
-prometheus_version:    "3.11.3"
+prometheus_version:    "3.12.0"
 prometheus_retention:  "30d"
 # grafana_admin_pass: set per host in host_vars/<host>/vault.yml
 
@@ -49,9 +49,9 @@ prometheus_retention:  "30d"
 #   MariaDB:    https://hub.docker.com/_/mariadb/tags
 #   Nginx:      https://hub.docker.com/_/nginx/tags      (filter: *-alpine)
 # =============================================================================
-nextcloud_image_fpm:       "nextcloud:33-fpm"
+nextcloud_image_fpm:       "nextcloud:34-fpm"
 nextcloud_image_nginx:     "nginx:1.30-alpine"
-nextcloud_image_collabora: "collabora/code:25.04.9.4.1"
+nextcloud_image_collabora: "collabora/code:26.04.1.4.1"
 nextcloud_image_busybox:   "busybox:1"
 blog_image_busybox:        "busybox:1"
 
