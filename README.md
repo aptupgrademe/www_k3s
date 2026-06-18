@@ -4,8 +4,8 @@
 [![Ansible](https://img.shields.io/badge/Ansible-2.15+-red.svg)](https://www.ansible.com/)
 [![K3s](https://img.shields.io/badge/K3s-latest-blue.svg)](https://k3s.io/)
 [![AlmaLinux](https://img.shields.io/badge/AlmaLinux-9-green.svg)](https://almalinux.org/)
-[![Nextcloud](https://img.shields.io/badge/Nextcloud-33-0082C9.svg)](https://nextcloud.com/)
-[![WordPress](https://img.shields.io/badge/WordPress-6.9-21759B.svg)](https://wordpress.org/)
+[![Nextcloud](https://img.shields.io/badge/Nextcloud-34-0082C9.svg)](https://nextcloud.com/)
+[![WordPress](https://img.shields.io/badge/WordPress-7.0-21759B.svg)](https://wordpress.org/)
 
 Ansible playbooks for deploying a fully automated, production-ready homelab on a
 single AlmaLinux 9 server using K3s (lightweight Kubernetes).
@@ -18,7 +18,7 @@ Supports two independent deployment scenarios:
 | **WordPress** | `blog.yml` | WordPress blog |
 
 Both scenarios share a common infrastructure layer (K3s, nginx-ingress, cert-manager,
-Prometheus, Grafana, Fail2Ban, iptables hardening).
+Prometheus, Grafana, Fail2Ban, nftables hardening).
 
 ---
 
@@ -44,7 +44,7 @@ Internet
 │  Host services:                             │
 │  MariaDB · Redis · Prometheus · Grafana     │  ← Nextcloud scenario only
 │  Node Exporter · mysqld_exporter            │
-│  Fail2Ban · iptables · auditd · rkhunter    │
+│  Fail2Ban · nftables · auditd · rkhunter    │
 └─────────────────────────────────────────────┘
 ```
 
@@ -53,9 +53,9 @@ Internet
 ## Features
 
 ### Application
-- **Nextcloud 33** with PHP-FPM, nginx sidecar, Redis caching, MariaDB 10.11
+- **Nextcloud 34** with PHP-FPM, nginx sidecar, Redis caching, MariaDB 10.11
 - **Collabora CODE** (online office) with WOPI integration
-- **WordPress 6.9** with PHP-FPM, nginx sidecar, MariaDB as K3s pod
+- **WordPress 7.0** with PHP-FPM, nginx sidecar, MariaDB as K3s pod
 - Automatic installation on first pod start via container env vars
 - WordPress WP-Cron as Kubernetes CronJob
 
@@ -67,9 +67,8 @@ Internet
 - Kubernetes Secrets for all credentials (Ansible Vault encrypted locally)
 
 ### Security
-- **iptables** hardened ruleset: default DROP, portscan detection, ICMP rate limiting
-- **ip6tables** with DROP policies and ICMPv6 rate limiting
-- **Fail2Ban** for SSH brute-force protection
+- **nftables** hardened ruleset (`table inet`): default DROP, portscan detection, ICMP rate limiting — covers IPv4 and IPv6 in a single ruleset
+- **Fail2Ban** writes banned IPs directly into nftables sets (`banned4`/`banned6`) with automatic timeout-based expiry
 - **SELinux** enforcing with `container_file_t` contexts for HostPath volumes
 - **auditd** with hardening rules (sudo, SSH, cron, kernel modules)
 - **rkhunter** daily rootkit scan
@@ -233,7 +232,7 @@ Store the vault password in a password manager.
 | Role | Purpose |
 |---|---|
 | `common_k3s` | K3s installation, Helm, cert-manager, F5 nginx-ingress |
-| `common_firewall` | iptables / ip6tables hardening |
+| `common_firewall` | nftables hardening (table inet, banned4/banned6 sets) |
 | `common_ssh` | SSH hardening (port, key-only) |
 | `common_prometheus` | Prometheus metrics collector |
 | `common_grafana` | Grafana with pre-imported dashboards |
