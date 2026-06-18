@@ -60,7 +60,7 @@
   roles:
     - next_packages         # Repositories, packages (MariaDB 10.11, Redis) – nginx/PHP run in K3s pods
     - common_ssh            # SSH hardening (port, key-only auth)
-    - common_firewall       # iptables IPv4/IPv6 rules (incl. K3s pod CIDR exceptions)
+    - common_firewall       # nftables IPv4/IPv6 rules (incl. K3s pod CIDR exceptions)
     - next_mariadb          # MariaDB setup + Nextcloud database and user
     - next_selinux          # SELinux enforcing + container_file_t contexts for K3s HostPath vols  ← before deploy!
     - common_k3s            # K3s single-node cluster + Helm + cert-manager + nginx-ingress (F5)

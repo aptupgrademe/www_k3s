@@ -3,7 +3,7 @@
 # Role: blog_packages (K3s-only mode)
 # Purpose: Minimal host-level packages for the blog server.
 #          All application services (MariaDB, WordPress, Nginx) run inside K3s.
-#          Only iptables and SSH remain on the host.
+#          Only nftables and SSH remain on the host.
 #
 #          All packages below are available in the default AlmaLinux 9
 #          BaseOS/AppStream repos – no EPEL or CRB needed.
@@ -36,8 +36,7 @@
   ansible.builtin.dnf:
     name:
       # --- Firewall ---
-      - iptables
-      - iptables-services
+      - nftables
 
       # --- SELinux tooling ---
       - policycoreutils
@@ -49,7 +48,7 @@
       - curl
       - tar
       - git
-      - cronie
+      - cronie                # required for rkhunter daily cron job
       - nano
     state: present
 
@@ -57,13 +56,7 @@
 # -----------------------------------------------------------------------------
 # Services
 # -----------------------------------------------------------------------------
-- name: Enable and start crond
-  ansible.builtin.service:
-    name: crond
-    state: started
-    enabled: true
-
-- name: Disable and stop firewalld (we use iptables via @reboot cron)
+- name: Disable and stop firewalld (we use nftables via systemd)
   ansible.builtin.service:
     name: firewalld
     state: stopped

@@ -4,7 +4,7 @@
 # Purpose: Ensure Redis is running and reachable from K3s pods.
 #          Redis binds to 127.0.0.1 and the node's public IP so that pods can
 #          connect via the K8s ExternalService → Endpoints → node IP.
-#          iptables rules (common_firewall) restrict port 6379 to the K3s pod
+#          nftables rules (common_firewall) restrict port 6379 to the K3s pod
 #          CIDR ({{ k3s_pod_cidr }}) and localhost.
 # Target:  AlmaLinux 9
 # =============================================================================
@@ -24,7 +24,7 @@
 # Network binding
 # -----------------------------------------------------------------------------
 # Bind to loopback and the node's public IP so K3s pods can reach Redis.
-# iptables restricts port 6379 to the K3s pod CIDR and localhost.
+# nftables restricts port 6379 to the K3s pod CIDR and localhost.
 - name: Ensure Redis binds to localhost and node IP
   ansible.builtin.lineinfile:
     path: /etc/redis/redis.conf

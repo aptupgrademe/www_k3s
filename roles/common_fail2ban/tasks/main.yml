@@ -20,6 +20,15 @@
 # -----------------------------------------------------------------------------
 # Configuration
 # -----------------------------------------------------------------------------
+- name: Fail2Ban | Deploy nftables ban action (writes to banned4/banned6 sets)
+  ansible.builtin.template:
+    src: nftables-banned-sets.conf.j2
+    dest: /etc/fail2ban/action.d/nftables-banned-sets.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart fail2ban
+
 - name: Fail2Ban | Deploy jail.local
   ansible.builtin.template:
     src: jail.local.j2

@@ -3,7 +3,7 @@
 # =============================================================================
 
 # CIDR for K3s pods (Flannel default).  Used in:
-#   - iptables rules (common_firewall) to allow pod → host access
+#   - nftables rules (common_firewall) to allow pod → host access
 #   - Nginx sidecar set_real_ip_from directive
 k3s_pod_cidr: "10.42.0.0/16"
 

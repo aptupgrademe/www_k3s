@@ -69,9 +69,9 @@
 
 
   roles:
-    - blog_packages         # Host packages: iptables, SELinux tools, utilities only
+    - blog_packages         # Host packages: nftables, SELinux tools, utilities only
     - common_ssh            # SSH hardening (port, key-only auth)
-    - common_firewall       # iptables IPv4/IPv6 rules
+    - common_firewall       # nftables IPv4/IPv6 rules
     - blog_selinux          # SELinux enforcing + container_file_t for HostPath  ← before deploy!
     - common_k3s            # K3s + Helm + cert-manager + nginx-ingress (F5)
     - blog_k3s_deploy       # WordPress K8s Deployment + Ingress + CronJob

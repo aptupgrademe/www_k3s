@@ -3,8 +3,12 @@
 # Fail2Ban – jail.local  (K3s mode)
 #
 # HTTP-level protection (WordPress login, Nextcloud login, bot scanning) is
-# handled by nginx-ingress (F5) rate-limiting annotations in the Ingress resources.
+# handled by nginx-ingress rate-limiting annotations in the Ingress resources.
 # Fail2Ban on the host is responsible for SSH brute-force protection only.
+#
+# Banned IPs are written directly into the nftables sets banned4/banned6
+# (defined in /etc/nftables.conf by common_firewall) using the custom action
+# nftables-banned-sets.  The sets use native nftables timeout for auto-expiry.
 # =============================================================================
 
 [DEFAULT]
@@ -12,7 +16,10 @@ bantime  = {{ fail2ban_bantime }}
 findtime = {{ fail2ban_findtime }}
 maxretry = {{ fail2ban_maxretry }}
 backend  = systemd
-banaction = iptables-multiport
+
+# Custom action: writes to nftables banned4 (IPv4) or banned6 (IPv6) sets
+banaction     = nftables-banned-sets[nftset=banned4]
+banaction_allports = nftables-banned-sets[nftset=banned4]
 
 # Ignore localhost and private RFC-1918 ranges
 ignoreip = 127.0.0.1/8 ::1 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16

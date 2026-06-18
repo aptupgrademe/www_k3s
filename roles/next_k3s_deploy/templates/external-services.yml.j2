@@ -1,7 +1,7 @@
 # External Services for host-side services – managed by Ansible (next_k3s_deploy)
 # These Services expose MariaDB, Redis and Grafana (running on the host) to
 # pods inside the nextcloud namespace.  Manually-managed Endpoints point to
-# the server's public IP.  iptables rules limit access to the K3s pod CIDR.
+# the server's public IP.  nftables rules limit access to the K3s pod CIDR.
 ---
 # --- MariaDB ---
 apiVersion: v1

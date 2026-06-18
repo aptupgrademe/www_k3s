@@ -1,0 +1,13 @@
+# Managed by Ansible – do not edit manually
+# =============================================================================
+# Fail2Ban action: write banned IPs directly into the nftables banned4/banned6
+# sets defined in /etc/nftables.conf (role: common_firewall).
+#
+# The sets use native nftables timeout – the IP auto-expires after <bantime>
+# seconds without any fail2ban unban action needed.  The explicit actionunban
+# is kept as a best-effort cleanup in case fail2ban restarts before expiry.
+# =============================================================================
+
+[Definition]
+actionban   = nft add element inet filter <nftset> { <ip> timeout <bantime>s }
+actionunban = nft delete element inet filter <nftset> { <ip> } 2>/dev/null; true

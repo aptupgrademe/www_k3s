@@ -102,15 +102,14 @@
       - container-selinux
 
       # --- Firewall ---
-      - iptables
-      - iptables-services
+      - nftables
 
       # --- Utility packages ---
       - curl
       - unzip
       - tar
       - git
-      - cronie
+      - cronie                # required for rkhunter daily cron job
       - rsync
       - rdiff-backup
       - tmux
@@ -138,9 +137,9 @@
 
 
 # -----------------------------------------------------------------------------
-# STEP 8: Disable firewalld (we manage rules via iptables-services)
+# STEP 8: Disable firewalld (we use nftables via systemd)
 # -----------------------------------------------------------------------------
-- name: Disable and stop firewalld (conflicts with iptables-services)
+- name: Disable and stop firewalld (we use nftables via systemd)
   ansible.builtin.service:
     name: firewalld
     state: stopped
