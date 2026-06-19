@@ -46,6 +46,11 @@ spec:
         - --slow-query-log=1
         - --slow-query-log-file=/var/lib/mysql/slow.log
         - --long-query-time=1
+        - --innodb-buffer-pool-size=384M
+        - --innodb-flush-log-at-trx-commit=2
+        - --max-connections=50
+        - --tmp-table-size=32M
+        - --max-heap-table-size=32M
         env:
         - name: MARIADB_ROOT_PASSWORD
           valueFrom:
@@ -79,10 +84,10 @@ spec:
           mountPath: /var/lib/mysql
         resources:
           requests:
-            memory: "128Mi"
+            memory: "256Mi"
             cpu: "100m"
           limits:
-            memory: "512Mi"
+            memory: "768Mi"
             cpu: "500m"
         readinessProbe:
           exec:

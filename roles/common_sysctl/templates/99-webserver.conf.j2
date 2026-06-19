@@ -1,0 +1,32 @@
+# Managed by Ansible – do not edit manually
+# =============================================================================
+# Kernel tuning for web server performance
+# Applied via sysctl.d – persistent across reboots.
+# =============================================================================
+
+# --- TCP Congestion Control: BBR ---
+# BBR (Bottleneck Bandwidth and RTT) achieves higher throughput and lower
+# latency than CUBIC, especially on connections with packet loss.
+# Requires fq (Fair Queueing) as the packet scheduler.
+net.core.default_qdisc          = fq
+net.ipv4.tcp_congestion_control = bbr
+
+# --- TCP Fast Open ---
+# Allows data in the SYN packet on reconnects (requires prior connection).
+# 3 = enable for both incoming and outgoing connections.
+net.ipv4.tcp_fastopen = 3
+
+# --- Disable TCP slow-start after idle ---
+# By default Linux reduces the TCP window after an idle period.
+# For a web server with sporadic visitors this causes unnecessary slowdown.
+net.ipv4.tcp_slow_start_after_idle = 0
+
+# --- Connection cleanup ---
+net.ipv4.tcp_fin_timeout     = 15
+net.ipv4.tcp_keepalive_time  = 60
+net.ipv4.tcp_keepalive_intvl = 10
+net.ipv4.tcp_keepalive_probes = 5
+
+# --- Backlog / receive queue ---
+net.core.netdev_max_backlog  = 5000
+net.core.somaxconn           = 4096

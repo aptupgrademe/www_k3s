@@ -1,0 +1,26 @@
+---
+# =============================================================================
+# Role: common_sysctl
+# Purpose: Kernel tuning for web server performance (TCP BBR, connection
+#          timeouts, backlog).  Applied via /etc/sysctl.d/ – persistent
+#          across reboots.
+# =============================================================================
+
+- name: Sysctl | Load tcp_bbr kernel module
+  community.general.modprobe:
+    name: tcp_bbr
+    state: present
+    persistent: present
+
+- name: Sysctl | Deploy web server kernel tuning
+  ansible.builtin.template:
+    src: 99-webserver.conf.j2
+    dest: /etc/sysctl.d/99-webserver.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: apply sysctl
+
+- name: Sysctl | Apply settings immediately
+  ansible.builtin.command: sysctl --system
+  changed_when: false

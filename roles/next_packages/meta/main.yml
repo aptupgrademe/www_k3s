@@ -1,6 +1,6 @@
 galaxy_info:
   author: raphael
-  description: Install packages and enable repositories for AlmaLinux 9 web stack (PHP 8.2, Nginx, MariaDB, Redis)
+  description: Install packages and enable repositories for AlmaLinux 9 web stack (MariaDB, Redis — PHP/Nginx run in K3s pods)
   license: MIT
 
   min_ansible_version: "2.10"

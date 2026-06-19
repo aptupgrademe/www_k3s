@@ -72,6 +72,7 @@
     - blog_packages         # Host packages: nftables, SELinux tools, utilities only
     - common_ssh            # SSH hardening (port, key-only auth)
     - common_firewall       # nftables IPv4/IPv6 rules
+    - common_sysctl         # Kernel tuning: TCP BBR, connection timeouts, backlog
     - blog_selinux          # SELinux enforcing + container_file_t for HostPath  ← before deploy!
     - common_k3s            # K3s + Helm + cert-manager + nginx-ingress (F5)
     - blog_k3s_deploy       # WordPress K8s Deployment + Ingress + CronJob
