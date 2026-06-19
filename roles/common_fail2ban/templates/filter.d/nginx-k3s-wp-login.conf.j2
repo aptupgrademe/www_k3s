@@ -1,0 +1,9 @@
+# Managed by Ansible – do not edit manually
+# Detects brute-force POST attempts against /wp-login.php.
+# Log source: nginx-ingress (F5) access log, containerd-prefixed format:
+#   2026-06-19T14:24:11Z stdout F <client_ip> - - [nginx_time] "POST /wp-login.php HTTP/1.1" 200 ...
+
+[Definition]
+failregex = ^\S+\s+stdout\s+F\s+<HOST>\s+-\s+-\s+\[.+?\]\s+"POST /wp-login\.php\s+HTTP/\S+"\s+\d{3}
+
+ignoreregex =

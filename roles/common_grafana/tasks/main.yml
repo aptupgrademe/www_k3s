@@ -325,3 +325,261 @@
 # Access control is handled by Grafana's own admin_password (set above).
 # No host-level Nginx or htpasswd file needed.
 
+
+# =============================================================================
+# SMTP – enables Grafana to send alert notification emails
+# =============================================================================
+
+- name: Grafana | Configure SMTP section
+  ansible.builtin.blockinfile:
+    path: /etc/grafana/grafana.ini
+    marker: "# {mark} ANSIBLE MANAGED BLOCK – smtp"
+    insertafter: '^\[smtp\]'
+    block: |
+      enabled      = true
+      host         = {{ msmtp_host }}:{{ msmtp_port }}
+      user         = {{ msmtp_user }}
+      password     = {{ msmtp_password }}
+      from_address = {{ msmtp_from }}
+      from_name    = Grafana Homelab
+  notify: restart grafana
+  no_log: true
+
+- name: Grafana | Flush handlers so SMTP is active before API calls
+  ansible.builtin.meta: flush_handlers
+
+- name: Grafana | Wait for API after restart
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:3000/api/health"
+    status_code: 200
+  register: _gf_health
+  until: _gf_health.status == 200
+  retries: 20
+  delay: 3
+
+
+# =============================================================================
+# ALERT CONTACT POINT – email
+# =============================================================================
+
+- name: Grafana | Check if email contact point exists
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:3000/api/v1/provisioning/contact-points"
+    method: GET
+    user: "{{ grafana_basic_auth_user }}"
+    password: "{{ grafana_admin_pass }}"
+    force_basic_auth: true
+    status_code: 200
+  register: _gf_contacts
+  no_log: true
+
+- name: Grafana | Create email contact point
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:3000/api/v1/provisioning/contact-points"
+    method: POST
+    user: "{{ grafana_basic_auth_user }}"
+    password: "{{ grafana_admin_pass }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      name: "email-admin"
+      type: "email"
+      settings:
+        addresses: "{{ email }}"
+        singleEmail: true
+      disableResolveMessage: false
+    status_code: [200, 202]
+  when: >-
+    (_gf_contacts.json | default([]) | selectattr('name', 'equalto', 'email-admin') | list | length) == 0
+  no_log: true
+
+- name: Grafana | Set default notification policy to email-admin
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:3000/api/v1/provisioning/policies"
+    method: PUT
+    user: "{{ grafana_basic_auth_user }}"
+    password: "{{ grafana_admin_pass }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      receiver: "email-admin"
+      group_by: ["alertname", "instance"]
+      group_wait: "30s"
+      group_interval: "5m"
+      repeat_interval: "4h"
+    status_code: [200, 202]
+  no_log: true
+
+
+# =============================================================================
+# ALERT FOLDER
+# =============================================================================
+
+- name: Grafana | Create alert folder "Homelab Alerts"
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:3000/api/folders"
+    method: POST
+    user: "{{ grafana_basic_auth_user }}"
+    password: "{{ grafana_admin_pass }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      uid: "homelab-alerts"
+      title: "Homelab Alerts"
+    status_code: [200, 409]   # 409 = already exists
+  register: _gf_folder
+  no_log: true
+
+
+# =============================================================================
+# ALERT RULES – deployed as a Python script to keep YAML readable
+# =============================================================================
+
+- name: Grafana | Write alert provisioning script
+  ansible.builtin.copy:
+    dest: /tmp/gf_alerts.py
+    mode: "0700"
+    owner: root
+    content: |
+      import json, urllib.request, base64, os, sys
+
+      BASE = "http://127.0.0.1:3000"
+      USER = os.environ["GF_USER"]
+      PASS = os.environ["GF_PASS"]
+      DS_NAME = "Prometheus"
+      FOLDER_UID = "homelab-alerts"
+      EMAIL = os.environ["GF_EMAIL"]
+
+      def api(path, method="GET", body=None):
+          req = urllib.request.Request(f"{BASE}{path}", method=method)
+          creds = base64.b64encode(f"{USER}:{PASS}".encode()).decode()
+          req.add_header("Authorization", f"Basic {creds}")
+          req.add_header("Content-Type", "application/json")
+          data = json.dumps(body).encode() if body else None
+          with urllib.request.urlopen(req, data=data, timeout=10) as r:
+              return json.load(r)
+
+      # Datasource UID holen
+      ds_uid = api(f"/api/datasources/name/{DS_NAME}")["uid"]
+
+      def make_rule(uid, title, expr, summary, threshold_label):
+          return {
+              "uid": uid,
+              "title": title,
+              "ruleGroup": "homelab",
+              "folderUID": FOLDER_UID,
+              "noDataState": "OK",
+              "execErrState": "Error",
+              "for": "5m",
+              "annotations": {
+                  "summary": summary,
+                  "__dashboardUid__": "",
+                  "__panelId__": "",
+              },
+              "labels": {"severity": "warning"},
+              "data": [
+                  {
+                      "refId": "A",
+                      "datasourceUid": ds_uid,
+                      "queryType": "",
+                      "relativeTimeRange": {"from": 600, "to": 0},
+                      "model": {
+                          "expr": expr,
+                          "legendFormat": threshold_label,
+                          "refId": "A",
+                          "instant": True,
+                          "intervalMs": 1000,
+                          "maxDataPoints": 43200,
+                      },
+                  },
+                  {
+                      "refId": "B",
+                      "datasourceUid": "-100",
+                      "queryType": "",
+                      "relativeTimeRange": {"from": 600, "to": 0},
+                      "model": {
+                          "conditions": [{
+                              "evaluator": {"params": [1], "type": "gt"},
+                              "operator": {"type": "and"},
+                              "query": {"params": ["A"]},
+                              "reducer": {"params": [], "type": "last"},
+                              "type": "query",
+                          }],
+                          "datasource": {"type": "__expr__", "uid": "-100"},
+                          "refId": "B",
+                          "type": "classic_conditions",
+                      },
+                  },
+              ],
+          }
+
+      rules = [
+          make_rule(
+              "alert-disk-root",
+              "Festplatte root > 80%",
+              '(node_filesystem_size_bytes{mountpoint="/"} - node_filesystem_free_bytes{mountpoint="/"}) '
+              '/ node_filesystem_size_bytes{mountpoint="/"} * 100 > 80',
+              "Root-Partition ist zu mehr als 80% gefüllt – bitte Speicherplatz freigeben!",
+              "disk_used_pct",
+          ),
+          make_rule(
+              "alert-disk-data",
+              "Daten-Partition > 80%",
+              '(node_filesystem_size_bytes{mountpoint=~"/srv|/var"} - node_filesystem_free_bytes{mountpoint=~"/srv|/var"}) '
+              '/ node_filesystem_size_bytes{mountpoint=~"/srv|/var"} * 100 > 80',
+              "Daten-Partition (/srv oder /var) ist zu mehr als 80% gefüllt!",
+              "disk_data_pct",
+          ),
+          make_rule(
+              "alert-memory",
+              "Arbeitsspeicher > 90%",
+              "(node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) "
+              "/ node_memory_MemTotal_bytes * 100 > 90",
+              "Mehr als 90% des RAM sind belegt – Risiko von OOM-Kills!",
+              "mem_used_pct",
+          ),
+          make_rule(
+              "alert-cpu-load",
+              "CPU-Last > 85%",
+              "100 - (avg(rate(node_cpu_seconds_total{mode='idle'}[5m])) * 100) > 85",
+              "Die durchschnittliche CPU-Last liegt seit 5 min über 85%.",
+              "cpu_used_pct",
+          ),
+          make_rule(
+              "alert-node-down",
+              "Node Exporter nicht erreichbar",
+              "up{job='node'} == 0",
+              "Node Exporter antwortet nicht – Server möglicherweise down!",
+              "node_up",
+          ),
+      ]
+
+      for rule in rules:
+          uid = rule["uid"]
+          # Prüfen ob Regel schon existiert
+          try:
+              existing = api(f"/api/v1/provisioning/alert-rules/{uid}")
+              # Update
+              result = api(f"/api/v1/provisioning/alert-rules/{uid}", method="PUT", body=rule)
+              print(f"  updated: {rule['title']}")
+          except Exception:
+              # Neu anlegen
+              result = api("/api/v1/provisioning/alert-rules", method="POST", body=rule)
+              print(f"  created: {rule['title']}")
+
+      print("Fertig.")
+
+- name: Grafana | Apply alert rules
+  ansible.builtin.command: python3 /tmp/gf_alerts.py
+  environment:
+    GF_USER:  "{{ grafana_basic_auth_user }}"
+    GF_PASS:  "{{ grafana_admin_pass }}"
+    GF_EMAIL: "{{ email }}"
+  changed_when: false
+  no_log: true
+
+- name: Grafana | Remove alert provisioning script
+  ansible.builtin.file:
+    path: /tmp/gf_alerts.py
+    state: absent
+

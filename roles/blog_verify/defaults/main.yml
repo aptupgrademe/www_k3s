@@ -1,0 +1,9 @@
+---
+# Minimum days before TLS cert expiry to consider it "valid"
+verify_cert_min_days: 30
+
+# HTTP timeout for URL checks (seconds)
+verify_http_timeout: 15
+
+# Minimum number of expected fail2ban jails
+verify_f2ban_min_jails: 4

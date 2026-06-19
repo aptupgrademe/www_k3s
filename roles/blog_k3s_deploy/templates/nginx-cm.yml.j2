@@ -36,12 +36,16 @@ data:
             application/rss+xml image/svg+xml font/woff2;
 
         # -------------------------------------------------------
-        # Security: block sensitive files
+        # Security: block sensitive files and info disclosure
         # -------------------------------------------------------
         location = /xmlrpc.php          { deny all; }
         location = /wp-config.php       { deny all; }
+        location = /readme.html         { deny all; }
+        location = /license.txt         { deny all; }
         location ~ /\.                  { deny all; }
         location ~* \.(bak|orig|swp|hta|sql)$ { deny all; }
+        # Block username enumeration via ?author= parameter
+        if ($arg_author != "") { return 403; }
 
         # -------------------------------------------------------
         # WordPress pretty permalinks

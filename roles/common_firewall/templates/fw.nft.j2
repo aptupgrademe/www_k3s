@@ -66,6 +66,12 @@ table inet filter {
     # ({{ k3s_pod_cidr }}) is not inadvertently blocked.
     # -------------------------------------------------------------------------
 
+    # Allow K3s pods to reach the K3s API server and kubelet.
+    # ClusterIP 10.43.0.1:443 is DNAT-rewritten by iptables to {{ server_ipv4 }}:6443.
+    # metrics-server scrapes kubelet metrics via {{ server_ipv4 }}:10250.
+    # Without these rules the RFC-1918 drop below silently blocks pod→host traffic.
+    ip saddr {{ k3s_pod_cidr }} tcp dport { 6443, 10250 } accept
+
 {% if 'nextcloud' in group_names %}
     # Allow K3s pods to reach MariaDB on the host (Nextcloud: next_mariadb runs on host)
     ip saddr {{ k3s_pod_cidr }} tcp dport 3306 accept
@@ -97,8 +103,8 @@ table inet filter {
     # -------------------------------------------------------------------------
     icmpv6 type {
       destination-unreachable, packet-too-big, time-exceeded, parameter-problem,
-      router-advertisement, router-solicitation,
-      nd-neighbor-solicitation, nd-neighbor-advertisement,
+      nd-router-advert, nd-router-solicit,
+      nd-neighbor-solicit, nd-neighbor-advert,
       echo-request, echo-reply
     } accept
 
@@ -114,6 +120,11 @@ table inet filter {
     # Incoming: management (SSH on non-standard port)
     ip  daddr {{ server_ipv4 }} tcp dport 10022 ct state new accept
     ip6 daddr {{ server_ipv6 }} tcp dport 10022         accept
+
+    # DHCPv6 Antwort vom Router (link-local → UDP 546 am Client)
+    # PFLICHT: ohne diese Regel bekommt der Server keine IPv6-Adresse per DHCPv6.
+    # DHCPv4-Antworten (UDP 68) sind durch ct state established,related abgedeckt.
+    ip6 saddr fe80::/10 udp dport 546 accept comment "DHCPv6 response – PFLICHT fuer IPv6"
 
     # Log everything else before the policy drop (rate-limited)
     limit rate 2/minute log prefix "nftables DROP IN:  " level warn flags all
@@ -153,6 +164,16 @@ table inet filter {
     # ICMPv6 output is required for IPv6 (NDP, path MTU discovery, etc.)
     ip6 nexthdr ipv6-icmp accept
 
+    # -------------------------------------------------------------------------
+    # DHCP – PFLICHT für IPv4- und IPv6-Adresszuweisung
+    #
+    # OHNE diese Regeln kann der Server beim Lease-Renewal seine IPv4-Adresse
+    # verlieren und bekommt via DHCPv6 KEINE IPv6-Adresse zugeteilt.
+    # IPv6 (2001:ba0:27b:2a00::1) wird vom Provider per DHCPv6 zugewiesen.
+    # -------------------------------------------------------------------------
+    udp dport 67  ct state new accept comment "DHCPv4 lease renewal – PFLICHT"
+    udp dport 547 ct state new accept comment "DHCPv6 solicit/request – PFLICHT fuer IPv6"
+
     # DNS (UDP + TCP for large responses)
     udp dport 53  ct state new accept
     tcp dport 53  ct state new accept
@@ -167,6 +188,9 @@ table inet filter {
     # SMTP submission (Nextcloud mail)
     tcp dport 465 ct state new accept  # TLS
     tcp dport 587 ct state new accept  # STARTTLS
+
+    # K3s pod network – kubelet liveness/readiness probes reach pods via cni0 (OUTPUT, not FORWARD)
+    ip daddr {{ k3s_pod_cidr }} ct state new accept
 
     # K3s API server (hostNetwork pods + kubectl)
     tcp dport 6443 ct state new accept

@@ -2,8 +2,9 @@
 # =============================================================================
 # Role: firewall
 # Purpose: Deploy IPv4/IPv6 nftables packet-filter rules via a single template.
-#          /etc/nftables.conf is the single source of truth – rules are applied
-#          by the nftables systemd service at boot and reloaded on config change.
+#          /etc/sysconfig/nftables.conf is the file read by the nftables systemd
+#          service on AlmaLinux 9 at boot (ExecStart) and on reload (ExecReload).
+#          The commonly referenced /etc/nftables.conf is NOT used by the service.
 #          Using the systemd service is safe on a live K3s node: K3s manages
 #          its own KUBE-* chains in iptables (a separate subsystem), so there
 #          is no lock contention with nftables.
@@ -22,13 +23,13 @@
 
 
 # -----------------------------------------------------------------------------
-# Deploy ruleset – BEFORE starting the service so the default AlmaLinux
-# /etc/nftables.conf is never active with its potentially restrictive policy.
+# Deploy ruleset to the file the nftables systemd service actually reads.
+# AlmaLinux 9: ExecStart=/sbin/nft -f /etc/sysconfig/nftables.conf
 # -----------------------------------------------------------------------------
 - name: Upload nftables ruleset (templated)
   ansible.builtin.template:
     src: fw.nft.j2
-    dest: /etc/nftables.conf
+    dest: /etc/sysconfig/nftables.conf
     owner: root
     group: root
     mode: "0640"

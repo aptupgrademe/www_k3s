@@ -66,6 +66,70 @@
 
 
 # -----------------------------------------------------------------------------
+# Security hardening mu-plugin
+# Must-use plugins load automatically without activation.
+# Handles: hide WP/Yoast version, block REST API user enumeration,
+#          remove Link header, block ?author= enumeration.
+# -----------------------------------------------------------------------------
+- name: WordPress | Ensure mu-plugins directory exists
+  ansible.builtin.command: >
+    k3s kubectl exec deployment/wordpress
+    --namespace wordpress
+    --container wordpress-fpm --
+    mkdir -p /var/www/html/wp-content/mu-plugins
+  changed_when: false
+
+- name: WordPress | Deploy security hardening mu-plugin
+  ansible.builtin.command:
+    argv:
+      - k3s
+      - kubectl
+      - exec
+      - deployment/wordpress
+      - --namespace
+      - wordpress
+      - --container
+      - wordpress-fpm
+      - --
+      - sh
+      - -c
+      - |
+        cat > /var/www/html/wp-content/mu-plugins/security-hardening.php << 'PHPEOF'
+        <?php
+        /**
+         * Security hardening – managed by Ansible (blog_wordpress).
+         * Hides version info and restricts information-disclosure endpoints.
+         */
+
+        // Remove WordPress version from <meta name="generator"> and RSS feeds
+        remove_action('wp_head', 'wp_generator');
+        add_filter('the_generator', '__return_empty_string');
+
+        // Remove Link: <wp-json> discovery header and <link> tag in <head>
+        remove_action('template_redirect', 'rest_output_link_header', 11);
+        remove_action('wp_head', 'rest_output_link_tag');
+
+        // Remove legacy RSD and Windows Live Writer links from <head>
+        remove_action('wp_head', 'rsd_link');
+        remove_action('wp_head', 'wlwmanifest_link');
+
+        // Hide Yoast SEO version from HTML comment
+        add_filter('wpseo_debug_markers', '__return_false');
+
+        // Block REST API user enumeration for unauthenticated requests
+        add_filter('rest_endpoints', function($endpoints) {
+            if (!is_user_logged_in()) {
+                unset($endpoints['/wp/v2/users']);
+                unset($endpoints['/wp/v2/users/(?P<id>[\d]+)']);
+            }
+            return $endpoints;
+        });
+        PHPEOF
+        chown www-data:www-data /var/www/html/wp-content/mu-plugins/security-hardening.php
+  changed_when: true
+
+
+# -----------------------------------------------------------------------------
 # Plugins
 # -----------------------------------------------------------------------------
 - name: WordPress | Install and activate plugins

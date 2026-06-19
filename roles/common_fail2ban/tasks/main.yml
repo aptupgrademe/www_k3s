@@ -29,6 +29,19 @@
     mode: "0644"
   notify: restart fail2ban
 
+- name: Fail2Ban | Deploy nginx-k3s filters (parse containerd-prefixed access logs)
+  ansible.builtin.template:
+    src: "filter.d/{{ item }}.j2"
+    dest: "/etc/fail2ban/filter.d/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - nginx-k3s-wp-login.conf
+    - nginx-k3s-scanner.conf
+    - nginx-k3s-bad-paths.conf
+  notify: restart fail2ban
+
 - name: Fail2Ban | Deploy jail.local
   ansible.builtin.template:
     src: jail.local.j2

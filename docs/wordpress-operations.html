@@ -274,6 +274,7 @@
   <a href="#updates">Updates</a>
   <a href="#backup">Backup &amp; Restore</a>
   <a href="#troubleshooting">Troubleshooting</a>
+  <a href="#performance">Performance</a>
   <a href="#sicherheit">Security</a>
 </nav>
 
@@ -281,7 +282,7 @@
 <main>
 
 <h1>WordPress – Operations&shy;Guide</h1>
-<p class="subtitle">WordPress 7.0 on K3s (AlmaLinux 9) &middot; Last updated: May 2026</p>
+<p class="subtitle">WordPress 7.0 on K3s (AlmaLinux 9) &middot; Last updated: June 2026</p>
 
 <!-- ─────────────────────────── OVERVIEW ─────────────────────────────── -->
 <section id="ueberblick">
@@ -822,6 +823,13 @@ k3s kubectl exec -n wordpress deployment/mariadb -- \
   </li>
 </ol>
 
+<div class="callout callout-success">
+  <strong>Deployment Verification (blog_verify)</strong>
+  At the end of <code>blog.yml</code> the role <code>blog_verify</code> automatically runs
+  26 smoke tests: services, K8s pods, HTTPS reachability, security headers,
+  performance checks. Failing tests are reported as Ansible errors.
+</div>
+
 <h3>Idempotent Re-run (e.g. after config change)</h3>
 <pre><code>ansible-playbook blog.yml --limit www.apt-upgrade.me --ask-vault-pass</code></pre>
 
@@ -1093,6 +1101,24 @@ k3s kubectl logs -n wordpress deployment/wordpress -c wordpress-fpm -f | grep -i
   with <code>defaultMode: 0444</code>
   (the exporter runs as user <code>nobody</code> – 0600 would be permission denied).
 </div>
+
+<h3>Grafana Alerting</h3>
+<p>
+  Grafana is set up with 5 pre-configured alert rules and an email contact point
+  (configured by <code>common_grafana</code>, SMTP credentials from <code>common_msmtp</code>):
+</p>
+<table>
+  <tr><th>Alert Rule</th><th>Threshold</th><th>Description</th></tr>
+  <tr><td>Disk root &gt; 80 %</td><td>80 %</td><td>Root filesystem utilization</td></tr>
+  <tr><td>Data partition &gt; 80 %</td><td>80 %</td><td>Utilization of /srv or /var</td></tr>
+  <tr><td>RAM &gt; 90 %</td><td>90 %</td><td>Host RAM utilization</td></tr>
+  <tr><td>CPU &gt; 85 %</td><td>85 %</td><td>CPU utilization (1-minute average)</td></tr>
+  <tr><td>Node Exporter unreachable</td><td>–</td><td>Node Exporter is not responding</td></tr>
+</table>
+<p>
+  Notifications are sent to the address stored in <code>vault.yml</code> (<code>email</code>)
+  via the contact point <code>email-admin</code>.
+</p>
 
 <h3>Prometheus Scrape Targets</h3>
 <pre><code># Check active scrape targets (in browser or curl)
@@ -1368,6 +1394,86 @@ k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
 </section>
 
 <!-- ─────────────────────────── SECURITY ───────────────────────────── -->
+<!-- ─────────────────────────── PERFORMANCE ──────────────────────────── -->
+<section id="performance">
+<h2>Performance</h2>
+
+<h3>Optimisation Layers</h3>
+<table>
+  <tr><th>Layer</th><th>Measure</th><th>Configuration</th></tr>
+  <tr>
+    <td>TCP/Kernel</td>
+    <td>BBR congestion control, tcp_slow_start_after_idle=0, tcp_fastopen=3, optimised timeouts</td>
+    <td><code>common_sysctl</code> → <code>/etc/sysctl.d/99-webserver.conf</code></td>
+  </tr>
+  <tr>
+    <td>PHP OPcache</td>
+    <td><code>validate_timestamps=0</code> (no per-request file checks), 10,000 cached files, 16 MB interned strings</td>
+    <td><code>blog_k3s_deploy</code> → ConfigMap <code>wordpress-php-config</code></td>
+  </tr>
+  <tr>
+    <td>PHP-FPM Pool</td>
+    <td>max_children=10, max_requests=500 (worker recycling to prevent memory leaks)</td>
+    <td><code>blog_k3s_deploy</code> → ConfigMap <code>wordpress-fpm-pool-config</code></td>
+  </tr>
+  <tr>
+    <td>MariaDB InnoDB</td>
+    <td>buffer_pool=384 MB, innodb_flush_log_at_trx_commit=2, max_connections=50, K8s limit 768 Mi</td>
+    <td><code>blog_k3s_deploy</code> → <code>mariadb-deployment.yml.j2</code></td>
+  </tr>
+  <tr>
+    <td>nginx Sidecar</td>
+    <td>Gzip for HTML/CSS/JS/JSON/fonts (level 6), gzip_vary for CDN compatibility</td>
+    <td><code>blog_k3s_deploy</code> → ConfigMap <code>wordpress-nginx-config</code></td>
+  </tr>
+  <tr>
+    <td>Realpath Cache</td>
+    <td>TTL 3600 s instead of 120 s – PHP resolves file paths less frequently</td>
+    <td><code>blog_k3s_deploy</code> → ConfigMap <code>wordpress-php-config</code></td>
+  </tr>
+</table>
+
+<h3>TCP BBR</h3>
+<p>
+  BBR (Bottleneck Bandwidth and RTT) replaces the Linux default CUBIC as TCP congestion
+  control algorithm. For a blog with sporadic visitors, <code>tcp_slow_start_after_idle=0</code>
+  is especially important: by default Linux reduces the TCP window after an idle period,
+  forcing a slow-start for every new visitor. Setting this to 0 eliminates that delay.
+</p>
+<pre><code># Verify active congestion control
+sysctl net.ipv4.tcp_congestion_control</code></pre>
+
+<h3>OPcache – validate_timestamps=0</h3>
+<div class="callout callout-warn">
+  <strong>Pod restart required after plugin updates</strong>
+  With <code>validate_timestamps=0</code> PHP never checks whether files on disk have changed.
+  This is the biggest performance gain (~10–30 ms per request), but means: after manual
+  plugin updates via the WordPress admin panel, the pod must be restarted for PHP to
+  pick up the new code.
+  <pre style="margin-top:8px"><code>k3s kubectl rollout restart deployment/wordpress -n wordpress</code></pre>
+  The Ansible playbook performs this restart automatically on every run.
+</div>
+
+<h3>MariaDB Buffer Pool</h3>
+<p>
+  The InnoDB buffer pool (384 MB) keeps frequently read database pages in RAM.
+  The current hit rate is &gt;99% — the entire WordPress database fits in the buffer pool.
+  Adjust the value in <code>mariadb-deployment.yml.j2</code> as the database grows
+  (increase the K8s limit accordingly).
+</p>
+<pre><code># Check buffer pool hit rate (should be > 99%)
+k3s kubectl exec deployment/mariadb -n wordpress -- \
+  mysql -uroot -p"$(k3s kubectl get secret wordpress-secrets -n wordpress \
+    -o jsonpath='{.data.db-root-password}' | base64 -d)" \
+  -e "SELECT ROUND((1 - Innodb_buffer_pool_reads/Innodb_buffer_pool_read_requests)*100, 2)
+      AS hit_rate_pct
+      FROM (SELECT VARIABLE_VALUE AS Innodb_buffer_pool_reads FROM information_schema.GLOBAL_STATUS
+            WHERE VARIABLE_NAME='Innodb_buffer_pool_reads') r,
+           (SELECT VARIABLE_VALUE AS Innodb_buffer_pool_read_requests FROM information_schema.GLOBAL_STATUS
+            WHERE VARIABLE_NAME='Innodb_buffer_pool_read_requests') rr;"</code></pre>
+</section>
+
+<!-- ─────────────────────────── SECURITY ─────────────────────────────── -->
 <section id="sicherheit">
 <h2>Security</h2>
 
@@ -1385,6 +1491,11 @@ k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
     <td><code>common_ssh</code>, <code>common_fail2ban</code></td>
   </tr>
   <tr>
+    <td>HTTP – Fail2Ban jails</td>
+    <td><code>nginx-k3s-wp-login</code>: blocks WP login brute-force (10 attempts in 600 s); <code>nginx-k3s-scanner</code>: blocks scanners (20× 40x errors in 60 s); <code>nginx-k3s-bad-paths</code>: blocks webshell/exploit paths (/.env, /.git/, /phpinfo.php, 2 attempts, 24 h ban); log path: containerd logs at <code>/var/log/pods/ingress-nginx_*/nginx-ingress/0.log</code></td>
+    <td><code>common_fail2ban</code></td>
+  </tr>
+  <tr>
     <td>HTTP – Rate Limiting</td>
     <td>wp-login.php: 5 r/s per IP, burst 5</td>
     <td><code>common_k3s</code> (nginx-ingress Helm values + ingress annotations)</td>
@@ -1398,6 +1509,16 @@ k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
     <td>HTTP – Security Headers</td>
     <td>HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy</td>
     <td><code>blog_k3s_deploy</code> (ingress location-snippets)</td>
+  </tr>
+  <tr>
+    <td>HTTP – Version Hiding</td>
+    <td>nginx version hidden (<code>server-tokens: false</code>), PHP version hidden (<code>fastcgi_hide_header X-Powered-By</code>), WordPress generator meta tag removed, Yoast version comment removed</td>
+    <td><code>common_k3s</code>, <code>blog_k3s_deploy</code>, <code>blog_wordpress</code> (mu-plugin)</td>
+  </tr>
+  <tr>
+    <td>HTTP – Information Disclosure</td>
+    <td><code>/readme.html</code> and <code>/license.txt</code> blocked, <code>?author=</code> parameter → 403 (username enumeration), REST API <code>/wp/v2/users</code> disabled for unauthenticated users</td>
+    <td><code>blog_k3s_deploy</code> (nginx), <code>blog_wordpress</code> (mu-plugin)</td>
   </tr>
   <tr>
     <td>WordPress</td>
@@ -1470,6 +1591,12 @@ k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
     <td>IPv4/IPv6 in one ruleset</td>
     <td><code>table inet</code> covers both protocol stacks —
         no separate ip6tables required</td>
+  </tr>
+  <tr>
+    <td>K3s mandatory exceptions</td>
+    <td>INPUT: pods → port 6443 (K3s API) and 10250 (kubelet/metrics-server);
+        OUTPUT: new connections to the pod CIDR (kubelet liveness/readiness probes).
+        Without these rules cert-manager, coredns, and metrics-server crash.</td>
   </tr>
 </table>
 <pre><code># Monitor blocked packets live

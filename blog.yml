@@ -85,3 +85,4 @@
     - common_dnf_automatic  # Automatic security-only updates via dnf-automatic
     - common_rkhunter       # Rootkit detection with daily scan
     - common_auditd         # Linux Audit Daemon with security-relevant rules
+    - blog_verify           # Post-deployment smoke tests (services, K8s, HTTPS, security, performance)

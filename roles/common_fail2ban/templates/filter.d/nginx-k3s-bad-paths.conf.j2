@@ -1,0 +1,12 @@
+# Managed by Ansible – do not edit manually
+# Zero-tolerance: bans IPs that request known-malicious paths.
+# These paths are never legitimately accessed on this server.
+# Log source: nginx-ingress (F5) access log, containerd-prefixed format.
+#
+# Covered: env/git/AWS credential files, PHP info, WP-config backups,
+#          CGI bins, phpMyAdmin, web shells, SpringBoot actuator, routers.
+
+[Definition]
+failregex = ^\S+\s+stdout\s+F\s+<HOST>\s+-\s+-\s+\[.+?\]\s+"\S+\s+(?:/\.env\b|/\.git/|/\.aws/|/phpinfo\.php|/wp-config\.php\.bak|/wp-config\.bak|/wp-config\.php~|/cgi-bin/|/phpmyadmin|/pma/|/adminer|/shell\.php|/c99\.php|/alfa[^/ ]*\.php|/webshell|/setup\.php|/install\.php|/xmlrpc\.php|/boaform/|/actuator/|/owa/|/remote/fgt_lang|/GponForm/)
+
+ignoreregex =

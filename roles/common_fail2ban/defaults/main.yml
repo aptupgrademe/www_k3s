@@ -6,3 +6,8 @@ fail2ban_maxretry:    5    # allowed failures before ban
 # Application-specific jails – enable per play via vars:
 fail2ban_jail_nextcloud: false
 fail2ban_jail_wordpress: false
+
+# Extra IPs/CIDRs to never ban (e.g. Ansible controller, home IP).
+# Set in host_vars/<host>/vars.yml – never put secrets here.
+# Example: fail2ban_ignoreip_extra: "1.2.3.4 5.6.7.0/24"
+fail2ban_ignoreip_extra: ""

@@ -1,0 +1,4 @@
+---
+verify_cert_min_days: 30
+verify_http_timeout: 15
+verify_f2ban_min_jails: 2

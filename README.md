@@ -67,8 +67,8 @@ Internet
 - Kubernetes Secrets for all credentials (Ansible Vault encrypted locally)
 
 ### Security
-- **nftables** hardened ruleset (`table inet`): default DROP, portscan detection, ICMP rate limiting — covers IPv4 and IPv6 in a single ruleset
-- **Fail2Ban** writes banned IPs directly into nftables sets (`banned4`/`banned6`) with automatic timeout-based expiry
+- **nftables** hardened ruleset (`table inet`): default DROP, portscan detection, ICMP rate limiting — covers IPv4 and IPv6 in a single ruleset; includes mandatory K3s exceptions (pod→API port 6443, kubelet port 10250, OUTPUT to pod CIDR for liveness probes)
+- **Fail2Ban** writes banned IPs directly into nftables sets (`banned4`/`banned6`) with automatic timeout-based expiry; includes HTTP-level jails for nginx ingress logs (`nginx-k3s-wp-login`, `nginx-k3s-scanner`, `nginx-k3s-bad-paths`)
 - **SELinux** enforcing with `container_file_t` contexts for HostPath volumes
 - **auditd** with hardening rules (sudo, SSH, cron, kernel modules)
 - **rkhunter** daily rootkit scan
@@ -81,6 +81,7 @@ Internet
   - Node Exporter Full (ID 1860) – CPU, RAM, Disk, Network
   - MySQL Overview (ID 7362) – MariaDB queries, InnoDB, slow queries
   - PHP-FPM (ID 4912) – FPM processes, request queue, slow requests
+- **Grafana Alerting** with 5 pre-configured alert rules (disk root >80%, data partition >80%, RAM >90%, CPU >85%, Node Exporter unreachable) and email notification via SMTP
 - MariaDB slow query log (threshold: 1 second)
 - PHP-FPM slow log (threshold: 5 seconds)
 - Grafana accessible at `https://<hostname>/grafana/`
@@ -235,14 +236,15 @@ Store the vault password in a password manager.
 | `common_firewall` | nftables hardening (table inet, banned4/banned6 sets) |
 | `common_ssh` | SSH hardening (port, key-only) |
 | `common_prometheus` | Prometheus metrics collector |
-| `common_grafana` | Grafana with pre-imported dashboards |
+| `common_grafana` | Grafana with pre-imported dashboards, alerting, SMTP |
 | `common_node_exporter` | Host metrics exporter |
 | `common_mysqld_exporter` | MariaDB metrics exporter (host service) |
-| `common_fail2ban` | SSH brute-force protection |
+| `common_fail2ban` | SSH and HTTP brute-force protection |
 | `common_msmtp` | SMTP relay for system notifications |
 | `common_auditd` | Linux audit daemon |
 | `common_rkhunter` | Rootkit detection |
 | `common_dnf_automatic` | Automatic security updates |
+| `common_sysctl` | Kernel tuning (BBR, TCP fast open, optimised timeouts) |
 | `next_packages` | Host packages for Nextcloud scenario |
 | `next_mariadb` | Host MariaDB setup for Nextcloud |
 | `next_redis` | Host Redis setup for Nextcloud |
@@ -253,6 +255,8 @@ Store the vault password in a password manager.
 | `blog_selinux` | SELinux contexts for WordPress HostPath volumes |
 | `blog_k3s_deploy` | WordPress + MariaDB Kubernetes manifests |
 | `blog_wordpress` | WordPress install and plugin setup via WP-CLI |
+| `blog_verify` | Post-deployment smoke tests for WordPress (26 checks) |
+| `nextcloud_verify` | Post-deployment smoke tests for Nextcloud (31 checks) |
 
 ---
 

@@ -2,13 +2,20 @@
 # =============================================================================
 # Fail2Ban – jail.local  (K3s mode)
 #
-# HTTP-level protection (WordPress login, Nextcloud login, bot scanning) is
-# handled by nginx-ingress rate-limiting annotations in the Ingress resources.
-# Fail2Ban on the host is responsible for SSH brute-force protection only.
-#
 # Banned IPs are written directly into the nftables sets banned4/banned6
 # (defined in /etc/nftables.conf by common_firewall) using the custom action
 # nftables-banned-sets.  The sets use native nftables timeout for auto-expiry.
+#
+# Jails:
+#   sshd              – SSH brute-force (systemd backend)
+#   nginx-k3s-wp-login    – repeated POST /wp-login.php
+#   nginx-k3s-scanner     – repeated 403/404 responses (directory scanners)
+#   nginx-k3s-bad-paths   – known-malicious paths (/.env, webshells, etc.)
+#
+# HTTP jails read from:
+#   /var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/0.log
+# (containerd-prefixed nginx access log, real client IPs visible)
+# backend = polling because the pod UID in the path changes on pod restarts.
 # =============================================================================
 
 [DEFAULT]
@@ -21,8 +28,8 @@ backend  = systemd
 banaction     = nftables-banned-sets[nftset=banned4]
 banaction_allports = nftables-banned-sets[nftset=banned4]
 
-# Ignore localhost and private RFC-1918 ranges
-ignoreip = 127.0.0.1/8 ::1 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
+# Ignore localhost, RFC-1918 ranges, and any extra IPs (e.g. Ansible controller)
+ignoreip = 127.0.0.1/8 ::1 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16{% if fail2ban_ignoreip_extra %} {{ fail2ban_ignoreip_extra }}{% endif %}
 
 
 # -----------------------------------------------------------------------------
@@ -34,3 +41,53 @@ port     = {{ ansible_port | default(10022) }}
 logpath  = %(sshd_log)s
 backend  = systemd
 maxretry = 3
+
+
+# -----------------------------------------------------------------------------
+# HTTP – WordPress login brute force
+# Rate-limiting at nginx-ingress (5 r/s) already slows attackers.
+# Fail2ban bans IPs that keep trying despite the rate limit.
+# maxretry=10 over 10 min to avoid false positives from password managers
+# trying multiple accounts.
+# -----------------------------------------------------------------------------
+[nginx-k3s-wp-login]
+enabled  = true
+port     = 80,443
+filter   = nginx-k3s-wp-login
+logpath  = /var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/0.log
+backend  = polling
+maxretry = 10
+findtime = 600
+
+
+# -----------------------------------------------------------------------------
+# HTTP – vulnerability/directory scanner detection
+# 20 blocked requests (403/404) within 60 s = automated scanner → ban.
+# Threshold is intentionally generous to avoid false positives from
+# legitimate crawlers following dead links.
+# -----------------------------------------------------------------------------
+[nginx-k3s-scanner]
+enabled  = true
+port     = 80,443
+filter   = nginx-k3s-scanner
+logpath  = /var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/0.log
+backend  = polling
+maxretry = 20
+findtime = 60
+
+
+# -----------------------------------------------------------------------------
+# HTTP – known-malicious path access
+# These paths (.env, webshells, phpMyAdmin, etc.) have no legitimate use.
+# Ban immediately after 2 hits (one hit could be a coincidence, two is intent).
+# bantime overrides DEFAULT to 24 h regardless of fail2ban_bantime.
+# -----------------------------------------------------------------------------
+[nginx-k3s-bad-paths]
+enabled  = true
+port     = 80,443
+filter   = nginx-k3s-bad-paths
+logpath  = /var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/0.log
+backend  = polling
+maxretry = 2
+findtime = 3600
+bantime  = 86400

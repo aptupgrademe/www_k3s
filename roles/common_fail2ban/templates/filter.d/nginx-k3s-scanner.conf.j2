@@ -1,0 +1,10 @@
+# Managed by Ansible – do not edit manually
+# Detects directory/vulnerability scanners by counting repeated 403/404 responses.
+# Bots hammering non-existent or explicitly blocked paths are caught here.
+# Log source: nginx-ingress (F5) access log, containerd-prefixed format.
+
+[Definition]
+failregex = ^\S+\s+stdout\s+F\s+<HOST>\s+-\s+-\s+\[.+?\]\s+"\S+\s+\S+\s+HTTP/\S+"\s+40[34]\s+\d+
+
+# Ignore internal K3s pod traffic (10.42.x.x pod CIDR)
+ignoreregex = ^\S+\s+stdout\s+F\s+10\.42\.\d+\.\d+

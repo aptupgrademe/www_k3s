@@ -16,6 +16,9 @@ controller:
 
   config:
     entries:
+      # --- Hide nginx version from Server header ---
+      server-tokens: "false"
+
       # --- TLS hardening ---
       # Only TLS 1.2 and 1.3; disable legacy protocols.
       ssl-protocols: "TLSv1.2 TLSv1.3"

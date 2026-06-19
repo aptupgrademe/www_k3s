@@ -1,0 +1,436 @@
+---
+# =============================================================================
+# Role: nextcloud_verify
+# Purpose: Post-deployment smoke tests for the Nextcloud stack.
+#          All checks run regardless of individual failures (failed_when: false).
+#          Results are displayed as a colored terminal report.
+#          The play fails at the end if any CRITICAL check did not pass.
+# =============================================================================
+
+- name: Verify | Set report color codes
+  ansible.builtin.set_fact:
+    _g: "\x1b[32m"
+    _r: "\x1b[31m"
+    _y: "\x1b[33m"
+    _h: "\x1b[1;36m"
+    _b: "\x1b[1m"
+    _z: "\x1b[0m"
+    _ok: "\x1b[32m✓\x1b[0m"
+    _fail: "\x1b[31m✗\x1b[0m"
+
+
+# =============================================================================
+# BLOCK 1 – SYSTEMDIENSTE
+# =============================================================================
+
+- name: Verify | nftables – service active?
+  ansible.builtin.command: systemctl is-active nftables
+  register: _v_nft_svc
+  changed_when: false
+  failed_when: false
+
+- name: Verify | nftables – inet filter table loaded?
+  ansible.builtin.command: nft list tables
+  register: _v_nft_tables
+  changed_when: false
+  failed_when: false
+
+- name: Verify | nftables – policy drop present?
+  ansible.builtin.shell: nft list chain inet filter input 2>/dev/null | grep -c 'policy drop'
+  register: _v_nft_policy
+  changed_when: false
+  failed_when: false
+
+- name: Verify | nftables – banned4 set exists?
+  ansible.builtin.command: nft list set inet filter banned4
+  register: _v_nft_banned4
+  changed_when: false
+  failed_when: false
+
+- name: Verify | fail2ban – service active?
+  ansible.builtin.command: systemctl is-active fail2ban
+  register: _v_f2b_svc
+  changed_when: false
+  failed_when: false
+
+- name: Verify | fail2ban – jail status
+  ansible.builtin.command: fail2ban-client status
+  register: _v_f2b_status
+  changed_when: false
+  failed_when: false
+
+- name: Verify | k3s – service active?
+  ansible.builtin.command: systemctl is-active k3s
+  register: _v_k3s_svc
+  changed_when: false
+  failed_when: false
+
+- name: Verify | mariadb – host service active?
+  ansible.builtin.command: systemctl is-active mariadb
+  register: _v_mariadb_svc
+  changed_when: false
+  failed_when: false
+
+- name: Verify | redis – host service active?
+  ansible.builtin.command: systemctl is-active redis
+  register: _v_redis_svc
+  changed_when: false
+  failed_when: false
+
+- name: Verify | auditd – service active?
+  ansible.builtin.command: systemctl is-active auditd
+  register: _v_auditd_svc
+  changed_when: false
+  failed_when: false
+
+- name: Verify | SELinux – enforcing mode?
+  ansible.builtin.command: getenforce
+  register: _v_selinux
+  changed_when: false
+  failed_when: false
+
+
+# =============================================================================
+# BLOCK 2 – KUBERNETES WORKLOADS
+# =============================================================================
+
+- name: Verify | K8s – nextcloud namespace pods
+  ansible.builtin.shell: |
+    k3s kubectl get pods -n nextcloud --no-headers 2>/dev/null | \
+      awk '{print $3}' | sort | uniq -c | awk '{print $2": "$1"x"}'
+  register: _v_nc_pods
+  changed_when: false
+  failed_when: false
+
+- name: Verify | K8s – collabora pod running?
+  ansible.builtin.shell: |
+    k3s kubectl get pods -n nextcloud -l app=collabora --no-headers 2>/dev/null | \
+      awk '{print $3}' | sort | uniq -c | awk '{print $2": "$1"x"}'
+  register: _v_collabora_pods
+  changed_when: false
+  failed_when: false
+
+- name: Verify | K8s – ingress-nginx pods
+  ansible.builtin.shell: |
+    k3s kubectl get pods -n ingress-nginx --no-headers 2>/dev/null | \
+      awk '{print $3}' | sort | uniq -c | awk '{print $2": "$1"x"}'
+  register: _v_ingress_pods
+  changed_when: false
+  failed_when: false
+
+- name: Verify | K8s – cert-manager pods
+  ansible.builtin.shell: |
+    k3s kubectl get pods -n cert-manager --no-headers 2>/dev/null | \
+      awk '{print $3}' | sort | uniq -c | awk '{print $2": "$1"x"}'
+  register: _v_cm_pods
+  changed_when: false
+  failed_when: false
+
+- name: Verify | K8s – pods in error state (any namespace)?
+  ansible.builtin.shell: |
+    k3s kubectl get pods -A --no-headers 2>/dev/null | \
+      grep -E 'CrashLoopBackOff|OOMKilled|Error' | awk '{print $1"/"$2}' || true
+  register: _v_error_pods
+  changed_when: false
+  failed_when: false
+
+
+# =============================================================================
+# BLOCK 3 – HTTPS / NEXTCLOUD (local: delegate_to localhost)
+# =============================================================================
+
+- name: Verify | HTTPS – main page (TLS + HTTP 200)
+  ansible.builtin.uri:
+    url: "{{ nextcloud_url }}/"
+    method: GET
+    validate_certs: true
+    timeout: "{{ verify_http_timeout }}"
+    status_code: 200
+    return_content: false
+  register: _v_https
+  failed_when: false
+  delegate_to: localhost
+  become: false
+
+- name: Verify | HTTPS – /status.php (Nextcloud health endpoint)
+  ansible.builtin.uri:
+    url: "{{ nextcloud_url }}/status.php"
+    method: GET
+    validate_certs: true
+    timeout: "{{ verify_http_timeout }}"
+    status_code: 200
+    return_content: true
+  register: _v_status
+  failed_when: false
+  delegate_to: localhost
+  become: false
+
+- name: Verify | HTTPS – /login erreichbar
+  ansible.builtin.uri:
+    url: "{{ nextcloud_url }}/login"
+    method: GET
+    validate_certs: true
+    timeout: "{{ verify_http_timeout }}"
+    status_code: 200
+    return_content: false
+  register: _v_login
+  failed_when: false
+  delegate_to: localhost
+  become: false
+
+
+# =============================================================================
+# BLOCK 4 – SECURITY BLOCKING
+# Run via curl on the server itself (--resolve → 127.0.0.1).
+# Source IP is 127.0.0.1, always in fail2ban ignoreip → no self-ban.
+# =============================================================================
+
+- name: Verify | Security – /.env blocked?
+  ansible.builtin.shell: |
+    curl -sk --max-time {{ verify_http_timeout }} \
+      --resolve "{{ nextcloud_hostname }}:443:127.0.0.1" \
+      -o /dev/null -w "%{http_code}" \
+      "https://{{ nextcloud_hostname }}/.env" 2>/dev/null || echo 200
+  register: _v_env
+  changed_when: false
+  failed_when: false
+
+- name: Verify | Security – /config/config.php blocked?
+  ansible.builtin.shell: |
+    curl -sk --max-time {{ verify_http_timeout }} \
+      --resolve "{{ nextcloud_hostname }}:443:127.0.0.1" \
+      -o /dev/null -w "%{http_code}" \
+      "https://{{ nextcloud_hostname }}/config/config.php" 2>/dev/null || echo 200
+  register: _v_config
+  changed_when: false
+  failed_when: false
+
+- name: Verify | Security – /data/ blocked?
+  ansible.builtin.shell: |
+    curl -sk --max-time {{ verify_http_timeout }} \
+      --resolve "{{ nextcloud_hostname }}:443:127.0.0.1" \
+      -o /dev/null -w "%{http_code}" \
+      "https://{{ nextcloud_hostname }}/data/" 2>/dev/null || echo 200
+  register: _v_data
+  changed_when: false
+  failed_when: false
+
+
+# =============================================================================
+# BLOCK 5 – NEXTCLOUD-SPEZIFISCH (remote: occ via kubectl exec)
+# =============================================================================
+
+- name: Verify | Nextcloud – OCC status
+  ansible.builtin.shell: |
+    k3s kubectl exec deployment/nextcloud -n nextcloud \
+      --container nextcloud-fpm -- \
+      php /var/www/html/occ status --output=json 2>/dev/null || echo '{}'
+  register: _v_occ_status
+  changed_when: false
+  failed_when: false
+
+- name: Verify | Nextcloud – Background-Job-Modus (soll cron sein)
+  ansible.builtin.shell: |
+    k3s kubectl exec deployment/nextcloud -n nextcloud \
+      --container nextcloud-fpm -- \
+      php /var/www/html/occ config:app:get core backgroundjobs_mode 2>/dev/null || echo 'unknown'
+  register: _v_bg_mode
+  changed_when: false
+  failed_when: false
+
+- name: Verify | Performance – Redis erreichbar vom Nextcloud-Pod?
+  ansible.builtin.shell: |
+    k3s kubectl exec deployment/nextcloud -n nextcloud \
+      --container nextcloud-fpm -- \
+      php -r "
+        \$r = new Redis();
+        echo \$r->connect('redis', 6379, 2) ? 'ok' : 'fail';
+      " 2>/dev/null || echo "fail"
+  register: _v_redis
+  changed_when: false
+  failed_when: false
+
+- name: Verify | Performance – MariaDB (Host) erreichbar vom Nextcloud-Pod?
+  ansible.builtin.shell: |
+    k3s kubectl exec deployment/nextcloud -n nextcloud \
+      --container nextcloud-fpm -- \
+      php -r "
+        \$fp = @fsockopen('mariadb', 3306, \$e, \$s, 3);
+        echo \$fp ? 'ok' : 'fail';
+        if (\$fp) fclose(\$fp);
+      " 2>/dev/null || echo "fail"
+  register: _v_mariadb_pod
+  changed_when: false
+  failed_when: false
+
+- name: Verify | Performance – TCP BBR aktiv?
+  ansible.builtin.command: sysctl -n net.ipv4.tcp_congestion_control
+  register: _v_bbr
+  changed_when: false
+  failed_when: false
+
+
+# =============================================================================
+# COMPUTE BOOLEAN RESULTS
+# =============================================================================
+
+- name: Verify | Compute pass/fail for each check
+  ansible.builtin.set_fact:
+    # Dienste
+    _r_nft_svc:        "{{ _v_nft_svc.stdout | default('') == 'active' }}"
+    _r_nft_tables:     "{{ 'inet filter' in (_v_nft_tables.stdout | default('')) }}"
+    _r_nft_policy:     "{{ (_v_nft_policy.stdout | default('0') | trim | int) > 0 }}"
+    _r_nft_banned4:    "{{ _v_nft_banned4.rc | default(1) == 0 }}"
+    _r_f2b_svc:        "{{ _v_f2b_svc.stdout | default('') == 'active' }}"
+    _r_f2b_jails:      "{{ (_v_f2b_status.stdout | default('') | regex_search('Number of jail:\\s*(\\d+)', '\\1') | first | default('0') | int) >= verify_f2ban_min_jails }}"
+    _r_k3s:            "{{ _v_k3s_svc.stdout | default('') == 'active' }}"
+    _r_mariadb_svc:    "{{ _v_mariadb_svc.stdout | default('') == 'active' }}"
+    _r_redis_svc:      "{{ _v_redis_svc.stdout | default('') == 'active' }}"
+    _r_auditd:         "{{ _v_auditd_svc.stdout | default('') == 'active' }}"
+    _r_selinux:        "{{ _v_selinux.stdout | default('') == 'Enforcing' }}"
+    # K8s
+    _r_nc_pods:        "{{ 'Running' in (_v_nc_pods.stdout | default('')) }}"
+    _r_collabora:      "{{ 'Running' in (_v_collabora_pods.stdout | default('')) }}"
+    _r_ingress:        "{{ 'Running' in (_v_ingress_pods.stdout | default('')) }}"
+    _r_certmgr:        "{{ 'Running' in (_v_cm_pods.stdout | default('')) }}"
+    _r_noerror:        "{{ (_v_error_pods.stdout | default('') | trim) == '' }}"
+    # HTTPS
+    _r_https:          "{{ _v_https.status | default(0) == 200 }}"
+    _r_tls:            "{{ _v_https.status | default(0) == 200 }}"
+    _r_hsts:           "{{ 'strict-transport-security' in (_v_https.headers | default({})) }}"
+    _r_server:         "{{ 'nginx/' not in (_v_https.headers.server | default('')) }}"
+    _r_login:          "{{ _v_login.status | default(0) == 200 }}"
+    # Status / installed
+    _r_installed:      "{{ (_v_status.content | default('') | from_json).installed | default(false) | bool }}"
+    _r_maintenance:    "{{ not ((_v_status.content | default('') | from_json).maintenance | default(false) | bool) }}"
+    # Security (curl via 127.0.0.1 → stdout is the HTTP status code)
+    _r_env:            "{{ _v_env.stdout | default('200') | trim | int in [400, 401, 403, 404, 444] }}"
+    _r_config:         "{{ _v_config.stdout | default('200') | trim | int in [400, 401, 403, 404, 444] }}"
+    _r_data:           "{{ _v_data.stdout | default('200') | trim | int in [400, 401, 403, 404, 444] }}"
+    # Nextcloud
+    _r_occ:            "{{ (_v_occ_status.stdout | default('{}') | from_json).installed | default(false) | bool }}"
+    _r_bg_mode:        "{{ (_v_bg_mode.stdout | default('') | trim) == 'cron' }}"
+    # Performance
+    _r_redis:          "{{ (_v_redis.stdout | default('') | trim) == 'ok' }}"
+    _r_mariadb_pod:    "{{ (_v_mariadb_pod.stdout | default('') | trim) == 'ok' }}"
+    _r_bbr:            "{{ (_v_bbr.stdout | default('') | trim) == 'bbr' }}"
+
+    # Detail strings für den Report
+    _d_f2b_jails:      "{{ _v_f2b_status.stdout | default('') | regex_search('Jail list:\\s*(.*)', '\\1') | first | default('?') | trim }}"
+    _d_nc_pods:        "{{ _v_nc_pods.stdout | default('?') | trim | replace('\n', '  ') }}"
+    _d_collabora:      "{{ _v_collabora_pods.stdout | default('?') | trim | replace('\n', '  ') }}"
+    _d_error_pods:     "{{ _v_error_pods.stdout | default('') | trim | replace('\n', ', ') | default('none', true) }}"
+    _d_server_hdr:     "{{ _v_https.headers.server | default('(not set)') }}"
+    _d_nc_version:     "{{ (_v_status.content | default('{}') | from_json).versionstring | default('?') }}"
+    _d_bg_mode:        "{{ _v_bg_mode.stdout | default('?') | trim }}"
+
+
+# =============================================================================
+# COUNT
+# =============================================================================
+
+- name: Verify | Count passing checks
+  ansible.builtin.set_fact:
+    _pass_count: >-
+      {{
+        [_r_nft_svc, _r_nft_tables, _r_nft_policy, _r_nft_banned4,
+         _r_f2b_svc, _r_f2b_jails, _r_k3s, _r_mariadb_svc, _r_redis_svc,
+         _r_auditd, _r_selinux,
+         _r_nc_pods, _r_collabora, _r_ingress, _r_certmgr, _r_noerror,
+         _r_https, _r_tls, _r_hsts, _r_server, _r_login,
+         _r_installed, _r_maintenance,
+         _r_env, _r_config, _r_data,
+         _r_occ, _r_bg_mode, _r_redis, _r_mariadb_pod, _r_bbr]
+        | select | list | length
+      }}
+    _total_count: 31
+
+
+# =============================================================================
+# COLORED REPORT
+# =============================================================================
+
+- name: Verify | Print report
+  ansible.builtin.debug:
+    msg: |
+
+      {{ _h }}╔══════════════════════════════════════════════════════════╗{{ _z }}
+      {{ _h }}║     DEPLOYMENT VERIFICATION  ·  nextcloud-k3s.yml       ║{{ _z }}
+      {{ _h }}╚══════════════════════════════════════════════════════════╝{{ _z }}
+
+      {{ _h }}── System Services ───────────────────────────────────────────{{ _z }}
+        {{ _ok if _r_nft_svc | bool else _fail }}  nftables service             {{ 'active' if _r_nft_svc | bool else _r ~ 'INACTIVE' ~ _z }}
+        {{ _ok if _r_nft_tables | bool else _fail }}  nftables inet filter         {{ 'loaded' if _r_nft_tables | bool else _r ~ 'NOT LOADED' ~ _z }}
+        {{ _ok if _r_nft_policy | bool else _fail }}  nftables policy drop         {{ 'active' if _r_nft_policy | bool else _r ~ 'MISSING – firewall is open!' ~ _z }}
+        {{ _ok if _r_nft_banned4 | bool else _fail }}  nftables banned4 set         {{ 'present' if _r_nft_banned4 | bool else _r ~ 'MISSING – fail2ban bans have no effect!' ~ _z }}
+        {{ _ok if _r_f2b_svc | bool else _fail }}  fail2ban service             {{ 'active' if _r_f2b_svc | bool else _r ~ 'INACTIVE' ~ _z }}
+        {{ _ok if _r_f2b_jails | bool else _fail }}  fail2ban jails               {{ _d_f2b_jails }}
+        {{ _ok if _r_k3s | bool else _fail }}  k3s service                  {{ 'active' if _r_k3s | bool else _r ~ 'INACTIVE' ~ _z }}
+        {{ _ok if _r_mariadb_svc | bool else _fail }}  MariaDB (host)               {{ 'active' if _r_mariadb_svc | bool else _r ~ 'INACTIVE' ~ _z }}
+        {{ _ok if _r_redis_svc | bool else _fail }}  Redis (host)                 {{ 'active' if _r_redis_svc | bool else _r ~ 'INACTIVE' ~ _z }}
+        {{ _ok if _r_auditd | bool else _fail }}  auditd service               {{ 'active' if _r_auditd | bool else _r ~ 'INACTIVE' ~ _z }}
+        {{ _ok if _r_selinux | bool else _fail }}  SELinux                      {{ _v_selinux.stdout | default('?') }}
+
+      {{ _h }}── Kubernetes Workloads ─────────────────────────────────────{{ _z }}
+        {{ _ok if _r_nc_pods | bool else _fail }}  nextcloud namespace          {{ _d_nc_pods if _d_nc_pods != '?' else _r ~ 'no pods found' ~ _z }}
+        {{ _ok if _r_collabora | bool else _fail }}  Collabora                    {{ _d_collabora if _d_collabora != '?' else _r ~ 'not running' ~ _z }}
+        {{ _ok if _r_ingress | bool else _fail }}  ingress-nginx                {{ 'Running' if _r_ingress | bool else _r ~ 'no pods found' ~ _z }}
+        {{ _ok if _r_certmgr | bool else _fail }}  cert-manager                 {{ 'Running' if _r_certmgr | bool else _r ~ 'no pods found' ~ _z }}
+        {{ _ok if _r_noerror | bool else _fail }}  pods in error state          {{ _r ~ _d_error_pods ~ _z if not (_r_noerror | bool) else 'none' }}
+
+      {{ _h }}── HTTPS / Nextcloud ──────────────────────────────────────────{{ _z }}
+        {{ _ok if _r_https | bool else _fail }}  GET {{ nextcloud_url }}/  HTTP {{ _v_https.status | default('TIMEOUT') }}
+        {{ _ok if _r_tls | bool else _fail }}  TLS certificate              {{ 'valid' if _r_tls | bool else _r ~ 'INVALID or expired!' ~ _z }}
+        {{ _ok if _r_hsts | bool else _fail }}  HSTS header                  {{ 'present' if _r_hsts | bool else _r ~ 'MISSING' ~ _z }}
+        {{ _ok if _r_server | bool else _fail }}  Server header (no leak)      {{ _d_server_hdr }}
+        {{ _ok if _r_login | bool else _fail }}  /login reachable             HTTP {{ _v_login.status | default('TIMEOUT') }}
+        {{ _ok if _r_installed | bool else _fail }}  Nextcloud installed          {{ 'yes (' ~ _d_nc_version ~ ')' if _r_installed | bool else _r ~ 'NO – installation incomplete!' ~ _z }}
+        {{ _ok if _r_maintenance | bool else _fail }}  Maintenance mode            {{ 'off' if _r_maintenance | bool else _r ~ 'ACTIVE – Nextcloud unreachable!' ~ _z }}
+
+      {{ _h }}── Security / Blocking ───────────────────────────────────────{{ _z }}
+        {{ _ok if _r_env | bool else _fail }}  /.env                        HTTP {{ _v_env.stdout | default('?') | trim }}{{ '' if _r_env | bool else _r ~ '  ← must be blocked!' ~ _z }}
+        {{ _ok if _r_config | bool else _fail }}  /config/config.php           HTTP {{ _v_config.stdout | default('?') | trim }}{{ '' if _r_config | bool else _r ~ '  ← must be blocked!' ~ _z }}
+        {{ _ok if _r_data | bool else _fail }}  /data/                       HTTP {{ _v_data.stdout | default('?') | trim }}{{ '' if _r_data | bool else _r ~ '  ← must be blocked!' ~ _z }}
+
+      {{ _h }}── Nextcloud / Performance ──────────────────────────────────{{ _z }}
+        {{ _ok if _r_occ | bool else _fail }}  OCC status                   {{ 'ok' if _r_occ | bool else _r ~ 'ERROR – occ reports not installed!' ~ _z }}
+        {{ _ok if _r_bg_mode | bool else _fail }}  background job mode          {{ _d_bg_mode }}{{ '' if _r_bg_mode | bool else _r ~ '  ← must be "cron"!' ~ _z }}
+        {{ _ok if _r_redis | bool else _fail }}  Redis (pod → host)           {{ 'ok' if _r_redis | bool else _r ~ 'ERROR – Redis unreachable!' ~ _z }}
+        {{ _ok if _r_mariadb_pod | bool else _fail }}  MariaDB (pod → host)         {{ 'ok' if _r_mariadb_pod | bool else _r ~ 'ERROR – port 3306 unreachable!' ~ _z }}
+        {{ _ok if _r_bbr | bool else _fail }}  TCP BBR                      {{ _v_bbr.stdout | default('?') | trim }}
+
+      {{ _h }}══════════════════════════════════════════════════════════════{{ _z }}
+      {% if _pass_count | int == _total_count | int %}
+        {{ _g }}{{ _b }}  RESULT:  {{ _pass_count }}/{{ _total_count }} checks passed  ✓  ALL OK{{ _z }}
+      {% else %}
+        {{ _r }}{{ _b }}  RESULT:  {{ _pass_count }}/{{ _total_count }} checks passed  ✗  {{ _total_count | int - _pass_count | int }} FAILED{{ _z }}
+      {% endif %}
+      {{ _h }}══════════════════════════════════════════════════════════════{{ _z }}
+
+
+# =============================================================================
+# ASSERT – kritische Checks müssen bestehen
+# =============================================================================
+
+- name: Verify | Assert critical checks
+  ansible.builtin.assert:
+    that:
+      - _r_nft_svc | bool
+      - _r_nft_tables | bool
+      - _r_nft_policy | bool
+      - _r_k3s | bool
+      - _r_mariadb_svc | bool
+      - _r_redis_svc | bool
+      - _r_nc_pods | bool
+      - _r_ingress | bool
+      - _r_noerror | bool
+      - _r_https | bool
+      - _r_tls | bool
+      - _r_installed | bool
+      - _r_env | bool
+      - _r_config | bool
+    quiet: true
+    fail_msg: >-
+      {{ _r ~ _b }}Critical checks failed – see report above for details.{{ _z }}
+    success_msg: >-
+      {{ _g ~ _b }}All critical checks passed.{{ _z }}

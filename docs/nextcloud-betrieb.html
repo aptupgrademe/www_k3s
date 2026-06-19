@@ -861,6 +861,13 @@ k3s kubectl exec -n nextcloud deployment/nextcloud -c nextcloud-fpm -- \
   </li>
 </ol>
 
+<div class="callout callout-success">
+  <strong>Deployment-Verification (nextcloud_verify)</strong>
+  Am Ende von <code>nextcloud-k3s.yml</code> führt die Rolle <code>nextcloud_verify</code>
+  automatisch 31 Smoke-Tests durch: Dienste, K8s-Pods, HTTPS-Erreichbarkeit, Security-Header,
+  Nextcloud-Status. Fehlschlagende Tests werden als Ansible-Fehler gemeldet.
+</div>
+
 <h3>Idempotente Wiederholung (z.B. nach Konfig-Änderung)</h3>
 <pre><code>ansible-playbook nextcloud-k3s.yml --limit test --ask-vault-pass</code></pre>
 <p>
@@ -1129,6 +1136,24 @@ k3s kubectl logs -n nextcloud deployment/nextcloud -c nextcloud-fpm -f | grep -i
   Ohne diesen Schritt zeigen alle Panels „No data". Falls ein Dashboard leer ist:
   Playbook erneut ausführen oder manuell in Grafana die Dropdown-Variablen oben im Dashboard auswählen.
 </div>
+
+<h3>Grafana Alerting</h3>
+<p>
+  Grafana ist mit 5 vorkonfigurierten Alert-Rules und einem E-Mail-Kontaktpunkt eingerichtet
+  (konfiguriert durch <code>common_grafana</code>, SMTP-Credentials aus <code>common_msmtp</code>):
+</p>
+<table>
+  <tr><th>Alert-Rule</th><th>Schwellwert</th><th>Beschreibung</th></tr>
+  <tr><td>Disk root &gt; 80 %</td><td>80 %</td><td>Füllstand des Root-Dateisystems</td></tr>
+  <tr><td>Data partition &gt; 80 %</td><td>80 %</td><td>Füllstand von /srv oder /var</td></tr>
+  <tr><td>RAM &gt; 90 %</td><td>90 %</td><td>RAM-Auslastung des Hosts</td></tr>
+  <tr><td>CPU &gt; 85 %</td><td>85 %</td><td>CPU-Auslastung (1-Minuten-Schnitt)</td></tr>
+  <tr><td>Node Exporter unreachable</td><td>–</td><td>Node Exporter antwortet nicht mehr</td></tr>
+</table>
+<p>
+  Benachrichtigungen gehen an die in <code>vault.yml</code> hinterlegte Adresse (<code>email</code>)
+  über den Kontaktpunkt <code>email-admin</code>.
+</p>
 
 <h3>mysqld_exporter – Status prüfen</h3>
 <pre><code># Service-Status
@@ -1468,6 +1493,11 @@ k3s kubectl logs -n nextcloud -l job-name=nextcloud-cron-&lt;id&gt;</code></pre>
     <td><code>common_ssh</code>, <code>common_fail2ban</code></td>
   </tr>
   <tr>
+    <td>HTTP – Fail2Ban-Jails</td>
+    <td><code>nginx-k3s-scanner</code>: blockiert Scanner (20× 40x in 60 s); <code>nginx-k3s-bad-paths</code>: blockiert Webshell-/Exploit-Pfade (/.env, /.git/, /phpinfo.php, 2 Versuche, 24 h Ban); Logpfad: containerd-Logs unter <code>/var/log/pods/ingress-nginx_*/nginx-ingress/0.log</code></td>
+    <td><code>common_fail2ban</code></td>
+  </tr>
+  <tr>
     <td>HTTP</td>
     <td>Rate-Limiting Login (5r/s), HSTS, Security-Header</td>
     <td><code>common_k3s</code> (nginx-ingress (F5) Helm-Values + Ingress-Annotations)</td>
@@ -1548,6 +1578,12 @@ k3s kubectl logs -n nextcloud -l job-name=nextcloud-cron-&lt;id&gt;</code></pre>
     <td>IPv4/IPv6 in einem Regelwerk</td>
     <td><code>table inet</code> deckt beide Protokollstacks ab –
         kein separates ip6tables erforderlich</td>
+  </tr>
+  <tr>
+    <td>K3s-Pflichtausnahmen</td>
+    <td>INPUT: Pods → Port 6443 (K3s-API) und 10250 (kubelet/metrics-server);
+        OUTPUT: neue Verbindungen in den Pod-CIDR (Kubelet-Liveness/Readiness-Probes).
+        Ohne diese Regeln crashen cert-manager, coredns und metrics-server.</td>
   </tr>
 </table>
 <pre><code># Geblockte Pakete live verfolgen
