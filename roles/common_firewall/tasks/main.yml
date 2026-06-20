@@ -35,6 +35,15 @@
     mode: "0640"
   notify: Reload nftables
 
+# On AlmaLinux 9 the active config is /etc/sysconfig/nftables.conf.
+# /etc/nftables.conf is a distro default stub that is NOT loaded by the
+# systemd unit — but a stale copy could cause confusion on manual reloads.
+- name: Remove stale /etc/nftables.conf if it differs from the active config
+  ansible.builtin.file:
+    path: /etc/nftables.conf
+    state: absent
+  when: ansible_distribution == 'AlmaLinux'
+
 - name: Enable and start nftables service
   ansible.builtin.service:
     name: nftables

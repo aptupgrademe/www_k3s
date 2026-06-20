@@ -19,6 +19,9 @@
 - name: blog_k3s_deploy | External Services (Grafana → host)
   ansible.builtin.import_tasks: external_services.yml
 
+- name: blog_k3s_deploy | Redis Deployment + Service (object cache)
+  ansible.builtin.import_tasks: redis.yml
+
 - name: blog_k3s_deploy | WordPress Deployment + Service
   ansible.builtin.import_tasks: wordpress.yml
 

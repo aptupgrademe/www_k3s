@@ -1409,6 +1409,21 @@ k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
     <td><code>common_sysctl</code> → <code>/etc/sysctl.d/99-webserver.conf</code></td>
   </tr>
   <tr>
+    <td>TLS – OCSP Stapling</td>
+    <td>nginx cached den Revocation-Status beim CA und liefert ihn im TLS-Handshake mit → Browser spart ~50–100 ms CA-Round-Trip pro neuer Session. <code>ssl_session_tickets off</code> erzwingt Forward Secrecy.</td>
+    <td><code>common_k3s</code> → nginx-ingress Helm-Values (<code>http-snippets</code>)</td>
+  </tr>
+  <tr>
+    <td>Brotli</td>
+    <td>Brotli-Kompression (Level 6) für Text/JS/CSS/Fonts – 15–25 % kleiner als gzip; gzip bleibt als Fallback aktiv</td>
+    <td><code>common_k3s</code> → nginx-ingress Helm-Values ConfigMap</td>
+  </tr>
+  <tr>
+    <td>Redis Object Cache</td>
+    <td>WP-Objekte (Posts, Terme, Optionen) in Redis-Pod gecacht; wiederkehrende Requests brauchen keine DB-Abfragen. Plugin: <code>redis-cache</code>, Drop-in: <code>wp-content/object-cache.php</code></td>
+    <td><code>blog_k3s_deploy</code> → Redis-Pod + <code>blog_wordpress</code> → WP-CLI</td>
+  </tr>
+  <tr>
     <td>PHP OPcache</td>
     <td><code>validate_timestamps=0</code> (keine Datei-Checks per Request), 10.000 gecachte Dateien, 16 MB interned strings</td>
     <td><code>blog_k3s_deploy</code> → ConfigMap <code>wordpress-php-config</code></td>
@@ -1417,6 +1432,11 @@ k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
     <td>PHP-FPM Pool</td>
     <td>max_children=10, max_requests=500 (Worker-Recycling gegen Memory-Leaks)</td>
     <td><code>blog_k3s_deploy</code> → ConfigMap <code>wordpress-fpm-pool-config</code></td>
+  </tr>
+  <tr>
+    <td>/tmp im RAM</td>
+    <td>PHP-FPM-Temp-Verzeichnis als <code>emptyDir(Memory)</code> – 64 Mi tmpfs, kein Disk-I/O für temporäre Upload- und Cache-Dateien</td>
+    <td><code>blog_k3s_deploy</code> → <code>wordpress-deployment.yml.j2</code></td>
   </tr>
   <tr>
     <td>MariaDB InnoDB</td>
@@ -1459,6 +1479,29 @@ ss -tin dst www.apt-upgrade.me | grep bbr</code></pre>
   <pre style="margin-top:8px"><code>k3s kubectl rollout restart deployment/wordpress -n wordpress</code></pre>
   Das Ansible-Playbook macht diesen Restart automatisch bei jedem Run.
 </div>
+
+<h3>Redis Object Cache</h3>
+<p>
+  Der Redis-Pod (<code>redis:7-alpine</code>) läuft im <code>wordpress</code>-Namespace
+  als dedizierter In-Memory-Cache. PHP greift darauf über das Plugin
+  <code>redis-cache</code> zu, das das WP-Objekt-Cache-API implementiert.
+  Das Drop-in <code>wp-content/object-cache.php</code> wird beim Playbook-Lauf
+  automatisch über <code>wp redis enable</code> (WP-CLI) aktiviert.
+</p>
+<p>
+  Gecachte Objekte: Post-Metadaten, Terme, Optionen, Transients.
+  Cache-Invalidierung erfolgt automatisch bei Änderungen im WordPress-Admin.
+</p>
+<pre><code># Redis-Status im WordPress-Kontext prüfen
+k3s kubectl exec deployment/wordpress -n wordpress -c wordpress-fpm -- \
+  php /var/www/html/wp-cli.phar redis status --path=/var/www/html --allow-root
+
+# Redis-Pod direkt testen
+k3s kubectl exec deployment/redis -n wordpress -- redis-cli ping
+
+# Cache-Statistiken
+k3s kubectl exec deployment/redis -n wordpress -- \
+  redis-cli info stats | grep -E 'hits|misses|keyspace'</code></pre>
 
 <h3>MariaDB Buffer Pool</h3>
 <p>
@@ -1505,8 +1548,20 @@ k3s kubectl exec deployment/mariadb -n wordpress -- \
   </tr>
   <tr>
     <td>HTTP – Fail2Ban-Jails</td>
-    <td><code>nginx-k3s-wp-login</code>: blockiert WP-Login-Brute-Force (10 Versuche in 600 s); <code>nginx-k3s-scanner</code>: blockiert Scanner (20× 40x in 60 s); <code>nginx-k3s-bad-paths</code>: blockiert Webshell-/Exploit-Pfade (/.env, /.git/, /phpinfo.php, 2 Versuche, 24 h Ban); Logpfad: containerd-Logs unter <code>/var/log/pods/ingress-nginx_*/nginx-ingress/0.log</code></td>
+    <td>
+      <code>nginx-k3s-wp-login</code>: WP-Login-Brute-Force (10 POST in 600 s);
+      <code>nginx-k3s-scanner</code>: Scanner (20× 40x in 60 s);
+      <code>nginx-k3s-bad-paths</code>: bekannte Exploit-Pfade (/.env, /.git/, /phpinfo.php – 2 Versuche, 24 h Ban);
+      <code>recidive</code>: Wiederholungstäter – 3× gebannt in 24 h → 30-Tage-Ban.
+      Alle Verify-Tasks laufen per <code>curl --resolve hostname:443:127.0.0.1</code> (Quell-IP 127.0.0.1 ∈ ignoreip → kein Selbst-Ban).
+      Logpfad: <code>/var/log/pods/ingress-nginx_*/nginx-ingress/0.log</code>
+    </td>
     <td><code>common_fail2ban</code></td>
+  </tr>
+  <tr>
+    <td>HTTP – TLS</td>
+    <td>TLS 1.2/1.3; OCSP Stapling mit Resolver (1.1.1.1/8.8.8.8); <code>ssl_session_tickets off</code> (Forward Secrecy erzwungen); <code>ssl-prefer-server-ciphers: false</code></td>
+    <td><code>common_k3s</code> → nginx-ingress Helm-Values</td>
   </tr>
   <tr>
     <td>HTTP – Rate-Limiting</td>
@@ -1520,7 +1575,7 @@ k3s kubectl exec deployment/mariadb -n wordpress -- \
   </tr>
   <tr>
     <td>HTTP – Security-Header</td>
-    <td>HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy</td>
+    <td>HSTS (max-age=31536000), X-Frame-Options: SAMEORIGIN, X-Content-Type-Options: nosniff, Referrer-Policy: strict-origin-when-cross-origin, X-Permitted-Cross-Domain-Policies: none</td>
     <td><code>blog_k3s_deploy</code> (Ingress location-snippets)</td>
   </tr>
   <tr>

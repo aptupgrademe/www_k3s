@@ -85,8 +85,13 @@ spec:
         # Without this the container may derive a wrong siteurl from SCRIPT_FILENAME.
         - name: WORDPRESS_CONFIG_EXTRA
           value: |
-            define('WP_HOME', 'https://{{ blog_hostname }}');
+            define('WP_HOME',    'https://{{ blog_hostname }}');
             define('WP_SITEURL', 'https://{{ blog_hostname }}');
+            define('WP_REDIS_HOST',     'redis');
+            define('WP_REDIS_PORT',     6379);
+            define('WP_REDIS_DATABASE', 0);
+            define('WP_REDIS_SCHEME',   'tcp');
+            define('WP_CACHE', true);
         ports:
         - containerPort: 9000
           name: fpm
@@ -99,6 +104,8 @@ spec:
         - name: fpm-pool-config
           mountPath: /usr/local/etc/php-fpm.d/z-monitoring.conf
           subPath: z-monitoring.conf
+        - name: tmp
+          mountPath: /tmp
         resources:
           requests:
             memory: "256Mi"
@@ -189,6 +196,12 @@ spec:
       - name: fpm-pool-config
         configMap:
           name: wordpress-fpm-pool-config
+      # RAM-backed tmpfs for PHP-FPM temp files (uploads, wp-cron tmp, etc.).
+      # Content is lost on pod restart – acceptable for transient files.
+      - name: tmp
+        emptyDir:
+          medium: Memory
+          sizeLimit: 64Mi
 ---
 apiVersion: v1
 kind: Service

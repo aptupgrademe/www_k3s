@@ -53,11 +53,19 @@
 # =============================================================================
 - name: Install packages and configure server
   hosts: nextcloud
+  # gather_subset: collect only OS/network/virtual facts.
+  # Skips slow hardware inventory (lspci, dmidecode) → saves ~3-5 s.
+  # Full facts are cached to /tmp/ansible_facts_cache for 1 h (see ansible.cfg).
   gather_facts: true
+  gather_subset:
+    - min
+    - network
+    - virtual
   become: false
 
 
   roles:
+    - common_version_check  # Pre-flight: show component versions + available updates
     - next_packages         # Repositories, packages (MariaDB 10.11, Redis) – nginx/PHP run in K3s pods
     - common_ssh            # SSH hardening (port, key-only auth)
     - common_firewall       # nftables IPv4/IPv6 rules (incl. K3s pod CIDR exceptions)
@@ -65,10 +73,11 @@
     - next_mariadb          # MariaDB setup + Nextcloud database and user
     - next_selinux          # SELinux enforcing + container_file_t contexts for K3s HostPath vols  ← before deploy!
     - common_k3s            # K3s single-node cluster + Helm + cert-manager + nginx-ingress (F5)
-    - next_k3s_deploy       # Nextcloud + Collabora K8s workloads + Ingress
-    - next_redis            # Redis (caching, file locking, sessions)
-    - next_config           # Post-install: occ config via kubectl exec
-    - common_node_exporter  # Node Exporter (metrics collector, port 9100)
+    - next_k3s_deploy       # Nextcloud + Collabora K8s workloads applied (pods start in background)
+
+    # These roles run while K8s pods initialise – saves 2-3 min wall-clock time.
+    - next_redis            # Redis (host service, no pod dependency)
+    - common_node_exporter  # Node Exporter (metrics, port 9100)
     - common_mysqld_exporter # mysqld_exporter (MariaDB metrics, port 9104)
     - common_prometheus     # Prometheus (scrapes localhost:9100/9104 + K3s NodePorts, port 9090)
     - common_grafana        # Grafana (dashboard, port 3000)
@@ -77,4 +86,7 @@
     - common_dnf_automatic  # Automatic security-only updates via dnf-automatic
     - common_rkhunter       # Rootkit detection with daily scan
     - common_auditd         # Linux Audit Daemon with security-relevant rules
+
+    # occ config waits for pod readiness → by now Nextcloud pods should be Running.
+    - next_config           # Post-install: occ config via kubectl exec
     - nextcloud_verify      # Post-deployment smoke tests (services, K8s, HTTPS, security, performance)

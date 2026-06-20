@@ -146,6 +146,33 @@
     'Installing' in wp_plugin_result.stdout or
     'Activating' in wp_plugin_result.stdout
 
+# Redis Object Cache plugin – installed and enabled separately because
+# wp redis enable places the object-cache.php drop-in (separate WP-CLI command).
+- name: WordPress | Install and activate Redis Object Cache plugin
+  ansible.builtin.command: >
+    k3s kubectl exec deployment/wordpress
+    --namespace wordpress
+    --container wordpress-fpm --
+    php /var/www/html/wp-cli.phar plugin install redis-cache --activate
+    --path=/var/www/html
+    --allow-root
+  register: wp_redis_install
+  changed_when: >
+    'Installing' in wp_redis_install.stdout or
+    'Activating' in wp_redis_install.stdout
+
+- name: WordPress | Enable Redis object-cache drop-in
+  ansible.builtin.command: >
+    k3s kubectl exec deployment/wordpress
+    --namespace wordpress
+    --container wordpress-fpm --
+    php /var/www/html/wp-cli.phar redis enable
+    --path=/var/www/html
+    --allow-root
+  register: wp_redis_enable
+  changed_when: "'Success' in wp_redis_enable.stdout"
+  failed_when: false
+
 
 # WP-CLI runs as root, so plugin files are created as root:root.
 # Fix ownership so PHP-FPM (www-data, uid 33) can write to wp-content.

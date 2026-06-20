@@ -7,10 +7,11 @@
 # nftables-banned-sets.  The sets use native nftables timeout for auto-expiry.
 #
 # Jails:
-#   sshd              – SSH brute-force (systemd backend)
+#   sshd                  – SSH brute-force (systemd backend)
 #   nginx-k3s-wp-login    – repeated POST /wp-login.php
 #   nginx-k3s-scanner     – repeated 403/404 responses (directory scanners)
 #   nginx-k3s-bad-paths   – known-malicious paths (/.env, webshells, etc.)
+#   recidive              – repeat offenders (banned 3×/day) → 30-day ban
 #
 # HTTP jails read from:
 #   /var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/0.log
@@ -91,3 +92,20 @@ backend  = polling
 maxretry = 2
 findtime = 3600
 bantime  = 86400
+
+
+# -----------------------------------------------------------------------------
+# Recidive – repeat offenders get a 30-day ban
+# Reads fail2ban's own log: IPs banned 3+ times within 24 h get a 30-day ban.
+# Targets persistent attackers who keep coming back after their initial ban.
+# The recidive filter ships with fail2ban – no custom filter file needed.
+# -----------------------------------------------------------------------------
+[recidive]
+enabled   = true
+filter    = recidive
+logpath   = /var/log/fail2ban.log
+banaction = nftables-banned-sets[nftset=banned4]
+backend   = polling
+bantime   = 2592000
+findtime  = 86400
+maxretry  = 3

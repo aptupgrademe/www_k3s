@@ -426,7 +426,7 @@
     body:
       uid: "homelab-alerts"
       title: "Homelab Alerts"
-    status_code: [200, 409]   # 409 = already exists
+    status_code: [200, 409, 412]   # 409/412 = already exists (Grafana 13 uses 412)
   register: _gf_folder
   no_log: true
 

@@ -19,12 +19,11 @@ metadata:
       add_header X-Content-Type-Options "nosniff" always;
       add_header Referrer-Policy "same-origin" always;
       add_header X-Permitted-Cross-Domain-Policies "none" always;
-    # Rate-limit wp-login.php (5 r/s per IP, burst 5) + block xmlrpc
+    # Rate-limit wp-login.php (5 r/s per IP, burst 5) + block sensitive paths
     nginx.org/server-snippets: |
-      location = /xmlrpc.php {
-        deny all;
-        return 403;
-      }
+      location = /xmlrpc.php  { deny all; return 403; }
+      location = /readme.html { deny all; return 403; }
+      location = /license.txt { deny all; return 403; }
       location = /wp-login.php {
         limit_req zone=wp_login burst=5 nodelay;
         proxy_pass http://wordpress.wordpress.svc.cluster.local;

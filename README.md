@@ -26,26 +26,33 @@ Prometheus, Grafana, Fail2Ban, nftables hardening).
 
 ```
 Internet
-    │  HTTPS (443) / HTTP (80)
+    │  HTTPS (443) / HTTP (80 → redirect)
     ▼
-┌─────────────────────────────────────────────┐
-│  AlmaLinux 9 Host                           │
-│                                             │
-│  ┌─────────────────────────────────────┐    │
-│  │  K3s (single-node Kubernetes)       │    │
-│  │                                     │    │
-│  │  nginx-ingress (F5, hostNetwork)    │    │  ← TLS termination, rate limiting
-│  │  cert-manager  (Let's Encrypt TLS)  │    │
-│  │                                     │    │
-│  │  Nextcloud pod  │  WordPress pod    │    │
-│  │  Collabora pod  │  MariaDB pod      │    │
-│  └─────────────────────────────────────┘    │
-│                                             │
-│  Host services:                             │
-│  MariaDB · Redis · Prometheus · Grafana     │  ← Nextcloud scenario only
-│  Node Exporter · mysqld_exporter            │
-│  Fail2Ban · nftables · auditd · rkhunter    │
-└─────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  AlmaLinux 9 Host                                           │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │  K3s (single-node Kubernetes)                       │    │
+│  │                                                     │    │
+│  │  nginx-ingress  (F5, hostNetwork, ports 80/443)    │    │  ← TLS, rate-limiting, Brotli
+│  │  cert-manager   (Let's Encrypt – auto TLS)         │    │
+│  │                                                     │    │
+│  │  ┌──────────────────┐  ┌─────────────────────────┐ │    │
+│  │  │  Nextcloud stack │  │   WordPress stack        │ │    │
+│  │  │  nextcloud-fpm   │  │   wordpress-fpm          │ │    │
+│  │  │  nginx sidecar   │  │   nginx sidecar          │ │    │
+│  │  │  Collabora CODE  │  │   MariaDB pod            │ │    │
+│  │  └──────────────────┘  │   Redis pod  (new)       │ │    │
+│  │                        └─────────────────────────┘ │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                                                             │
+│  Host services (Nextcloud scenario):                        │
+│  MariaDB · Redis · Node Exporter · mysqld_exporter          │
+│                                                             │
+│  Host services (both scenarios):                            │
+│  Prometheus · Grafana · Fail2Ban · nftables                 │
+│  auditd · rkhunter · dnf-automatic · msmtp                  │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -53,30 +60,132 @@ Internet
 ## Features
 
 ### Application
-- **Nextcloud 34** with PHP-FPM, nginx sidecar, Redis caching, MariaDB 10.11
+
+- **Nextcloud 34** with PHP-FPM, nginx sidecar, Redis (host service) and MariaDB 10.11
 - **Collabora CODE** (online office) with WOPI integration
-- **WordPress 7.0** with PHP-FPM, nginx sidecar, MariaDB as K3s pod
-- Automatic installation on first pod start via container env vars
-- WordPress WP-Cron as Kubernetes CronJob
+- **WordPress 7.0** with PHP-FPM, nginx sidecar, MariaDB pod and **Redis Object Cache** pod
+- Automatic installation on first pod start via container env vars and WP-CLI
+- WordPress WP-Cron as Kubernetes CronJob (no HTTP trigger)
+- Redis Object Cache plugin (`redis-cache`) pre-installed and activated for WordPress
 
 ### Infrastructure
-- **K3s** single-node Kubernetes (Flannel CNI)
+
+- **K3s** single-node Kubernetes (Flannel/VXLAN CNI)
 - **F5 nginx-ingress** (nginx-stable Helm chart) with hostNetwork and DaemonSet
-- **cert-manager** for automatic Let's Encrypt TLS certificates
-- Mergeable Ingresses for ACME HTTP-01 challenge compatibility
+- **cert-manager** for automatic Let's Encrypt TLS certificates (HTTP-01 challenge)
 - Kubernetes Secrets for all credentials (Ansible Vault encrypted locally)
+- **Pre-flight version check** (`common_version_check`) at playbook start:
+  shows installed vs. latest K3s, Helm, Helm chart and container image versions
+- **Ansible pipelining** enabled (eliminates SSH round-trips, ~40% faster runs)
+- **Fact caching** (1 h JSON cache in `/tmp/ansible_facts_cache`)
+- **SSH ControlPersist 600 s** for long playbook runs
+- **Profile tasks** callback shows per-task timing at end of each run
+
+### Performance
+
+| Feature | Where | Effect |
+|---|---|---|
+| **Brotli compression** | nginx-ingress | 15–25% smaller responses vs. gzip for text/JS/CSS |
+| **gzip compression** | nginx-ingress | Fallback for browsers without Brotli support |
+| **OCSP Stapling** | nginx-ingress | Saves one CA round-trip per TLS handshake (~50–100 ms) |
+| **TLS session cache** | nginx-ingress | `shared:SSL:10m` – reuses negotiated sessions |
+| **Redis Object Cache** | WordPress pod | DB queries for cached objects reduced to Redis lookups |
+| **PHP OPcache** | PHP-FPM | Compiled bytecode cached in memory, no repeated parsing |
+| **/tmp on RAM (tmpfs)** | WordPress FPM | 64 Mi emptyDir(Memory) – PHP temp files bypass disk I/O |
+| **TCP BBR** | Host kernel | Better throughput and fairness on congested links |
+| **TCP Fast Open** | Host kernel | Reduces latency for returning connections |
+| **MariaDB tuning** | MariaDB pod / host | InnoDB buffer pool, query cache tuning |
+| **php-fpm workers** | WordPress / Nextcloud | Optimised `pm.max_children` for available RAM |
 
 ### Security
-- **nftables** hardened ruleset (`table inet`): default DROP, portscan detection, ICMP rate limiting — covers IPv4 and IPv6 in a single ruleset; includes mandatory K3s exceptions (pod→API port 6443, kubelet port 10250, OUTPUT to pod CIDR for liveness probes)
-- **Fail2Ban** writes banned IPs directly into nftables sets (`banned4`/`banned6`) with automatic timeout-based expiry; includes HTTP-level jails for nginx ingress logs (`nginx-k3s-wp-login`, `nginx-k3s-scanner`, `nginx-k3s-bad-paths`)
-- **SELinux** enforcing with `container_file_t` contexts for HostPath volumes
-- **auditd** with hardening rules (sudo, SSH, cron, kernel modules)
-- **rkhunter** daily rootkit scan
-- **dnf-automatic** for automatic security updates
-- SSH hardened: non-default port, key-only authentication
+
+#### Firewall – nftables
+
+- `table inet` ruleset covering **IPv4 and IPv6 in one ruleset**
+- Default **DROP policy** on INPUT and FORWARD
+- Whitelist-only: SSH (port 10022), HTTP (80), HTTPS (443), ICMP (rate-limited)
+- **Port-scan detection**: TCP packets to closed ports trigger a 60-second ban
+- **K3s mandatory exceptions**: pod→API server (6443), kubelet (10250), OUTPUT to pod CIDR (10.42.0.0/16) for liveness probes
+- `banned4` / `banned6` nftables **sets with native timeout** (IPs expire automatically, no cron needed)
+- Active config at `/etc/sysconfig/nftables.conf` (AlmaLinux default, loaded by systemd)
+
+#### Intrusion Detection – Fail2Ban
+
+Five active jails, all writing directly to `banned4`/`banned6` nftables sets:
+
+| Jail | Trigger | Threshold | Ban |
+|---|---|---|---|
+| `sshd` | Failed SSH login | 3 attempts / 10 min | 1 h |
+| `nginx-k3s-wp-login` | POST `/wp-login.php` | 10 attempts / 10 min | 1 h |
+| `nginx-k3s-scanner` | 403/404 responses | 20 hits / 60 s | 1 h |
+| `nginx-k3s-bad-paths` | Known-malicious paths (`.env`, webshells, phpMyAdmin …) | 2 hits / 1 h | 24 h |
+| `recidive` | Banned 3× in one day | 3 bans / 24 h | **30 days** |
+
+- **Self-ban prevention**: all Ansible smoke-test requests that could trigger jails (`.env`, `xmlrpc.php`, `readme.html`, REST API) are made via `curl --resolve hostname:443:127.0.0.1` on the server — source IP is `127.0.0.1`, which is in `ignoreip`
+- `ignoreip` covers `127.0.0.1/8`, `::1`, and all RFC-1918 ranges
+- HTTP jails parse containerd-prefixed access logs (`/var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/0.log`) using custom filter definitions (`filter.d/nginx-k3s-*.conf`)
+
+#### TLS / HTTPS
+
+All TLS settings are applied globally via the nginx-ingress Helm ConfigMap:
+
+| Setting | Value | Reason |
+|---|---|---|
+| `ssl-protocols` | `TLSv1.2 TLSv1.3` | Disable SSLv3, TLS 1.0, TLS 1.1 |
+| `ssl-ciphers` | ECDHE+GCM, ECDHE+ChaCha20 only | No RSA key exchange, no CBC ciphers |
+| `ssl-prefer-server-ciphers` | `false` | TLS 1.3: client chooses cipher (RFC 8446) |
+| `ssl_session_tickets` | `off` | Forces fresh key derivation → Perfect Forward Secrecy preserved even if ticket key leaks |
+| `ssl_session_cache` | `shared:SSL:10m` | Shared across workers, 1-day timeout |
+| `ssl_stapling` | `on` | OCSP Stapling enabled |
+| `ssl_stapling_verify` | `on` | Verify OCSP responses against CA chain |
+| `resolver` | `1.1.1.1 8.8.8.8 valid=60s` | Required for nginx to resolve OCSP responder hostname |
+| HSTS header | `max-age=31536000; includeSubDomains; preload` | Forces HTTPS; eligible for browser preload list |
+
+#### HTTP Security Headers
+
+Applied via `nginx.org/location-snippets` on every Ingress:
+
+| Header | Value |
+|---|---|
+| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains; preload` |
+| `X-Frame-Options` | `SAMEORIGIN` |
+| `X-Content-Type-Options` | `nosniff` |
+| `Referrer-Policy` | `same-origin` |
+| `X-Permitted-Cross-Domain-Policies` | `none` |
+
+#### WordPress Hardening
+
+Blocked at **nginx-ingress level** (via `server-snippets`, before the request reaches the WordPress pod):
+
+| Path | HTTP response | Reason |
+|---|---|---|
+| `/xmlrpc.php` | 403 | Remote code execution vector, brute-force target |
+| `/readme.html` | 403 | Exposes WordPress version |
+| `/license.txt` | 403 | Exposes WordPress version |
+
+**Rate-limiting** at ingress level:
+- `/wp-login.php`: 5 req/s per IP, burst 5 — proxied to WordPress after rate-check
+
+**WordPress MU-Plugin** (`mu-plugins/security-hardening.php`, always active, no deactivation possible):
+- Removes WordPress version from `<meta name="generator">`, RSS feeds and HTTP `Link:` headers
+- Removes RSD and Windows Live Writer discovery links from `<head>`
+- Hides Yoast SEO version from HTML comments
+- **Blocks REST API user enumeration** for unauthenticated requests (`/wp/v2/users` → 404 for guests)
+- Blocks `?author=` redirect enumeration
+
+**DISABLE_WP_CRON** set to `true` — cron runs as a K8s CronJob instead of HTTP trigger, eliminating one attack surface and ensuring reliable scheduling.
+
+#### System Hardening
+
+- **SELinux enforcing** with `container_file_t` contexts for all K3s HostPath volumes
+- **auditd** with rules covering: sudo usage, SSH key changes, cron modifications, kernel module loading, `/etc/passwd` and `/etc/shadow` changes
+- **rkhunter** daily rootkit scan with email alerts via msmtp
+- **dnf-automatic** for automatic security-only updates
+- SSH: non-default port (10022), key-only authentication, root login permitted only with key, PasswordAuthentication disabled
 
 ### Monitoring
-- **Prometheus** scraping Node Exporter, mysqld_exporter, php-fpm_exporter
+
+- **Prometheus** scraping Node Exporter (host metrics), mysqld_exporter (MariaDB), php-fpm_exporter (FPM process metrics)
 - **Grafana** with three pre-imported dashboards:
   - Node Exporter Full (ID 1860) – CPU, RAM, Disk, Network
   - MySQL Overview (ID 7362) – MariaDB queries, InnoDB, slow queries
@@ -86,11 +195,23 @@ Internet
 - PHP-FPM slow log (threshold: 5 seconds)
 - Grafana accessible at `https://<hostname>/grafana/`
 
-### Backup & Restore
-- `scripts/nextcloud-backup.sh <env>` – Nextcloud backup (Maintenance mode, mysqldump, rsync)
-- `scripts/nextcloud-restore.sh <env>` – Full restore in 8 steps
-- `scripts/wordpress-backup.sh` – WordPress backup via kubectl exec
-- `scripts/wordpress-restore.sh` – Full restore including MariaDB reinitialisation
+### Post-Deployment Smoke Tests
+
+Both scenarios include a colored terminal verification report after every deployment:
+
+**blog_verify** – 26 checks across 5 categories:
+- System services (nftables, fail2ban, K3s, auditd, SELinux)
+- Kubernetes workloads (pods running, no errors)
+- HTTPS (TLS validity, HSTS, Server header, X-Powered-By)
+- Security (xmlrpc.php / .env / readme.html blocked, REST API no user leak)
+- Performance (TCP BBR, PHP OPcache, MariaDB reachable)
+
+**nextcloud_verify** – 31 checks including Nextcloud-specific checks:
+- Nextcloud installed and not in maintenance mode
+- Background-job mode is `cron` (not HTTP trigger)
+- Redis and MariaDB reachable from Nextcloud pod
+
+All security checks run via `curl --resolve hostname:443:127.0.0.1` on the server (source IP = 127.0.0.1) to prevent triggering fail2ban jails.
 
 ---
 
@@ -143,18 +264,14 @@ nextcloud:
 Copy and fill in host variables:
 
 ```bash
-# Create host directory
 mkdir -p inventory/host_vars/myserver
 
-# Copy and fill in non-secret variables
+# Non-secret variables (IPs, hostnames, mail settings)
 cp inventory/host_vars/test/vars.yml inventory/host_vars/myserver/vars.yml
-# Edit: server_ipv4, nextcloud_hostname, collabora_hostname, mail_*, ...
 
-# Copy and fill in credentials
+# Credentials (passwords, tokens)
 cp inventory/host_vars/test/vault.yml.example inventory/host_vars/myserver/vault.yml
-# Edit: all changeme values with real passwords
-
-# Encrypt the vault file (recommended)
+# Fill in real passwords, then encrypt:
 ansible-vault encrypt inventory/host_vars/myserver/vault.yml
 ```
 
@@ -168,7 +285,7 @@ ansible-playbook nextcloud-k3s.yml --limit myserver --ask-vault-pass
 ansible-playbook blog.yml --limit myserver --ask-vault-pass
 ```
 
-After the first run, reboot the server to activate the firewall rules. Then update
+After the first run, reboot the server to activate the firewall rules, then update
 `ansible_port: 22` → `10022` in `vars.yml`.
 
 ---
@@ -182,49 +299,55 @@ www_k3s/
 ├── nextcloud-update.yml       # Nextcloud patch update playbook
 │
 ├── inventory/
-│   ├── hosts.yml              # Server inventory
-│   ├── group_vars/all.yml     # Shared variables (image versions, CIDRs)
+│   ├── hosts.yml              # Server inventory (gitignored)
+│   ├── group_vars/all.yml     # Shared variables: image versions, chart versions, CIDRs
 │   └── host_vars/<host>/
-│       ├── vars.yml           # Host-specific config (IPs, hostnames, SMTP)
-│       ├── vault.yml          # Secrets – gitignored, never committed!
-│       └── vault.yml.example  # Template with placeholder values
+│       ├── vars.yml           # Host-specific config (IPs, hostnames, SMTP) – gitignored
+│       ├── vault.yml          # Secrets – gitignored, NEVER committed
+│       └── vault.yml.example  # Template with placeholder values (committed)
 │
 ├── roles/
-│   ├── common_*/              # Shared roles (K3s, SSH, Firewall, Monitoring)
+│   ├── common_*/              # Shared roles (K3s, SSH, Firewall, Monitoring, …)
 │   ├── next_*/                # Nextcloud-specific roles
 │   └── blog_*/                # WordPress-specific roles
 │
 ├── scripts/
 │   ├── nextcloud-backup.sh    # Backup: nextcloud-backup.sh <env>
 │   ├── nextcloud-restore.sh   # Restore: nextcloud-restore.sh <env>
-│   ├── wordpress-backup.sh    # WordPress backup
-│   └── wordpress-restore.sh   # WordPress restore
+│   ├── wordpress-backup.sh    # WordPress backup via kubectl exec
+│   └── wordpress-restore.sh   # WordPress restore including MariaDB re-init
 │
 └── docs/
-    ├── nextcloud-betrieb.html     # Operations guide (German)
-    ├── nextcloud-operations.html  # Operations guide (English)
-    ├── wordpress-betrieb.html     # Operations guide (German)
-    └── wordpress-operations.html  # Operations guide (English)
+    ├── wordpress-betrieb.html       # WordPress – Guide d'exploitation (Deutsch)
+    ├── wordpress-operations.html    # WordPress – Operations guide (English)
+    ├── wordpress-exploitation.html  # WordPress – Guide d'exploitation (Français)
+    ├── nextcloud-betrieb.html       # Nextcloud – Betriebsdokumentation (Deutsch)
+    ├── nextcloud-operations.html    # Nextcloud – Operations guide (English)
+    └── nextcloud-exploitation.html  # Nextcloud – Guide d'exploitation (Français)
 ```
 
 ---
 
 ## Secrets Management
 
-Credentials are **never committed** to this repository. The `.gitignore` excludes
-all `vault.yml` files. Only `vault.yml.example` templates with placeholder values
-are tracked.
+Credentials are **never committed** to this repository. The `.gitignore` excludes:
+- `inventory/hosts.yml`
+- `inventory/host_vars/*/vars.yml`
+- `inventory/host_vars/*/vault.yml`
+- `.vault_pass`
+
+Only `vault.yml.example` templates with placeholder values are tracked in Git.
 
 ```bash
 # Workflow for secrets:
 cp inventory/host_vars/<host>/vault.yml.example \
    inventory/host_vars/<host>/vault.yml
-# Fill in real values, then optionally encrypt:
+# Fill in real values, then encrypt:
 ansible-vault encrypt inventory/host_vars/<host>/vault.yml
 ```
 
 Keep your `vault.yml` files in a **separate private repository** or encrypted backup.
-Store the vault password in a password manager.
+Store the vault password in a password manager, not in this repository.
 
 ---
 
@@ -232,31 +355,68 @@ Store the vault password in a password manager.
 
 | Role | Purpose |
 |---|---|
+| `common_version_check` | Pre-flight: K3s, Helm, chart and image versions vs. latest |
 | `common_k3s` | K3s installation, Helm, cert-manager, F5 nginx-ingress |
-| `common_firewall` | nftables hardening (table inet, banned4/banned6 sets) |
-| `common_ssh` | SSH hardening (port, key-only) |
+| `common_firewall` | nftables hardening (table inet, banned4/banned6 sets, K3s exceptions) |
+| `common_ssh` | SSH hardening (custom port 10022, key-only auth) |
+| `common_sysctl` | Kernel tuning: TCP BBR, Fast Open, connection timeouts |
 | `common_prometheus` | Prometheus metrics collector |
-| `common_grafana` | Grafana with pre-imported dashboards, alerting, SMTP |
-| `common_node_exporter` | Host metrics exporter |
-| `common_mysqld_exporter` | MariaDB metrics exporter (host service) |
-| `common_fail2ban` | SSH and HTTP brute-force protection |
-| `common_msmtp` | SMTP relay for system notifications |
-| `common_auditd` | Linux audit daemon |
-| `common_rkhunter` | Rootkit detection |
-| `common_dnf_automatic` | Automatic security updates |
-| `common_sysctl` | Kernel tuning (BBR, TCP fast open, optimised timeouts) |
+| `common_grafana` | Grafana: pre-imported dashboards, alert rules, SMTP notifications |
+| `common_node_exporter` | Host metrics exporter (CPU, RAM, Disk, Network) |
+| `common_mysqld_exporter` | MariaDB metrics exporter |
+| `common_fail2ban` | SSH + HTTP brute-force protection; writes to nftables banned sets |
+| `common_msmtp` | SMTP relay for system notifications (rkhunter, cron, dnf-automatic) |
+| `common_auditd` | Linux audit daemon with security-relevant rules |
+| `common_rkhunter` | Rootkit detection with daily scan and email alerts |
+| `common_dnf_automatic` | Automatic security-only updates |
 | `next_packages` | Host packages for Nextcloud scenario |
-| `next_mariadb` | Host MariaDB setup for Nextcloud |
-| `next_redis` | Host Redis setup for Nextcloud |
+| `next_mariadb` | Host MariaDB setup and Nextcloud database |
+| `next_redis` | Host Redis for Nextcloud object cache and session storage |
 | `next_selinux` | SELinux contexts for Nextcloud HostPath volumes |
 | `next_k3s_deploy` | Nextcloud + Collabora Kubernetes manifests |
 | `next_config` | Post-install Nextcloud occ configuration |
+| `nextcloud_verify` | Post-deployment smoke tests for Nextcloud (31 checks) |
 | `blog_packages` | Host packages for WordPress scenario |
 | `blog_selinux` | SELinux contexts for WordPress HostPath volumes |
-| `blog_k3s_deploy` | WordPress + MariaDB Kubernetes manifests |
-| `blog_wordpress` | WordPress install and plugin setup via WP-CLI |
+| `blog_k3s_deploy` | WordPress + MariaDB + Redis Kubernetes manifests |
+| `blog_wordpress` | WordPress install, MU-plugin, plugins, Redis cache enable via WP-CLI |
 | `blog_verify` | Post-deployment smoke tests for WordPress (26 checks) |
-| `nextcloud_verify` | Post-deployment smoke tests for Nextcloud (31 checks) |
+
+---
+
+## Updating Component Versions
+
+All pinned versions live in [`inventory/group_vars/all.yml`](inventory/group_vars/all.yml).
+The `common_version_check` role compares them against latest releases at every playbook run.
+
+```yaml
+# Helm charts
+ingress_nginx_chart_version: "2.5.1"
+cert_manager_chart_version:  "1.20.2"
+
+# Container images
+blog_image_wordpress: "wordpress:7.0-php8.3-fpm"
+blog_image_mariadb:   "mariadb:10.11"
+blog_image_redis:     "redis:7-alpine"
+blog_image_nginx:     "nginx:1.30-alpine"
+```
+
+To update: change the version tag in `all.yml` and re-run the playbook.
+K3s and Helm are installed at latest by default (no pinned version).
+
+---
+
+## Documentation
+
+Detailed operations guides are available in the `docs/` directory in three languages:
+
+| Document | WordPress | Nextcloud |
+|---|---|---|
+| **Deutsch** | [wordpress-betrieb.html](docs/wordpress-betrieb.html) | [nextcloud-betrieb.html](docs/nextcloud-betrieb.html) |
+| **English** | [wordpress-operations.html](docs/wordpress-operations.html) | [nextcloud-operations.html](docs/nextcloud-operations.html) |
+| **Français** | [wordpress-exploitation.html](docs/wordpress-exploitation.html) | [nextcloud-exploitation.html](docs/nextcloud-exploitation.html) |
+
+Each guide covers: architecture, configuration reference, playbook execution, performance optimisations, security layers, and troubleshooting.
 
 ---
 

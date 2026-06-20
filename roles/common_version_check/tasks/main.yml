@@ -1,0 +1,222 @@
+---
+# =============================================================================
+# Role: common_version_check
+# Purpose: Check installed vs. latest versions of core infrastructure
+#          components (K3s, Helm, nginx-ingress chart, cert-manager chart)
+#          and show configured container image tags.
+#          Runs at the start of the playbook as an informational pre-flight
+#          check. All tasks use failed_when: false – never blocks the run.
+# =============================================================================
+
+# ANSI color codes
+- name: Versions | Set color codes
+  ansible.builtin.set_fact:
+    _g: "\x1b[32m"
+    _r: "\x1b[31m"
+    _y: "\x1b[33m"
+    _h: "\x1b[1;36m"
+    _b: "\x1b[1m"
+    _z: "\x1b[0m"
+    _ok:   "\x1b[32m✓\x1b[0m"
+    _warn: "\x1b[33m⚠\x1b[0m"
+    _info: "\x1b[36mℹ\x1b[0m"
+    _na:   "\x1b[90m–\x1b[0m"
+
+
+# =============================================================================
+# INSTALLED VERSIONS (remote: runs on server)
+# =============================================================================
+
+- name: Versions | K3s – installed version
+  ansible.builtin.shell: k3s --version 2>/dev/null | awk '{print $3}' || echo 'not installed'
+  register: _vc_k3s_inst
+  changed_when: false
+  failed_when: false
+
+- name: Versions | Helm – installed version
+  ansible.builtin.shell: helm version --short 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo 'not installed'
+  register: _vc_helm_inst
+  changed_when: false
+  failed_when: false
+
+- name: Versions | nginx-ingress – deployed chart version
+  ansible.builtin.shell: |
+    helm list -n ingress-nginx -o json 2>/dev/null | python3 -c "
+    import sys, json
+    data = json.load(sys.stdin)
+    if data:
+        print(data[0]['chart'].replace('nginx-ingress-', '', 1))
+    else:
+        print('not deployed')
+    " 2>/dev/null || echo 'not deployed'
+  register: _vc_ingress_dep
+  changed_when: false
+  failed_when: false
+
+- name: Versions | cert-manager – deployed chart version
+  ansible.builtin.shell: |
+    helm list -n cert-manager -o json 2>/dev/null | python3 -c "
+    import sys, json
+    data = json.load(sys.stdin)
+    if data:
+        print(data[0]['chart'].replace('cert-manager-', '', 1))
+    else:
+        print('not deployed')
+    " 2>/dev/null || echo 'not deployed'
+  register: _vc_certmgr_dep
+  changed_when: false
+  failed_when: false
+
+
+# =============================================================================
+# LATEST VERSIONS FROM HELM REPOS (remote)
+# Only meaningful if Helm is already installed (skipped gracefully on first run).
+# =============================================================================
+
+- name: Versions | Helm repo – update cache
+  ansible.builtin.shell: helm repo update 2>&1 | tail -2 || true
+  register: _vc_repo_update
+  changed_when: false
+  failed_when: false
+
+- name: Versions | nginx-ingress – latest chart version in repo
+  ansible.builtin.shell: |
+    helm search repo nginx-stable/nginx-ingress -o json 2>/dev/null | python3 -c "
+    import sys, json
+    data = json.load(sys.stdin)
+    print(data[0]['version'] if data else '?')
+    " 2>/dev/null || echo '?'
+  register: _vc_ingress_latest
+  changed_when: false
+  failed_when: false
+
+- name: Versions | cert-manager – latest chart version in repo
+  ansible.builtin.shell: |
+    helm search repo jetstack/cert-manager -o json 2>/dev/null | python3 -c "
+    import sys, json
+    data = json.load(sys.stdin)
+    print(data[0]['version'] if data else '?')
+    " 2>/dev/null || echo '?'
+  register: _vc_certmgr_latest
+  changed_when: false
+  failed_when: false
+
+
+# =============================================================================
+# LATEST VERSIONS FROM GITHUB API (local: delegate_to localhost)
+# =============================================================================
+
+- name: Versions | K3s – latest release (GitHub API)
+  ansible.builtin.uri:
+    url: https://api.github.com/repos/k3s-io/k3s/releases/latest
+    return_content: true
+    timeout: 10
+    headers:
+      User-Agent: ansible-version-check
+  register: _vc_k3s_api
+  delegate_to: localhost
+  become: false
+  failed_when: false
+
+- name: Versions | Helm – latest release (GitHub API)
+  ansible.builtin.uri:
+    url: https://api.github.com/repos/helm/helm/releases/latest
+    return_content: true
+    timeout: 10
+    headers:
+      User-Agent: ansible-version-check
+  register: _vc_helm_api
+  delegate_to: localhost
+  become: false
+  failed_when: false
+
+
+# =============================================================================
+# COMPUTE RESULTS
+# =============================================================================
+
+- name: Versions | Compute comparison values
+  ansible.builtin.set_fact:
+    # K3s
+    _r_k3s_inst:  "{{ _vc_k3s_inst.stdout | default('?') | trim }}"
+    _r_k3s_new:   "{{ (_vc_k3s_api.json.tag_name | default('?')) if (_vc_k3s_api.status | default(0) | int) == 200 else '?' }}"
+    # Helm
+    _r_helm_inst: "{{ _vc_helm_inst.stdout | default('?') | trim }}"
+    _r_helm_new:  "{{ (_vc_helm_api.json.tag_name | default('?')) if (_vc_helm_api.status | default(0) | int) == 200 else '?' }}"
+    # nginx-ingress chart
+    _r_nginx_cfg: "{{ ingress_nginx_chart_version }}"
+    _r_nginx_dep: "{{ _vc_ingress_dep.stdout | default('?') | trim }}"
+    _r_nginx_new: "{{ _vc_ingress_latest.stdout | default('?') | trim }}"
+    # cert-manager chart
+    _r_cm_cfg:    "{{ cert_manager_chart_version }}"
+    _r_cm_dep:    "{{ _vc_certmgr_dep.stdout | default('?') | trim }}"
+    _r_cm_new:    "{{ _vc_certmgr_latest.stdout | default('?') | trim }}"
+
+- name: Versions | Compute status flags
+  ansible.builtin.set_fact:
+    # K3s: strip +k3s suffix for comparison with GitHub tag
+    _f_k3s_ok:    "{{ _r_k3s_new == '?' or _r_k3s_inst == _r_k3s_new }}"
+    _f_k3s_na:    "{{ _r_k3s_inst in ['?', 'not installed'] }}"
+    # Helm: GitHub tag has no build suffix, installed version does → compare base
+    _f_helm_ok:   "{{ _r_helm_new == '?' or _r_helm_inst == _r_helm_new }}"
+    _f_helm_na:   "{{ _r_helm_inst in ['?', 'not installed'] }}"
+    # nginx-ingress chart: configured vs. latest repo version
+    _f_nginx_dep: "{{ _r_nginx_cfg == _r_nginx_dep }}"
+    _f_nginx_ok:  "{{ _r_nginx_new == '?' or _r_nginx_cfg == _r_nginx_new }}"
+    # cert-manager chart: configured vs. latest repo version
+    _f_cm_dep:    "{{ _r_cm_cfg == _r_cm_dep }}"
+    _f_cm_ok:     "{{ _r_cm_new == '?' or _r_cm_cfg == _r_cm_new }}"
+
+
+# =============================================================================
+# REPORT
+# =============================================================================
+
+- name: Versions | Print version report
+  ansible.builtin.debug:
+    msg: |
+
+      {{ _h }}╔══════════════════════════════════════════════════════════╗{{ _z }}
+      {{ _h }}║       COMPONENT VERSION CHECK                           ║{{ _z }}
+      {{ _h }}╚══════════════════════════════════════════════════════════╝{{ _z }}
+
+      {{ _h }}── Infrastructure ────────────────────────────────────────────{{ _z }}
+        {{ _na if _f_k3s_na | bool else (_ok if _f_k3s_ok | bool else _warn) }}  K3s
+              installed : {{ _r_k3s_inst }}
+              latest    : {{ _r_k3s_new }}{{ '  ' ~ _y ~ '← update available' ~ _z if (not _f_k3s_ok | bool and not _f_k3s_na | bool and _r_k3s_new != '?') else '' }}
+
+        {{ _na if _f_helm_na | bool else (_ok if _f_helm_ok | bool else _warn) }}  Helm
+              installed : {{ _r_helm_inst }}
+              latest    : {{ _r_helm_new }}{{ '  ' ~ _y ~ '← update available' ~ _z if (not _f_helm_ok | bool and not _f_helm_na | bool and _r_helm_new != '?') else '' }}
+
+      {{ _h }}── Helm Charts ────────────────────────────────────────────────{{ _z }}
+        {{ _ok if (_f_nginx_dep | bool and _f_nginx_ok | bool) else _warn }}  nginx-ingress (F5)
+              configured: {{ _r_nginx_cfg }}
+              deployed  : {{ _r_nginx_dep }}{{ '  ' ~ _r ~ '← not yet deployed' ~ _z if not _f_nginx_dep | bool else '' }}
+              latest    : {{ _r_nginx_new }}{{ '  ' ~ _y ~ '← update available in group_vars' ~ _z if (not _f_nginx_ok | bool and _r_nginx_new != '?') else '' }}
+
+        {{ _ok if (_f_cm_dep | bool and _f_cm_ok | bool) else _warn }}  cert-manager
+              configured: {{ _r_cm_cfg }}
+              deployed  : {{ _r_cm_dep }}{{ '  ' ~ _r ~ '← not yet deployed' ~ _z if not _f_cm_dep | bool else '' }}
+              latest    : {{ _r_cm_new }}{{ '  ' ~ _y ~ '← update available in group_vars' ~ _z if (not _f_cm_ok | bool and _r_cm_new != '?') else '' }}
+
+      {{ _h }}── Container Images (configured in group_vars/all.yml) ────────{{ _z }}
+      {% if 'blog' in group_names %}
+        {{ _info }}  WordPress FPM    : {{ blog_image_wordpress }}
+        {{ _info }}  MariaDB          : {{ blog_image_mariadb }}
+        {{ _info }}  Redis            : {{ blog_image_redis }}
+        {{ _info }}  nginx sidecar    : {{ blog_image_nginx }}
+        {{ _info }}  mysqld-exporter  : {{ blog_image_mysqld_exporter }}
+        {{ _info }}  fpm-exporter     : {{ blog_image_fpm_exporter }}
+      {% endif %}
+      {% if 'nextcloud' in group_names %}
+        {{ _info }}  Nextcloud FPM    : {{ nextcloud_image_fpm }}
+        {{ _info }}  nginx sidecar    : {{ nextcloud_image_nginx }}
+        {{ _info }}  Collabora        : {{ nextcloud_image_collabora }}
+        {{ _info }}  fpm-exporter     : {{ nextcloud_image_fpm_exporter }}
+      {% endif %}
+        {{ _info }}  node-exporter    : {{ node_exporter_version }}
+        {{ _info }}  Prometheus       : {{ prometheus_version }}
+
+      {{ _h }}  To update: edit inventory/group_vars/all.yml and re-run the playbook.{{ _z }}
+      {{ _h }}══════════════════════════════════════════════════════════════{{ _z }}

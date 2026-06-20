@@ -1,0 +1,27 @@
+---
+# Deploy Redis as an in-memory object cache for WordPress.
+
+- name: Redis | Template Deployment manifest
+  ansible.builtin.template:
+    src: redis-deployment.yml.j2
+    dest: /tmp/k8s-wp-redis.yml
+    mode: "0644"
+
+- name: Redis | Apply Deployment + Service
+  ansible.builtin.command: >
+    k3s kubectl apply -f /tmp/k8s-wp-redis.yml
+  register: redis_apply
+  changed_when: "'created' in redis_apply.stdout or 'configured' in redis_apply.stdout"
+
+- name: Redis | Remove temporary manifest
+  ansible.builtin.file:
+    path: /tmp/k8s-wp-redis.yml
+    state: absent
+
+- name: Redis | Wait for Redis pod to be ready
+  ansible.builtin.command: >
+    k3s kubectl wait deployment/redis
+    --namespace wordpress
+    --for=condition=available
+    --timeout=120s
+  changed_when: false

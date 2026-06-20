@@ -20,26 +20,35 @@ controller:
       server-tokens: "false"
 
       # --- TLS hardening ---
-      # Only TLS 1.2 and 1.3; disable legacy protocols.
       ssl-protocols: "TLSv1.2 TLSv1.3"
-      # Modern ECDHE cipher suite; no RSA key exchange, no CBC mode ciphers.
       ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305"
+      # Let the client choose the cipher for TLS 1.3 (RFC 8446 best practice).
+      ssl-prefer-server-ciphers: "false"
 
       # --- Compression ---
       gzip: "on"
+      # Brotli: 15-25 % smaller than gzip for text/JS/CSS on modern browsers.
+      brotli: "true"
+      brotli-level: "6"
+      brotli-types: "text/plain text/css text/xml text/javascript application/javascript application/json application/xml image/svg+xml font/woff font/woff2"
 
       # --- Custom http-context directives ---
-      # SSL session cache, OCSP stapling, gzip tuning and rate-limit zones all
-      # go here because F5 NGINX exposes them via the http-snippets key rather
-      # than as individual ConfigMap entries.
+      # ssl_session_tickets, OCSP stapling, gzip/brotli tuning, rate-limit zones.
+      # F5 NGINX exposes these via http-snippets rather than individual entries.
       http-snippets: |
         ssl_session_cache shared:SSL:10m;
         ssl_session_timeout 1d;
+        # Disable session tickets: forces fresh key derivation per session,
+        # preserving Perfect Forward Secrecy even if a ticket key is compromised.
+        ssl_session_tickets off;
 
-        # OCSP stapling: attaches the CA's signed revocation response to the
-        # TLS handshake so browsers skip a separate round-trip to the CA.
+        # OCSP stapling: nginx fetches and caches the CA's revocation response,
+        # attaching it to the TLS handshake so browsers need no extra round-trip.
+        # resolver is required so nginx can look up the OCSP responder hostname.
         ssl_stapling on;
         ssl_stapling_verify on;
+        resolver 1.1.1.1 8.8.8.8 valid=60s;
+        resolver_timeout 5s;
 
         gzip_comp_level 6;
         gzip_types text/plain text/css text/xml text/javascript application/javascript application/json application/xml image/svg+xml;

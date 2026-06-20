@@ -273,6 +273,7 @@
   <a href="#updates">Updates</a>
   <a href="#backup">Backup &amp; Restore</a>
   <a href="#troubleshooting">Troubleshooting</a>
+  <a href="#performance">Performance</a>
   <a href="#sicherheit">Security</a>
 </nav>
 
@@ -1473,6 +1474,82 @@ k3s kubectl get jobs -n nextcloud --sort-by=.metadata.creationTimestamp | tail -
 k3s kubectl logs -n nextcloud -l job-name=nextcloud-cron-&lt;id&gt;</code></pre>
 </section>
 
+<!-- ─────────────────────────── PERFORMANCE ──────────────────────────── -->
+<section id="performance">
+<h2>Performance</h2>
+
+<h3>Optimisation Layers</h3>
+<table>
+  <tr><th>Layer</th><th>Measure</th><th>Configuration</th></tr>
+  <tr>
+    <td>TCP/Kernel</td>
+    <td>BBR congestion control, tcp_slow_start_after_idle=0, tcp_fastopen=3, optimised timeouts</td>
+    <td><code>common_sysctl</code> → <code>/etc/sysctl.d/99-webserver.conf</code></td>
+  </tr>
+  <tr>
+    <td>TLS – OCSP Stapling</td>
+    <td>nginx caches the revocation status from the CA and sends it in the TLS handshake → browser saves ~50–100 ms CA round-trip per new session. <code>ssl_session_tickets off</code> enforces forward secrecy.</td>
+    <td><code>common_k3s</code> → nginx-ingress Helm values (<code>http-snippets</code>)</td>
+  </tr>
+  <tr>
+    <td>Brotli</td>
+    <td>Brotli compression (level 6) for text/JS/CSS/fonts – 15–25% smaller than gzip; gzip remains active as fallback</td>
+    <td><code>common_k3s</code> → nginx-ingress Helm values ConfigMap</td>
+  </tr>
+  <tr>
+    <td>Redis File Cache</td>
+    <td>Nextcloud uses Redis (system service on the host) as file-locking backend and for the local memory cache – prevents database locking during parallel uploads and WebDAV accesses</td>
+    <td><code>next_redis</code>, <code>next_k3s_deploy</code> → <code>custom.config.php</code></td>
+  </tr>
+  <tr>
+    <td>/tmp in RAM</td>
+    <td>PHP-FPM temp directory as <code>emptyDir(Memory)</code> – 64 Mi tmpfs, no disk I/O for temporary upload and preview files</td>
+    <td><code>next_k3s_deploy</code> → <code>nextcloud-deployment.yml.j2</code></td>
+  </tr>
+  <tr>
+    <td>PHP OPcache</td>
+    <td>Bytecode cache in the container – Nextcloud image ships with OPcache pre-installed</td>
+    <td>Nextcloud container default</td>
+  </tr>
+  <tr>
+    <td>PHP-FPM Pool</td>
+    <td>max_children=10, max_requests=500 (worker recycling to prevent memory leaks); FPM status endpoint for Prometheus exporter</td>
+    <td><code>next_k3s_deploy</code> → ConfigMap <code>nextcloud-fpm-pool-config</code></td>
+  </tr>
+</table>
+
+<h3>Brotli &amp; OCSP Stapling</h3>
+<p>
+  Brotli and OCSP stapling are configured at the nginx-ingress level and apply to all
+  domains (Nextcloud and WordPress). Brotli delivers 15–25% smaller responses than gzip
+  for typical Nextcloud responses (JSON, HTML, JS) at the same quality level.
+  OCSP stapling reduces TLS connection time by ~50–100 ms since the browser no longer
+  needs to make its own OCSP request to Let's Encrypt.
+</p>
+<pre><code># Verify Brotli (send br encoding in Accept-Encoding)
+curl -sk --resolve nextcloud.example.com:443:127.0.0.1 \
+  -H "Accept-Encoding: br, gzip" -I \
+  "https://nextcloud.example.com/" | grep -i content-encoding
+
+# Verify OCSP stapling
+openssl s_client -connect nextcloud.example.com:443 -status 2>/dev/null | \
+  grep -A5 "OCSP Response"</code></pre>
+
+<h3>/tmp in RAM</h3>
+<p>
+  The <code>/tmp</code> directory of the nextcloud-fpm container is mounted as a 64 Mi tmpfs
+  (<code>emptyDir: medium: Memory</code>). PHP-FPM writes temporary files there during
+  upload processing, thumbnail generation, and OCC operations. Unlike disk I/O, this
+  incurs no I/O wait time.
+</p>
+<div class="callout callout-warn">
+  <strong>Contents are lost on pod restart</strong>
+  All files in <code>/tmp</code> are deleted when the pod restarts.
+  Nextcloud does not store persistent data there – incomplete uploads are
+  automatically aborted and must be restarted.
+</div>
+</section>
+
 <!-- ─────────────────────────── SECURITY ───────────────────────────── -->
 <section id="sicherheit">
 <h2>Security</h2>
@@ -1492,12 +1569,23 @@ k3s kubectl logs -n nextcloud -l job-name=nextcloud-cron-&lt;id&gt;</code></pre>
   </tr>
   <tr>
     <td>HTTP – Fail2Ban jails</td>
-    <td><code>nginx-k3s-scanner</code>: blocks scanners (20× 40x errors in 60 s); <code>nginx-k3s-bad-paths</code>: blocks webshell/exploit paths (/.env, /.git/, /phpinfo.php, 2 attempts, 24 h ban); log path: containerd logs at <code>/var/log/pods/ingress-nginx_*/nginx-ingress/0.log</code></td>
+    <td>
+      <code>nginx-k3s-scanner</code>: scanners (20× 40x errors in 60 s);
+      <code>nginx-k3s-bad-paths</code>: known exploit paths (/.env, /.git/, /phpinfo.php – 2 attempts, 24 h ban);
+      <code>recidive</code>: repeat offenders – banned 3× in 24 h → 30-day ban.
+      All verify tasks run via <code>curl --resolve hostname:443:127.0.0.1</code> (source IP 127.0.0.1 ∈ ignoreip → no self-ban).
+      Log path: <code>/var/log/pods/ingress-nginx_*/nginx-ingress/0.log</code>
+    </td>
     <td><code>common_fail2ban</code></td>
   </tr>
   <tr>
-    <td>HTTP</td>
-    <td>Rate limiting login (5r/s), HSTS, security headers</td>
+    <td>HTTP – TLS</td>
+    <td>TLS 1.2/1.3; OCSP stapling with resolver (1.1.1.1/8.8.8.8); <code>ssl_session_tickets off</code> (forward secrecy enforced); <code>ssl-prefer-server-ciphers: false</code></td>
+    <td><code>common_k3s</code> → nginx-ingress Helm values</td>
+  </tr>
+  <tr>
+    <td>HTTP – Security Headers</td>
+    <td>HSTS (max-age=31536000), X-Frame-Options: SAMEORIGIN, X-Content-Type-Options: nosniff, Referrer-Policy: strict-origin-when-cross-origin, X-Permitted-Cross-Domain-Policies: none; rate limiting login (5 r/s)</td>
     <td><code>common_k3s</code> (nginx-ingress (F5) Helm values + ingress annotations)</td>
   </tr>
   <tr>

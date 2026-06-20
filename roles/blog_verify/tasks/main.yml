@@ -120,7 +120,8 @@
 # BLOCK 3 – HTTPS / WORDPRESS (local: delegate_to localhost)
 # =============================================================================
 
-- name: Verify | HTTPS – main page (TLS + HTTP 200 + headers)
+# External connectivity test only – GET / returns 200, never triggers fail2ban.
+- name: Verify | HTTPS – external connectivity (HTTP 200)
   ansible.builtin.uri:
     url: "{{ blog_url }}/"
     method: GET
@@ -133,18 +134,27 @@
   delegate_to: localhost
   become: false
 
-- name: Verify | HTTPS – /wp-login.php accessible (200 = login page reachable)
-  ansible.builtin.uri:
-    url: "{{ blog_url }}/wp-login.php"
-    method: GET
-    validate_certs: true
-    timeout: "{{ verify_http_timeout }}"
-    status_code: 200
-    return_content: false
-  register: _v_wp_login
+# All further HTTP checks run on the server via --resolve → 127.0.0.1.
+# fail2ban sees source IP 127.0.0.1 (always in ignoreip) → no self-ban risk.
+
+- name: Verify | HTTPS – response headers via 127.0.0.1 (HSTS, Server, X-Powered-By)
+  ansible.builtin.shell: |
+    curl -sk --max-time {{ verify_http_timeout }} \
+      --resolve "{{ blog_hostname }}:443:127.0.0.1" \
+      -I "https://{{ blog_hostname }}/" 2>/dev/null | tr '[:upper:]' '[:lower:]'
+  register: _v_headers
+  changed_when: false
   failed_when: false
-  delegate_to: localhost
-  become: false
+
+- name: Verify | HTTPS – /wp-login.php accessible (200 = login page reachable)
+  ansible.builtin.shell: |
+    curl -sk --max-time {{ verify_http_timeout }} \
+      --resolve "{{ blog_hostname }}:443:127.0.0.1" \
+      -o /dev/null -w "%{http_code}" \
+      "https://{{ blog_hostname }}/wp-login.php" 2>/dev/null || echo 000
+  register: _v_wp_login
+  changed_when: false
+  failed_when: false
 
 
 # =============================================================================
@@ -254,13 +264,15 @@
     _r_ingress:     "{{ 'Running' in (_v_ingress_pods.stdout | default('')) }}"
     _r_certmgr:     "{{ 'Running' in (_v_cm_pods.stdout | default('')) }}"
     _r_noerror:     "{{ (_v_error_pods.stdout | default('') | trim) == '' }}"
-    # HTTPS
+    # HTTPS – basic connectivity from external (uri module, delegate_to: localhost)
     _r_https:       "{{ _v_https.status | default(0) == 200 }}"
     _r_tls:         "{{ _v_https.status | default(0) == 200 }}"
-    _r_hsts:        "{{ 'strict-transport-security' in (_v_https.headers | default({})) }}"
-    _r_server:      "{{ 'nginx/' not in (_v_https.headers.server | default('')) }}"
-    _r_no_xpb:      "{{ 'x-powered-by' not in (_v_https.headers | default({})) }}"
-    _r_wp_login:    "{{ _v_wp_login.status | default(0) == 200 }}"
+    # Headers – parsed from curl -I via 127.0.0.1 (all lowercase, safe from fail2ban)
+    _r_hsts:        "{{ 'strict-transport-security' in (_v_headers.stdout | default('')) }}"
+    _r_server:      "{{ 'nginx/' not in (_v_headers.stdout | default('')) }}"
+    _r_no_xpb:      "{{ 'x-powered-by' not in (_v_headers.stdout | default('')) }}"
+    # wp-login – curl stdout is the HTTP status code
+    _r_wp_login:    "{{ _v_wp_login.stdout | default('000') | trim | int == 200 }}"
     # Security (curl via 127.0.0.1 → stdout is the HTTP status code)
     _r_xmlrpc:      "{{ _v_xmlrpc.stdout | default('200') | trim | int in [400, 401, 403, 404, 444] }}"
     _r_env:         "{{ _v_env.stdout | default('200') | trim | int in [400, 401, 403, 404, 444] }}"
@@ -277,7 +289,7 @@
     _d_ingress:     "{{ _v_ingress_pods.stdout | default('?') | trim | replace('\n', '  ') }}"
     _d_certmgr:     "{{ _v_cm_pods.stdout | default('?') | trim | replace('\n', '  ') }}"
     _d_error_pods:  "{{ _v_error_pods.stdout | default('') | trim | replace('\n', ', ') | default('none', true) }}"
-    _d_server_hdr:  "{{ _v_https.headers.server | default('(not set)') }}"
+    _d_server_hdr:  "{{ _v_headers.stdout | default('') | regex_search('server: ([^\r\n]+)', '\\1') | first | default('(not set)') }}"
     _d_rest:        "{{ 'no username leak' if (_v_rest_users.stdout.split('|')[1] | default('1') | int == 0) else 'USERNAME LEAK – check!' }}"
 
 
@@ -335,7 +347,7 @@
         {{ _ok if _r_hsts | bool else _fail }}  HSTS header                  {{ 'present' if _r_hsts | bool else _r ~ 'MISSING' ~ _z }}
         {{ _ok if _r_server | bool else _fail }}  Server header (no leak)      {{ _d_server_hdr }}
         {{ _ok if _r_no_xpb | bool else _fail }}  X-Powered-By                 {{ 'not present' if _r_no_xpb | bool else _r ~ 'FOUND – PHP version leaked!' ~ _z }}
-        {{ _ok if _r_wp_login | bool else _fail }}  /wp-login.php reachable      HTTP {{ _v_wp_login.status | default('TIMEOUT') }}
+        {{ _ok if _r_wp_login | bool else _fail }}  /wp-login.php reachable      HTTP {{ _v_wp_login.stdout | default('TIMEOUT') | trim }}
 
       {{ _h }}── Security / Blocking ───────────────────────────────────────{{ _z }}
         {{ _ok if _r_xmlrpc | bool else _fail }}  /xmlrpc.php                  HTTP {{ _v_xmlrpc.stdout | default('?') | trim }}{{ '' if _r_xmlrpc | bool else _r ~ '  ← must be blocked!' ~ _z }}

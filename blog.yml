@@ -64,25 +64,37 @@
 # =============================================================================
 - name: Install and configure WordPress blog
   hosts: blog
+  # gather_subset: collect only OS/network/virtual facts.
+  # Skips slow hardware inventory (lspci, dmidecode) → saves ~3-5 s.
+  # Full facts are cached to /tmp/ansible_facts_cache for 1 h (see ansible.cfg).
   gather_facts: true
+  gather_subset:
+    - min
+    - network
+    - virtual
   become: false
 
 
   roles:
+    - common_version_check  # Pre-flight: show component versions + available updates
     - blog_packages         # Host packages: nftables, SELinux tools, utilities only
     - common_ssh            # SSH hardening (port, key-only auth)
     - common_firewall       # nftables IPv4/IPv6 rules
     - common_sysctl         # Kernel tuning: TCP BBR, connection timeouts, backlog
     - blog_selinux          # SELinux enforcing + container_file_t for HostPath  ← before deploy!
     - common_k3s            # K3s + Helm + cert-manager + nginx-ingress (F5)
-    - blog_k3s_deploy       # WordPress K8s Deployment + Ingress + CronJob
-    - blog_wordpress        # WordPress install + plugins via kubectl exec
-    - common_node_exporter  # Node Exporter (metrics collector, port 9100)
-    - common_prometheus     # Prometheus (scrapes node:9100 + K3s NodePorts 30104/30253, port 9090)
+    - blog_k3s_deploy       # WordPress K8s manifests applied (pods start in background)
+
+    # These roles run while K8s pods initialise – saves 2-3 min wall-clock time.
+    - common_node_exporter  # Node Exporter (metrics, port 9100)
+    - common_prometheus     # Prometheus (scrapes node:9100 + K3s NodePorts, port 9090)
     - common_grafana        # Grafana (dashboards 1860/7362/4912, port 3000)
     - common_fail2ban       # Fail2Ban: SSH + nginx + WordPress login protection
-    - common_msmtp          # msmtp sendmail relay (used by rkhunter, cron, dnf-automatic)
+    - common_msmtp          # msmtp sendmail relay (rkhunter, cron, dnf-automatic)
     - common_dnf_automatic  # Automatic security-only updates via dnf-automatic
     - common_rkhunter       # Rootkit detection with daily scan
     - common_auditd         # Linux Audit Daemon with security-relevant rules
+
+    # WordPress setup waits for pod readiness → by now pods are Running.
+    - blog_wordpress        # WordPress install + plugins via kubectl exec
     - blog_verify           # Post-deployment smoke tests (services, K8s, HTTPS, security, performance)

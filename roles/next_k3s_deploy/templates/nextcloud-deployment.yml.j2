@@ -152,6 +152,8 @@ spec:
         - name: fpm-pool-config
           mountPath: /usr/local/etc/php-fpm.d/z-monitoring.conf
           subPath: z-monitoring.conf
+        - name: tmp
+          mountPath: /tmp
         resources:
           requests:
             memory: "512Mi"   # real idle ~200-300 MB; 512 gives scheduler headroom
@@ -251,6 +253,12 @@ spec:
       - name: fpm-pool-config
         configMap:
           name: nextcloud-fpm-pool-config
+      # RAM-backed tmpfs for PHP-FPM temp files (uploads, occ tmp, previews).
+      # Content is lost on pod restart – acceptable for transient files.
+      - name: tmp
+        emptyDir:
+          medium: Memory
+          sizeLimit: 64Mi
 ---
 apiVersion: v1
 kind: Service

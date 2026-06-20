@@ -58,6 +58,9 @@ blog_image_busybox:        "busybox:1"
 blog_image_wordpress:      "wordpress:7.0-php8.3-fpm"
 blog_image_mariadb:        "mariadb:10.11"
 blog_image_nginx:          "nginx:1.30-alpine"
+# Redis: object cache for WordPress (pure in-memory, no persistence)
+# Check: https://hub.docker.com/_/redis/tags  (filter: *-alpine)
+blog_image_redis:          "redis:7-alpine"
 
 # =============================================================================
 # Monitoring exporters – host + sidecar images
