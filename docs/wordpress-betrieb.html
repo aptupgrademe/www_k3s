@@ -1409,6 +1409,11 @@ k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
     <td><code>common_sysctl</code> → <code>/etc/sysctl.d/99-webserver.conf</code></td>
   </tr>
   <tr>
+    <td>HTTP/2</td>
+    <td>Multiplexing (mehrere Requests parallel über eine TCP-Verbindung), HPACK-Header-Kompression, ALPN-Aushandlung im TLS-Handshake</td>
+    <td><code>common_k3s</code> → nginx-ingress Helm-Values (<code>http2: "true"</code>)</td>
+  </tr>
+  <tr>
     <td>TLS – OCSP Stapling</td>
     <td>nginx cached den Revocation-Status beim CA und liefert ihn im TLS-Handshake mit → Browser spart ~50–100 ms CA-Round-Trip pro neuer Session. <code>ssl_session_tickets off</code> erzwingt Forward Secrecy.</td>
     <td><code>common_k3s</code> → nginx-ingress Helm-Values (<code>http-snippets</code>)</td>
@@ -1543,7 +1548,7 @@ k3s kubectl exec deployment/mariadb -n wordpress -- \
   </tr>
   <tr>
     <td>SSH</td>
-    <td>Port 10022, Key-only, gehärtete sshd_config, Fail2Ban</td>
+    <td>Port 10022, Key-only (<code>PermitRootLogin without-password</code>), gehärtete sshd_config, Fail2Ban</td>
     <td><code>common_ssh</code>, <code>common_fail2ban</code></td>
   </tr>
   <tr>
@@ -1570,8 +1575,8 @@ k3s kubectl exec deployment/mariadb -n wordpress -- \
   </tr>
   <tr>
     <td>HTTP – Endpoint-Block</td>
-    <td>xmlrpc.php → 403 (verhindert XML-RPC-Brute-Force)</td>
-    <td><code>blog_k3s_deploy</code> (Ingress server-snippets)</td>
+    <td>xmlrpc.php → 403 (verhindert XML-RPC-Brute-Force); <code>/robots.txt</code> an WordPress weitergeleitet (Yoast SEO generiert dynamisch mit Sitemap-Verweis)</td>
+    <td><code>blog_k3s_deploy</code> (Ingress server-snippets, nginx-cm)</td>
   </tr>
   <tr>
     <td>HTTP – Security-Header</td>
@@ -1590,7 +1595,7 @@ k3s kubectl exec deployment/mariadb -n wordpress -- \
   </tr>
   <tr>
     <td>WordPress</td>
-    <td>Limit Login Attempts Plugin, Plugin-Updates via Ansible</td>
+    <td>Limit Login Attempts Plugin, Plugin-Updates via Ansible; Autoptimize (JS/CSS minifiziert, 40 → 6 Script-Tags)</td>
     <td><code>blog_wordpress</code></td>
   </tr>
   <tr>
@@ -1605,7 +1610,7 @@ k3s kubectl exec deployment/mariadb -n wordpress -- \
   </tr>
   <tr>
     <td>Rootkits</td>
-    <td>rkhunter täglicher Scan um 03:15</td>
+    <td>rkhunter täglicher Scan um 03:15; <code>WEB_CMD=curl -L</code> (SourceForge-Redirect-Fix); <code>ALLOW_SSH_ROOT_USER=without-password</code></td>
     <td><code>common_rkhunter</code></td>
   </tr>
   <tr>

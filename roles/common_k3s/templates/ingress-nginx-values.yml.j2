@@ -19,6 +19,10 @@ controller:
       # --- Hide nginx version from Server header ---
       server-tokens: "false"
 
+      # --- HTTP/2 ---
+      # Enables multiplexing, header compression (HPACK) and ALPN negotiation.
+      http2: "true"
+
       # --- TLS hardening ---
       ssl-protocols: "TLSv1.2 TLSv1.3"
       ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305"

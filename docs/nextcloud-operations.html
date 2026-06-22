@@ -1487,6 +1487,11 @@ k3s kubectl logs -n nextcloud -l job-name=nextcloud-cron-&lt;id&gt;</code></pre>
     <td><code>common_sysctl</code> → <code>/etc/sysctl.d/99-webserver.conf</code></td>
   </tr>
   <tr>
+    <td>HTTP/2</td>
+    <td>Multiplexing (multiple requests in parallel over one TCP connection), HPACK header compression, ALPN negotiation in TLS handshake</td>
+    <td><code>common_k3s</code> → nginx-ingress Helm values (<code>http2: "true"</code>)</td>
+  </tr>
+  <tr>
     <td>TLS – OCSP Stapling</td>
     <td>nginx caches the revocation status from the CA and sends it in the TLS handshake → browser saves ~50–100 ms CA round-trip per new session. <code>ssl_session_tickets off</code> enforces forward secrecy.</td>
     <td><code>common_k3s</code> → nginx-ingress Helm values (<code>http-snippets</code>)</td>
@@ -1564,7 +1569,7 @@ openssl s_client -connect nextcloud.example.com:443 -status 2>/dev/null | \
   </tr>
   <tr>
     <td>SSH</td>
-    <td>Port 10022, key-only, hardened sshd_config, Fail2Ban</td>
+    <td>Port 10022, key-only (<code>PermitRootLogin without-password</code>), hardened sshd_config, Fail2Ban</td>
     <td><code>common_ssh</code>, <code>common_fail2ban</code></td>
   </tr>
   <tr>
@@ -1610,7 +1615,7 @@ openssl s_client -connect nextcloud.example.com:443 -status 2>/dev/null | \
   </tr>
   <tr>
     <td>Rootkits</td>
-    <td>rkhunter daily scan at 03:15</td>
+    <td>rkhunter daily scan at 03:15; <code>WEB_CMD=curl -L</code> (SourceForge redirect fix); <code>ALLOW_SSH_ROOT_USER=without-password</code></td>
     <td><code>common_rkhunter</code></td>
   </tr>
   <tr>

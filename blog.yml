@@ -94,6 +94,7 @@
     - common_dnf_automatic  # Automatic security-only updates via dnf-automatic
     - common_rkhunter       # Rootkit detection with daily scan
     - common_auditd         # Linux Audit Daemon with security-relevant rules
+    - common_logrotate      # Log rotation for Grafana, Prometheus, fail2ban, rkhunter
 
     # WordPress setup waits for pod readiness → by now pods are Running.
     - blog_wordpress        # WordPress install + plugins via kubectl exec

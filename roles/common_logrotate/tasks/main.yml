@@ -1,0 +1,81 @@
+---
+# =============================================================================
+# Role: common_logrotate
+# Purpose: Deploy and fix logrotate configurations for services that either
+#          have no rotation (Grafana, Prometheus) or incomplete configs
+#          (fail2ban missing daily/compress, rkhunter missing compress).
+# =============================================================================
+
+- name: logrotate | Deploy Grafana log rotation
+  ansible.builtin.copy:
+    dest: /etc/logrotate.d/grafana
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      /var/log/grafana/*.log {
+          daily
+          rotate 14
+          compress
+          delaycompress
+          missingok
+          notifempty
+          create 0640 grafana grafana
+          sharedscripts
+          postrotate
+              systemctl kill -s HUP grafana-server.service 2>/dev/null || true
+          endscript
+      }
+
+- name: logrotate | Deploy Prometheus log rotation
+  ansible.builtin.copy:
+    dest: /etc/logrotate.d/prometheus
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      /var/log/prometheus/*.log {
+          daily
+          rotate 14
+          compress
+          delaycompress
+          missingok
+          notifempty
+          create 0640 prometheus prometheus
+      }
+
+- name: logrotate | Fix fail2ban log rotation (add daily + compress)
+  ansible.builtin.copy:
+    dest: /etc/logrotate.d/fail2ban
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      /var/log/fail2ban.log {
+          daily
+          rotate 14
+          compress
+          delaycompress
+          missingok
+          notifempty
+          postrotate
+              /usr/bin/fail2ban-client flushlogs >/dev/null || true
+          endscript
+      }
+
+- name: logrotate | Fix rkhunter log rotation (add compress + rotate count)
+  ansible.builtin.copy:
+    dest: /etc/logrotate.d/rkhunter
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      /var/log/rkhunter/rkhunter.log {
+          weekly
+          rotate 8
+          compress
+          delaycompress
+          missingok
+          notifempty
+          create 0640 root root
+      }

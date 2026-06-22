@@ -87,7 +87,14 @@ data:
             add_header Content-Disposition "attachment; filename=\"publickey.asc\"";
         }
 
-        location = /robots.txt  { allow all; log_not_found off; access_log off; }
+        # robots.txt is generated dynamically by Yoast SEO (no static file exists).
+        # Pass to WordPress via try_files so the virtual URL is resolved by PHP.
+        location = /robots.txt  {
+            allow all;
+            log_not_found off;
+            access_log    off;
+            try_files $uri $uri/ /index.php?$args;
+        }
         location = /favicon.ico { log_not_found off; access_log off; }
 
         access_log /dev/stdout;
