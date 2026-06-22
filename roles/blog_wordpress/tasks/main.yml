@@ -241,21 +241,8 @@
             margin: 0 !important;
         }
 
-        /* Blue sky gradient header */
         .af-middle-header {
-            padding: 14px 0 !important;
-            background: linear-gradient(180deg, #3a85c4 0%, #6fb3e8 40%, #98d0f5 75%, #c8e9ff 100%) !important;
-            position: relative !important;
-        }
-
-        /* Title and tagline readable on blue background */
-        .site-title a, .site-title a:hover {
-            color: #fff !important;
-            text-shadow: 0 1px 4px rgba(0,50,110,0.7) !important;
-        }
-        .site-description {
-            color: #e8f4ff !important;
-            text-shadow: 0 1px 3px rgba(0,40,100,0.6) !important;
+            padding: 10px 0 !important;
         }';
         $existing = wp_get_custom_css_post('morenews');
         if ($existing) {
