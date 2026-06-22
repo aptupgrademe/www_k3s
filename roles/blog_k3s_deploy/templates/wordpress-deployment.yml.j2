@@ -92,6 +92,7 @@ spec:
             define('WP_REDIS_DATABASE', 0);
             define('WP_REDIS_SCHEME',   'tcp');
             define('WP_CACHE', true);
+            define('WPCACHEHOME', '/var/www/html/wp-content/plugins/wp-super-cache/');
         ports:
         - containerPort: 9000
           name: fpm
