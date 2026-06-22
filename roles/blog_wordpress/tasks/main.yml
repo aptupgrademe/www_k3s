@@ -243,7 +243,9 @@
 
         .af-middle-header {
             padding: 10px 0 !important;
-        }';
+        }
+        .site-title a, .site-title a:hover { color: #ffffff !important; }
+        .site-description { color: #ffffff !important; }';
         $existing = wp_get_custom_css_post('morenews');
         if ($existing) {
             wp_update_post(['ID' => $existing->ID, 'post_content' => $css]);
