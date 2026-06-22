@@ -264,6 +264,64 @@
 
 
 # -----------------------------------------------------------------------------
+# Navigation menu – "Home | About | Imprint | Privacy Policy"
+# Idempotent: creates the menu once and assigns it to aft-primary-nav.
+# Survives theme updates (stored in DB, not theme files).
+# -----------------------------------------------------------------------------
+- name: WordPress | Set up primary navigation menu with Home link
+  ansible.builtin.command:
+    argv:
+      - k3s
+      - kubectl
+      - exec
+      - deployment/wordpress
+      - --namespace
+      - wordpress
+      - --container
+      - wordpress-fpm
+      - --
+      - php
+      - /var/www/html/wp-cli.phar
+      - eval
+      - |
+        // Check if menu already exists
+        $existing = wp_get_nav_menu_object('Main Navigation');
+        if ($existing) {
+            // Ensure it is assigned to the correct location
+            $locs = get_theme_mod('nav_menu_locations', []);
+            $locs['aft-primary-nav'] = $existing->term_id;
+            set_theme_mod('nav_menu_locations', $locs);
+            echo "exists\n";
+        } else {
+            $menu_id = wp_create_nav_menu('Main Navigation');
+            wp_update_nav_menu_item($menu_id, 0, [
+                'menu-item-title'    => 'Home',
+                'menu-item-url'      => home_url('/'),
+                'menu-item-status'   => 'publish',
+                'menu-item-type'     => 'custom',
+                'menu-item-position' => 1,
+            ]);
+            foreach (get_pages(['sort_column' => 'menu_order']) as $i => $p) {
+                wp_update_nav_menu_item($menu_id, 0, [
+                    'menu-item-object-id' => $p->ID,
+                    'menu-item-object'    => 'page',
+                    'menu-item-type'      => 'post_type',
+                    'menu-item-status'    => 'publish',
+                    'menu-item-position'  => $i + 2,
+                ]);
+            }
+            $locs = get_theme_mod('nav_menu_locations', []);
+            $locs['aft-primary-nav'] = $menu_id;
+            set_theme_mod('nav_menu_locations', $locs);
+            echo "created\n";
+        }
+      - --path=/var/www/html
+      - --allow-root
+  register: wp_nav_menu
+  changed_when: "'created' in wp_nav_menu.stdout"
+
+
+# -----------------------------------------------------------------------------
 # Disable WP-Cron HTTP trigger
 # The K8s CronJob (blog_k3s_deploy) runs wp-cron.php on a schedule instead.
 # -----------------------------------------------------------------------------
