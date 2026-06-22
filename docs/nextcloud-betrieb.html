@@ -1626,6 +1626,11 @@ openssl s_client -connect nextcloud.example.com:443 -status 2>/dev/null | \
     <td><code>common_dnf_automatic</code></td>
   </tr>
   <tr>
+    <td>Log-Rotation</td>
+    <td>Grafana (täglich, 14 Tage), fail2ban (täglich, 14 Tage), rkhunter (wöchentlich, 8 Wochen) – alle komprimiert</td>
+    <td><code>common_logrotate</code></td>
+  </tr>
+  <tr>
     <td>Secrets</td>
     <td>Ansible Vault, K8s Secrets (Opaque), no_log auf sensible Tasks</td>
     <td>alle Rollen</td>
