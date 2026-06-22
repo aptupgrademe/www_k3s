@@ -211,6 +211,7 @@
             max-width: 75px;
             height: auto;
             transform: scaleX(-1);
+            filter: drop-shadow(1px 2px 3px rgba(0,0,0,0.25));
         }
 
         /* Header: Logo rechts, Titel+Tagline links, auf gleicher Höhe */
@@ -237,8 +238,26 @@
             grid-row: 2 !important;
             margin: 0 !important;
         }
+
+        /* Cartoon-Himmel mit Wolken */
         .af-middle-header {
-            padding: 10px 0 !important;
+            padding: 12px 0 !important;
+            background:
+                url("data:image/svg+xml,%3Csvg xmlns='\''http://www.w3.org/2000/svg'\'' width='\''200'\'' height='\''80'\''%3E%3Cellipse cx='\''100'\'' cy='\''62'\'' rx='\''88'\'' ry='\''20'\'' fill='\''white'\'' opacity='\''.9'\''/%3E%3Ccircle cx='\''64'\'' cy='\''48'\'' r='\''27'\'' fill='\''white'\'' opacity='\''.9'\''/%3E%3Ccircle cx='\''100'\'' cy='\''40'\'' r='\''33'\'' fill='\''white'\'' opacity='\''.9'\''/%3E%3Ccircle cx='\''138'\'' cy='\''47'\'' r='\''24'\'' fill='\''white'\'' opacity='\''.9'\''/%3E%3C/svg%3E")
+                7% top / 170px auto no-repeat,
+                url("data:image/svg+xml,%3Csvg xmlns='\''http://www.w3.org/2000/svg'\'' width='\''160'\'' height='\''65'\''%3E%3Cellipse cx='\''80'\'' cy='\''50'\'' rx='\''70'\'' ry='\''17'\'' fill='\''white'\'' opacity='\''.85'\''/%3E%3Ccircle cx='\''52'\'' cy='\''38'\'' r='\''21'\'' fill='\''white'\'' opacity='\''.85'\''/%3E%3Ccircle cx='\''80'\'' cy='\''31'\'' r='\''26'\'' fill='\''white'\'' opacity='\''.85'\''/%3E%3Ccircle cx='\''110'\'' cy='\''37'\'' r='\''19'\'' fill='\''white'\'' opacity='\''.85'\''/%3E%3C/svg%3E")
+                58% top / 130px auto no-repeat,
+                linear-gradient(180deg, #3a85c4 0%, #6fb3e8 35%, #98d0f5 70%, #c8e9ff 100%) !important;
+        }
+
+        /* Titel und Tagline gut lesbar auf blauem Hintergrund */
+        .site-title a, .site-title a:hover {
+            color: #fff !important;
+            text-shadow: 0 1px 4px rgba(0,60,120,0.6) !important;
+        }
+        .site-description {
+            color: #e8f4ff !important;
+            text-shadow: 0 1px 3px rgba(0,40,100,0.5) !important;
         }';
         $existing = wp_get_custom_css_post('morenews');
         if ($existing) {
