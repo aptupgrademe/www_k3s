@@ -26,13 +26,14 @@
     regexp: "^{{ item.key }}="
     line: "{{ item.key }}={{ item.value }}"
   loop:
-    - { key: "UPDATE_MIRRORS",    value: "1" }
-    - { key: "MIRRORS_MODE",      value: "0" }       # use any mirror
-    - { key: "WEB_CMD",           value: "curl" }
-    - { key: "MAIL-ON-WARNING",   value: "{{ rkhunter_mail }}" }
-    - { key: "AUTO_X_DETECT",     value: "0" }        # no X display
-    - { key: "TMPDIR",            value: "/var/lib/rkhunter/tmp" }
-    - { key: "PKGMGR",            value: "RPM" }      # use RPM for binary checks
+    - { key: "UPDATE_MIRRORS",       value: "1" }
+    - { key: "MIRRORS_MODE",         value: "0" }          # use any mirror
+    - { key: "WEB_CMD",              value: "curl -L" }    # -L follows HTTP→HTTPS redirects (SourceForge)
+    - { key: "MAIL-ON-WARNING",      value: "{{ rkhunter_mail }}" }
+    - { key: "AUTO_X_DETECT",        value: "0" }          # no X display
+    - { key: "TMPDIR",               value: "/var/lib/rkhunter/tmp" }
+    - { key: "PKGMGR",               value: "RPM" }        # use RPM for binary checks
+    - { key: "ALLOW_SSH_ROOT_USER",  value: "without-password" }  # matches PermitRootLogin prohibit-password in sshd_config
 
 
 # -----------------------------------------------------------------------------

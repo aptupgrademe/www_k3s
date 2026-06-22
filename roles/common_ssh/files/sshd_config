@@ -121,11 +121,10 @@ Subsystem	sftp	/usr/libexec/openssh/sftp-server
 # =============================================================================
 # Custom hardening settings (override the defaults above)
 # =============================================================================
-# Root login is permitted because this VPS is managed by a single admin.
-# PasswordAuthentication no ensures only SSH key auth is accepted – the risk
-# of allowing root is mitigated. Change to 'without-password' or 'no' if
-# additional OS users are added later.
-PermitRootLogin yes
+# Root login via SSH key is permitted (single-admin VPS).
+# 'prohibit-password' = keys only; passwords are additionally blocked by
+# PasswordAuthentication no. Satisfies rkhunter ALLOW_SSH_ROOT_USER=without-password.
+PermitRootLogin without-password
 AllowUsers root
 PasswordAuthentication no
 

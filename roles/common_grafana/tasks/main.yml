@@ -462,14 +462,17 @@
       # Datasource UID holen
       ds_uid = api(f"/api/datasources/name/{DS_NAME}")["uid"]
 
-      def make_rule(uid, title, expr, summary, threshold_label):
+      def make_rule(uid, title, expr, threshold, threshold_op, summary, threshold_label):
+          # expr must NOT contain a PromQL threshold filter (no "> N" at end).
+          # The threshold belongs in the evaluator so classic_conditions always
+          # receives data and never throws "condition must not be empty".
           return {
               "uid": uid,
               "title": title,
               "ruleGroup": "homelab",
               "folderUID": FOLDER_UID,
               "noDataState": "OK",
-              "execErrState": "Error",
+              "execErrState": "OK",
               "for": "5m",
               "annotations": {
                   "summary": summary,
@@ -499,7 +502,7 @@
                       "relativeTimeRange": {"from": 600, "to": 0},
                       "model": {
                           "conditions": [{
-                              "evaluator": {"params": [1], "type": "gt"},
+                              "evaluator": {"params": [threshold], "type": threshold_op},
                               "operator": {"type": "and"},
                               "query": {"params": ["A"]},
                               "reducer": {"params": [], "type": "last"},
@@ -518,7 +521,8 @@
               "alert-disk-root",
               "Festplatte root > 80%",
               '(node_filesystem_size_bytes{mountpoint="/"} - node_filesystem_free_bytes{mountpoint="/"}) '
-              '/ node_filesystem_size_bytes{mountpoint="/"} * 100 > 80',
+              '/ node_filesystem_size_bytes{mountpoint="/"}  * 100',
+              80, "gt",
               "Root-Partition ist zu mehr als 80% gefüllt – bitte Speicherplatz freigeben!",
               "disk_used_pct",
           ),
@@ -526,7 +530,8 @@
               "alert-disk-data",
               "Daten-Partition > 80%",
               '(node_filesystem_size_bytes{mountpoint=~"/srv|/var"} - node_filesystem_free_bytes{mountpoint=~"/srv|/var"}) '
-              '/ node_filesystem_size_bytes{mountpoint=~"/srv|/var"} * 100 > 80',
+              '/ node_filesystem_size_bytes{mountpoint=~"/srv|/var"} * 100',
+              80, "gt",
               "Daten-Partition (/srv oder /var) ist zu mehr als 80% gefüllt!",
               "disk_data_pct",
           ),
@@ -534,21 +539,24 @@
               "alert-memory",
               "Arbeitsspeicher > 90%",
               "(node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) "
-              "/ node_memory_MemTotal_bytes * 100 > 90",
+              "/ node_memory_MemTotal_bytes * 100",
+              90, "gt",
               "Mehr als 90% des RAM sind belegt – Risiko von OOM-Kills!",
               "mem_used_pct",
           ),
           make_rule(
               "alert-cpu-load",
               "CPU-Last > 85%",
-              "100 - (avg(rate(node_cpu_seconds_total{mode='idle'}[5m])) * 100) > 85",
+              "100 - (avg(rate(node_cpu_seconds_total{mode='idle'}[5m])) * 100)",
+              85, "gt",
               "Die durchschnittliche CPU-Last liegt seit 5 min über 85%.",
               "cpu_used_pct",
           ),
           make_rule(
               "alert-node-down",
               "Node Exporter nicht erreichbar",
-              "up{job='node'} == 0",
+              "up{job='node'}",
+              1, "lt",
               "Node Exporter antwortet nicht – Server möglicherweise down!",
               "node_up",
           ),
