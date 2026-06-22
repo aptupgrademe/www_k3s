@@ -211,7 +211,9 @@
             max-width: 75px;
             height: auto;
             transform: scaleX(-1);
-            filter: drop-shadow(1px 2px 3px rgba(0,0,0,0.25));
+            filter: drop-shadow(1px 2px 4px rgba(0,0,0,0.3));
+            position: relative;
+            z-index: 2;
         }
 
         /* Header: Logo rechts, Titel+Tagline links, auf gleicher Höhe */
@@ -239,25 +241,27 @@
             margin: 0 !important;
         }
 
-        /* Cartoon-Himmel mit Wolken */
+        /* Cartoon sky – 3 fluffy clouds only on RIGHT side, not behind text */
         .af-middle-header {
-            padding: 12px 0 !important;
+            padding: 14px 0 !important;
             background:
-                url("data:image/svg+xml,%3Csvg xmlns='\''http://www.w3.org/2000/svg'\'' width='\''200'\'' height='\''80'\''%3E%3Cellipse cx='\''100'\'' cy='\''62'\'' rx='\''88'\'' ry='\''20'\'' fill='\''white'\'' opacity='\''.9'\''/%3E%3Ccircle cx='\''64'\'' cy='\''48'\'' r='\''27'\'' fill='\''white'\'' opacity='\''.9'\''/%3E%3Ccircle cx='\''100'\'' cy='\''40'\'' r='\''33'\'' fill='\''white'\'' opacity='\''.9'\''/%3E%3Ccircle cx='\''138'\'' cy='\''47'\'' r='\''24'\'' fill='\''white'\'' opacity='\''.9'\''/%3E%3C/svg%3E")
-                7% top / 170px auto no-repeat,
-                url("data:image/svg+xml,%3Csvg xmlns='\''http://www.w3.org/2000/svg'\'' width='\''160'\'' height='\''65'\''%3E%3Cellipse cx='\''80'\'' cy='\''50'\'' rx='\''70'\'' ry='\''17'\'' fill='\''white'\'' opacity='\''.85'\''/%3E%3Ccircle cx='\''52'\'' cy='\''38'\'' r='\''21'\'' fill='\''white'\'' opacity='\''.85'\''/%3E%3Ccircle cx='\''80'\'' cy='\''31'\'' r='\''26'\'' fill='\''white'\'' opacity='\''.85'\''/%3E%3Ccircle cx='\''110'\'' cy='\''37'\'' r='\''19'\'' fill='\''white'\'' opacity='\''.85'\''/%3E%3C/svg%3E")
-                58% top / 130px auto no-repeat,
-                linear-gradient(180deg, #3a85c4 0%, #6fb3e8 35%, #98d0f5 70%, #c8e9ff 100%) !important;
+                url("data:image/svg+xml,%3Csvg xmlns='\''http://www.w3.org/2000/svg'\'' width='\''300'\'' height='\''120'\''%3E%3Cellipse cx='\''150'\'' cy='\''96'\'' rx='\''138'\'' ry='\''28'\'' fill='\''white'\''/%3E%3Ccircle cx='\''48'\'' cy='\''76'\'' r='\''32'\'' fill='\''white'\''/%3E%3Ccircle cx='\''85'\'' cy='\''62'\'' r='\''40'\'' fill='\''white'\''/%3E%3Ccircle cx='\''130'\'' cy='\''54'\'' r='\''46'\'' fill='\''white'\''/%3E%3Ccircle cx='\''178'\'' cy='\''58'\'' r='\''42'\'' fill='\''white'\''/%3E%3Ccircle cx='\''222'\'' cy='\''66'\'' r='\''36'\'' fill='\''white'\''/%3E%3Ccircle cx='\''258'\'' cy='\''76'\'' r='\''28'\'' fill='\''white'\''/%3E%3C/svg%3E")
+                right -10px top 4px / 280px auto no-repeat,
+                url("data:image/svg+xml,%3Csvg xmlns='\''http://www.w3.org/2000/svg'\'' width='\''220'\'' height='\''90'\''%3E%3Cellipse cx='\''110'\'' cy='\''72'\'' rx='\''102'\'' ry='\''22'\'' fill='\''white'\''/%3E%3Ccircle cx='\''38'\'' cy='\''58'\'' r='\''26'\'' fill='\''white'\''/%3E%3Ccircle cx='\''72'\'' cy='\''46'\'' r='\''33'\'' fill='\''white'\''/%3E%3Ccircle cx='\''112'\'' cy='\''40'\'' r='\''37'\'' fill='\''white'\''/%3E%3Ccircle cx='\''154'\'' cy='\''46'\'' r='\''32'\'' fill='\''white'\''/%3E%3Ccircle cx='\''188'\'' cy='\''56'\'' r='\''25'\'' fill='\''white'\''/%3E%3C/svg%3E")
+                68% top 8px / 200px auto no-repeat,
+                url("data:image/svg+xml,%3Csvg xmlns='\''http://www.w3.org/2000/svg'\'' width='\''160'\'' height='\''70'\''%3E%3Cellipse cx='\''80'\'' cy='\''56'\'' rx='\''74'\'' ry='\''17'\'' fill='\''white'\''/%3E%3Ccircle cx='\''30'\'' cy='\''44'\'' r='\''20'\'' fill='\''white'\''/%3E%3Ccircle cx='\''58'\'' cy='\''36'\'' r='\''26'\'' fill='\''white'\''/%3E%3Ccircle cx='\''88'\'' cy='\''32'\'' r='\''28'\'' fill='\''white'\''/%3E%3Ccircle cx='\''120'\'' cy='\''37'\'' r='\''23'\'' fill='\''white'\''/%3E%3Ccircle cx='\''144'\'' cy='\''45'\'' r='\''18'\'' fill='\''white'\''/%3E%3C/svg%3E")
+                82% bottom 6px / 150px auto no-repeat,
+                linear-gradient(180deg, #3a85c4 0%, #6fb3e8 40%, #98d0f5 75%, #c8e9ff 100%) !important;
         }
 
         /* Titel und Tagline gut lesbar auf blauem Hintergrund */
         .site-title a, .site-title a:hover {
             color: #fff !important;
-            text-shadow: 0 1px 4px rgba(0,60,120,0.6) !important;
+            text-shadow: 0 1px 4px rgba(0,50,110,0.7) !important;
         }
         .site-description {
             color: #e8f4ff !important;
-            text-shadow: 0 1px 3px rgba(0,40,100,0.5) !important;
+            text-shadow: 0 1px 3px rgba(0,40,100,0.6) !important;
         }';
         $existing = wp_get_custom_css_post('morenews');
         if ($existing) {
