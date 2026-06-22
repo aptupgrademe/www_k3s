@@ -243,6 +243,7 @@
 
         .af-middle-header {
             padding: 10px 0 !important;
+            background: #202020 !important;
         }
         .site-title a, .site-title a:hover { color: #ffffff !important; }
         .site-description { color: #ffffff !important; }';
