@@ -33,7 +33,8 @@
     - { key: "AUTO_X_DETECT",        value: "0" }          # no X display
     - { key: "TMPDIR",               value: "/var/lib/rkhunter/tmp" }
     - { key: "PKGMGR",               value: "RPM" }        # use RPM for binary checks
-    - { key: "ALLOW_SSH_ROOT_USER",  value: "without-password" }  # matches PermitRootLogin prohibit-password in sshd_config
+    - { key: "ALLOW_SSH_ROOT_USER",  value: "without-password" }  # matches PermitRootLogin without-password in sshd_config
+    - { key: "DISABLE_TESTS",        value: "suspscan hidden_ports deleted_files packet_cap_apps apps ipc_shared_mem system_configs_ssh" }  # system_configs_ssh: rkhunter 1.4.6 warns on root SSH regardless of config (bug)
 
 
 # -----------------------------------------------------------------------------
