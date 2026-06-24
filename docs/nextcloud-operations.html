@@ -1615,7 +1615,7 @@ openssl s_client -connect nextcloud.example.com:443 -status 2>/dev/null | \
   </tr>
   <tr>
     <td>Rootkits</td>
-    <td>rkhunter daily scan at 03:15; <code>WEB_CMD=curl -L</code> (SourceForge redirect fix); <code>ALLOW_SSH_ROOT_USER=without-password</code></td>
+    <td>rkhunter daily scan at 03:15; <code>WEB_CMD=curl -L</code> (SourceForge redirect fix); <code>ALLOW_SSH_ROOT_USER=without-password</code>; <code>DISABLE_TESTS=system_configs_ssh</code> (rkhunter 1.4.6 bug: warns on root SSH despite correct config)</td>
     <td><code>common_rkhunter</code></td>
   </tr>
   <tr>
