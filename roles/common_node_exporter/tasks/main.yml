@@ -75,6 +75,31 @@
     - reload systemd
     - restart node_exporter
 
+- name: Node Exporter | Deploy systemd hardening drop-in
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/node_exporter.service.d/hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Service]
+      PrivateTmp=yes
+      ProtectHome=yes
+      ProtectSystem=strict
+      NoNewPrivileges=yes
+      CapabilityBoundingSet=
+      RestrictAddressFamilies=AF_INET AF_INET6
+      RestrictRealtime=yes
+      RestrictSUIDSGID=yes
+      LockPersonality=yes
+      ProtectKernelTunables=yes
+      ProtectKernelModules=yes
+      ProtectControlGroups=yes
+      SystemCallArchitectures=native
+  notify:
+    - reload systemd
+    - restart node_exporter
+
 - name: Node Exporter | Enable and start service
   ansible.builtin.systemd:
     name: node_exporter
