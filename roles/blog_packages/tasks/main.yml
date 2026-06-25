@@ -77,7 +77,13 @@
   loop:
     - rpcbind
     - rpcbind.socket
-    - gssproxy
     - sssd
     - sssd-kcm.socket
+  failed_when: false
+
+- name: Mask gssproxy (starts via socket activation despite disabled state)
+  ansible.builtin.systemd:
+    name: gssproxy
+    masked: true
+    state: stopped
   failed_when: false
