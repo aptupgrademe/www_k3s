@@ -2,3 +2,7 @@
 - name: apply sysctl
   ansible.builtin.command: sysctl --system
   changed_when: false
+
+- name: apply thp madvise
+  ansible.builtin.shell: echo madvise > /sys/kernel/mm/transparent_hugepage/enabled
+  changed_when: false

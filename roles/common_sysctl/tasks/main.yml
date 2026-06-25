@@ -24,3 +24,36 @@
 - name: Sysctl | Apply settings immediately
   ansible.builtin.command: sysctl --system
   changed_when: false
+
+
+# -----------------------------------------------------------------------------
+# Transparent Huge Pages – set to madvise (not a sysctl, needs systemd service)
+# THP=always causes latency spikes in K3s pods, MariaDB, Redis.
+# -----------------------------------------------------------------------------
+- name: Sysctl | Deploy THP systemd service (madvise at boot)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/set-thp-madvise.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Set Transparent Huge Pages to madvise
+      DefaultDependencies=no
+      After=sysinit.target local-fs.target
+
+      [Service]
+      Type=oneshot
+      ExecStart=/bin/sh -c 'echo madvise > /sys/kernel/mm/transparent_hugepage/enabled'
+      RemainAfterExit=yes
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: apply thp madvise
+
+- name: Sysctl | Enable THP madvise service
+  ansible.builtin.systemd:
+    name: set-thp-madvise.service
+    enabled: true
+    state: started
+    daemon_reload: true

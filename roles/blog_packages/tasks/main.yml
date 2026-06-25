@@ -68,3 +68,16 @@
     name: firewalld
     masked: true
   failed_when: false
+
+- name: Disable unnecessary NFS/RPC/LDAP services (not needed on this host)
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop:
+    - rpcbind
+    - rpcbind.socket
+    - gssproxy
+    - sssd
+    - sssd-kcm.socket
+  failed_when: false
