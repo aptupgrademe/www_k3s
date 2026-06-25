@@ -1403,8 +1403,8 @@ k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
   <tr><th>Layer</th><th>Measure</th><th>Configuration</th></tr>
   <tr>
     <td>TCP/Kernel</td>
-    <td>BBR congestion control, tcp_slow_start_after_idle=0, tcp_fastopen=3, optimised timeouts</td>
-    <td><code>common_sysctl</code> → <code>/etc/sysctl.d/99-webserver.conf</code></td>
+    <td>BBR congestion control, tcp_slow_start_after_idle=0, tcp_fastopen=3, optimised timeouts; <code>tcp_max_syn_backlog=4096</code> (matches somaxconn, prevents SYN drops under load); THP=madvise (prevents latency spikes in K3s pods, MariaDB, Redis)</td>
+    <td><code>common_sysctl</code> → <code>/etc/sysctl.d/99-webserver.conf</code> + <code>set-thp-madvise.service</code></td>
   </tr>
   <tr>
     <td>HTTP/2</td>
@@ -1604,6 +1604,11 @@ k3s kubectl exec deployment/mariadb -n wordpress -- \
     <td>Patches</td>
     <td>dnf-automatic: security updates applied automatically daily</td>
     <td><code>common_dnf_automatic</code></td>
+  </tr>
+  <tr>
+    <td>systemd hardening</td>
+    <td>Drop-in overrides for sshd (7.8), node_exporter (4.4), prometheus (4.4); rpcbind/gssproxy/sssd disabled (port 111 closed)</td>
+    <td><code>common_ssh</code>, <code>common_node_exporter</code>, <code>common_prometheus</code>, <code>blog_packages</code></td>
   </tr>
   <tr>
     <td>Log rotation</td>
