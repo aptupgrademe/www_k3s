@@ -79,3 +79,35 @@
     minute: "15"
     job: "/usr/bin/rkhunter --check --cronjob --report-warnings-only --nocolors 2>&1"
     user: root
+
+
+# -----------------------------------------------------------------------------
+# Auto-propupd after dnf-automatic
+# dnf-automatic updates system binaries nightly → rkhunter detects changed
+# file hashes and sends false-positive "infected" emails.
+# This drop-in runs --propupd automatically after every dnf-automatic run
+# so the baseline stays in sync with legitimate package updates.
+# -----------------------------------------------------------------------------
+- name: rkhunter | Ensure dnf-automatic drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/system/dnf-automatic.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: rkhunter | Deploy dnf-automatic drop-in for auto-propupd
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/dnf-automatic.service.d/rkhunter-propupd.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Service]
+      ExecStartPost=/usr/bin/rkhunter --propupd --nocolors
+  register: rkhunter_dropin
+
+- name: rkhunter | Reload systemd after drop-in change
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: rkhunter_dropin.changed
