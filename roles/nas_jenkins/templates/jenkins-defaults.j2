@@ -1,0 +1,15 @@
+# Managed by Ansible (nas_jenkins) – do not edit manually
+NAME=jenkins
+JAVA_ARGS="-Djava.awt.headless=true"
+PIDFILE=/var/run/$NAME/$NAME.pid
+JENKINS_USER=$NAME
+JENKINS_GROUP=$NAME
+JENKINS_WAR=/usr/share/java/$NAME.war
+JENKINS_HOME={{ nas_jenkins_home }}
+RUN_STANDALONE=true
+JENKINS_LOG=/var/log/$NAME/$NAME.log
+JENKINS_ENABLE_ACCESS_LOG="no"
+MAXOPENFILES=8192
+HTTP_PORT={{ nas_jenkins_port }}
+PREFIX=/$NAME
+JENKINS_ARGS="--webroot=/var/cache/$NAME/war --httpPort=$HTTP_PORT"

@@ -1,0 +1,60 @@
+---
+# =============================================================================
+# Role: nas_packages
+# Purpose: Install OpenZFS, Samba and Jenkins on Debian 13 (Trixie).
+# =============================================================================
+
+- name: Packages | Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+# --- OpenZFS ---
+- name: Packages | Install OpenZFS
+  ansible.builtin.apt:
+    name:
+      - zfsutils-linux
+      - zfs-dkms
+    state: present
+
+# --- Samba ---
+- name: Packages | Install Samba
+  ansible.builtin.apt:
+    name:
+      - samba
+      - samba-common-bin
+    state: present
+
+# --- Java (Jenkins dependency) ---
+- name: Packages | Install Java 21 (Jenkins runtime)
+  ansible.builtin.apt:
+    name: openjdk-21-jre-headless
+    state: present
+
+# --- Jenkins ---
+- name: Packages | Add Jenkins apt key
+  ansible.builtin.apt_key:
+    url: https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+    state: present
+
+- name: Packages | Add Jenkins apt repository
+  ansible.builtin.apt_repository:
+    repo: "deb https://pkg.jenkins.io/debian-stable binary/"
+    state: present
+    filename: jenkins
+
+- name: Packages | Install Jenkins
+  ansible.builtin.apt:
+    name: jenkins
+    state: present
+    update_cache: true
+
+# --- Utilities ---
+- name: Packages | Install useful utilities
+  ansible.builtin.apt:
+    name:
+      - rsync
+      - htop
+      - smartmontools
+      - mailutils
+    state: present

@@ -1,0 +1,34 @@
+# Managed by Ansible (nas_samba) – do not edit manually
+
+[global]
+   server min protocol = SMB2_10
+   server max protocol = SMB3
+
+   workgroup = {{ nas_samba_workgroup }}
+   security = user
+   map to guest = never
+   kernel share modes = no
+
+   log level = 1
+   log file = /var/log/samba/log.%m
+   max log size = 1000
+
+   aio read size = 1
+   aio write size = 1
+   use sendfile = yes
+
+   server multi channel support = yes
+   server role = standalone server
+
+{% for share in nas_samba_shares %}
+[{{ share.name }}]
+   path = {{ share.path }}/
+   read only = no
+   valid users = {{ share.valid_users }}
+   force user = {{ share.force_user }}
+
+   strict locking = no
+   oplocks = yes
+   kernel oplocks = yes
+
+{% endfor %}

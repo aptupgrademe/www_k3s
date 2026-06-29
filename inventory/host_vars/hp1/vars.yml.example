@@ -1,0 +1,34 @@
+---
+# =============================================================================
+# Host vars for hp1 (NAS, 192.168.10.50)
+# Copy to vars.yml and fill in – never commit vars.yml to git.
+# =============================================================================
+
+# --- Connection ---
+ansible_host: 192.168.10.50
+ansible_user: raphael
+ansible_port: 22
+
+# --- ZFS pool ---
+nas_zfs_pool:     data
+nas_zfs_mountpoint: /raid5
+nas_zfs_disks:
+  - /dev/disk/by-id/ata-WD_Red_SA500_2.5_2TB_25273ZD00458   # sda
+  - /dev/disk/by-id/ata-WD_Red_SA500_2.5_2TB_25273ZD01387   # sdc
+  - /dev/disk/by-id/ata-WD_Red_SA500_2.5_2TB_25273ZD02050   # sdd
+
+# --- Samba ---
+nas_samba_workgroup: smb
+nas_samba_shares:
+  - name:       shared
+    path:       /raid5/shared
+    valid_users: raphael
+    force_user:  raphael
+  - name:       angelika
+    path:       /raid5/angelika
+    valid_users: raphael
+    force_user:  raphael
+
+# --- Jenkins ---
+nas_jenkins_port: 8090
+nas_jenkins_home: /var/lib/jenkins

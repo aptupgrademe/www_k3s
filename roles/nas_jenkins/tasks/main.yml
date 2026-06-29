@@ -1,0 +1,68 @@
+---
+# =============================================================================
+# Role: nas_jenkins
+# Purpose: Configure Jenkins on the NAS (port 8090, backup jobs).
+# =============================================================================
+
+- name: Jenkins | Deploy /etc/default/jenkins
+  ansible.builtin.template:
+    src: jenkins-defaults.j2
+    dest: /etc/default/jenkins
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart jenkins
+
+- name: Jenkins | Ensure Jenkins home exists
+  ansible.builtin.file:
+    path: "{{ nas_jenkins_home }}"
+    state: directory
+    owner: jenkins
+    group: jenkins
+    mode: "0750"
+
+- name: Jenkins | Ensure jobs directory exists
+  ansible.builtin.file:
+    path: "{{ nas_jenkins_home }}/jobs/{{ item }}"
+    state: directory
+    owner: jenkins
+    group: jenkins
+    mode: "0755"
+  loop:
+    - Backup-CVJM
+    - Backup-Sofie
+
+- name: Jenkins | Deploy job config – Backup-CVJM
+  ansible.builtin.template:
+    src: job-backup-cvjm.xml.j2
+    dest: "{{ nas_jenkins_home }}/jobs/Backup-CVJM/config.xml"
+    owner: jenkins
+    group: jenkins
+    mode: "0644"
+  notify: reload jenkins jobs
+
+- name: Jenkins | Deploy job config – Backup-Sofie
+  ansible.builtin.template:
+    src: job-backup-sofie.xml.j2
+    dest: "{{ nas_jenkins_home }}/jobs/Backup-Sofie/config.xml"
+    owner: jenkins
+    group: jenkins
+    mode: "0644"
+  notify: reload jenkins jobs
+
+- name: Jenkins | Allow jenkins to run backup scripts as raphael (sudoers)
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/jenkins-backup
+    content: |
+      jenkins ALL=(raphael) NOPASSWD: /raid5/shared/shared/ablage/nextcloud_backup_and_restore/cvjm_backup_nextcloud_remote.sh
+      jenkins ALL=(raphael) NOPASSWD: /raid5/shared/shared/ablage/nextcloud_backup_and_restore/sofie_backup_nextcloud_remote.sh
+    owner: root
+    group: root
+    mode: "0440"
+    validate: visudo -cf %s
+
+- name: Jenkins | Enable and start Jenkins
+  ansible.builtin.systemd:
+    name: jenkins
+    enabled: true
+    state: started
