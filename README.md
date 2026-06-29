@@ -67,7 +67,7 @@ Local Network (192.168.10.x)
     │  SMB (445) · HTTP (8000/4443 Pi-hole) · HTTP (80 GitLab)
     ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  hp1 – HP Server, Xeon E-2314, 31 GB RAM                    │
+│  HP MicroServer Gen10 Plus V2 / hp1 · Xeon E-2314 · 31 GB   │
 │                                                             │
 │  sdb  465 GB SSD  → Debian 13 OS                           │
 │  sda │                                                      │
@@ -108,7 +108,7 @@ Local Network (192.168.10.x)
 - **Jenkins** (port 8090) with two daily backup jobs (Nextcloud CVJM + Sofie via rsync)
 - **Pi-hole v6** DNS ad-blocker (port 8000/4443, upstream 8.8.8.8/8.8.4.4)
 - **GitLab CE 19.1** local Git server (port 80, prometheus disabled)
-- **HPE AMSD** (Agentless Management Service) for iLO hardware monitoring
+- **HPE AMSD** (Agentless Management Service) – required for **automatic fan speed control** on the HP MicroServer Gen10 Plus V2; without it the server runs at maximum fan speed
 - **SSH key restore** – raphael's backup SSH keys restored from vault to `/home/raphael/.ssh/`
 - **SMART monitoring** – daily/weekly self-tests on all 5 drives with email alerts
 - **ZED** – ZFS Event Daemon emails on pool degradation; monthly scrub cron

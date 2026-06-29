@@ -117,7 +117,7 @@
 <section id="ueberblick">
 <h2>Überblick</h2>
 <p>
-  hp1 ist ein lokales Homelab-NAS auf Basis von <strong>Debian 13 (Trixie)</strong>.
+  hp1 ist ein <strong>HP MicroServer Gen10 Plus V2</strong> der als lokales Homelab-NAS auf Basis von <strong>Debian 13 (Trixie)</strong> betrieben wird.
   Die Infrastruktur wird vollständig über das Ansible-Playbook <code>nas.yml</code> verwaltet.
   Das Gerät befindet sich im lokalen Netzwerk (192.168.10.50) und ist <em>nicht</em> direkt aus dem Internet erreichbar.
 </p>
@@ -133,7 +133,7 @@
 <h3>Ansible-Rollen</h3>
 <table>
   <tr><th>Rolle</th><th>Funktion</th></tr>
-  <tr><td><code>nas_packages</code></td><td>OpenZFS, Samba, Jenkins (Java 21), rsync, smartmontools</td></tr>
+  <tr><td><code>nas_packages</code></td><td>OpenZFS, Samba, Jenkins (Java 21), rsync, smartmontools; <strong>HPE AMSD</strong> (Agentless Management Service – erforderlich für automatische Lüftersteuerung des MicroServers)</td></tr>
   <tr><td><code>nas_system</code></td><td>Hostname, Zeitzone, Locale, SSH-Key, sde-Mount</td></tr>
   <tr><td><code>common_sysctl</code></td><td>Kernel-Tuning: TCP BBR, Backlog, THP madvise</td></tr>
   <tr><td><code>common_msmtp</code></td><td>E-Mail-Relay für Jenkins, SMART, ZED, Cron</td></tr>
@@ -153,7 +153,7 @@
 <h2>Architektur &amp; Hardware</h2>
 
 <div class="arch">
-<span class="c-host">HP ProDesk / hp1 (192.168.10.50)</span>
+<span class="c-host">HP MicroServer Gen10 Plus V2 / hp1 (192.168.10.50)</span>
 │
 ├── <span class="c-storage">sdb  465 GB SSD (WDC WDS500G1R0A)</span>    ← Debian OS
 │    └── /          (433 GB)
@@ -170,6 +170,9 @@
 <span class="c-svc">Dienste:</span>
   smbd/nmbd  → Samba-Freigaben (SMB3)
   jenkins    → Port 8090 (Backup-Jobs)
+  pihole-FTL → DNS-Adblocker Port 8000/4443
+  gitlab-ce  → Lokaler Git-Server Port 80
+  amsd       → HPE Agentless Management Service (iLO + Lüftersteuerung)
   smartd     → SMART-Überwachung aller Laufwerke
   zed        → ZFS Event Daemon (E-Mail bei Fehlern)
 </div>
@@ -518,6 +521,11 @@ cat /var/lib/jenkins/jobs/Backup-CVJM/builds/lastFailedBuild/log</code></pre>
     <td>E-Mail-Relay</td>
     <td>msmtp leitet System-Mails weiter (SMART, ZED, Jenkins, Cron)</td>
     <td><code>common_msmtp</code></td>
+  </tr>
+  <tr>
+    <td>HPE AMSD</td>
+    <td>Agentless Management Service – kommuniziert mit dem iLO-BMC des HP MicroServer Gen10 Plus V2 und ermöglicht die <strong>automatische Lüftersteuerung</strong> basierend auf Echtzeit-Temperaturdaten. Ohne AMSD läuft der Server auf maximaler Lüfterdrehzahl.</td>
+    <td><code>nas_packages</code> (amsd_3.6.0-1867-debian12_amd64.deb)</td>
   </tr>
 </table>
 

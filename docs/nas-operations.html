@@ -81,7 +81,7 @@
 <section id="overview">
 <h2>Overview</h2>
 <p>
-  hp1 is a local homelab NAS running <strong>Debian 13 (Trixie)</strong>, fully managed
+  hp1 is an <strong>HP MicroServer Gen10 Plus V2</strong> running as a local homelab NAS on <strong>Debian 13 (Trixie)</strong>, fully managed
   by the Ansible playbook <code>nas.yml</code>. The machine is on the local network
   (192.168.10.50) and is <em>not</em> directly reachable from the internet.
 </p>
@@ -97,7 +97,7 @@
 <h3>Ansible Roles</h3>
 <table>
   <tr><th>Role</th><th>Purpose</th></tr>
-  <tr><td><code>nas_packages</code></td><td>OpenZFS, Samba, Jenkins (Java 21), rsync, smartmontools</td></tr>
+  <tr><td><code>nas_packages</code></td><td>OpenZFS, Samba, Jenkins (Java 21), rsync, smartmontools; <strong>HPE AMSD</strong> (Agentless Management Service – required for automatic fan control on the MicroServer)</td></tr>
   <tr><td><code>nas_system</code></td><td>Hostname, timezone, locale, SSH key, sde mount</td></tr>
   <tr><td><code>common_sysctl</code></td><td>Kernel tuning: TCP BBR, backlog, THP madvise</td></tr>
   <tr><td><code>common_msmtp</code></td><td>Email relay for Jenkins, SMART, ZED, cron</td></tr>
@@ -115,7 +115,7 @@
 <section id="architecture">
 <h2>Architecture &amp; Hardware</h2>
 <div class="arch">
-HP ProDesk / hp1 (192.168.10.50)
+HP MicroServer Gen10 Plus V2 / hp1 (192.168.10.50)
 │
 ├── sdb  465 GB SSD (WDC WDS500G1R0A)    ← Debian OS
 │
@@ -125,7 +125,7 @@ HP ProDesk / hp1 (192.168.10.50)
 │                                         └── data/angelika → /raid5/angelika
 └── sde  1.8 TB HDD (Toshiba)            → /mnt/usb (external backup)
 
-Services: smbd/nmbd · jenkins:8090 · smartd · zed
+Services: smbd/nmbd · jenkins:8090 · pihole-FTL:8000 · gitlab-ce:80 · amsd · smartd · zed
 </div>
 
 <h3>Drives</h3>
@@ -255,6 +255,7 @@ cat /var/lib/jenkins/jobs/Backup-CVJM/builds/lastFailedBuild/log</code></pre>
   <tr><td>ZFS integrity</td><td>ZED: email on pool errors, degraded RAIDZ1, scrub errors</td><td><code>nas_zed</code></td></tr>
   <tr><td>ZFS scrub</td><td>Monthly on the 1st at 04:00 – detects and corrects silent data errors</td><td><code>nas_zed</code></td></tr>
   <tr><td>Email relay</td><td>msmtp forwards system mail (SMART, ZED, Jenkins, cron)</td><td><code>common_msmtp</code></td></tr>
+  <tr><td>HPE AMSD</td><td>Agentless Management Service – communicates with the iLO BMC of the HP MicroServer Gen10 Plus V2, enabling <strong>automatic fan speed control</strong> based on real-time temperature data. Without AMSD the server runs at maximum fan speed.</td><td><code>nas_packages</code> (amsd_3.6.0-1867-debian12_amd64.deb)</td></tr>
 </table>
 <pre><code># SMART health overview
 smartctl --scan | while read dev _; do echo "=== $dev ==="; smartctl -H "$dev"; done
