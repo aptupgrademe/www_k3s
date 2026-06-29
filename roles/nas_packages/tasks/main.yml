@@ -54,6 +54,8 @@
   ansible.builtin.apt:
     name:
       - rsync
+      - rdiff-backup
+      - tmux
       - htop
       - smartmontools
       - mailutils
