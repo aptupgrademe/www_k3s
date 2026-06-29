@@ -9,6 +9,36 @@
     update_cache: true
     cache_valid_time: 3600
 
+# --- HPE Agentless Management Service (AMSD) ---
+# Required for HP servers to expose hardware data to iLO.
+# Installed first so hardware monitoring is active during the rest of setup.
+- name: Packages | Check if amsd is already installed
+  ansible.builtin.command: dpkg-query -W -f='${Version}' amsd
+  register: _amsd_installed
+  changed_when: false
+  failed_when: false
+
+- name: Packages | Copy amsd .deb to server
+  ansible.builtin.copy:
+    src: amsd_3.6.0-1867-debian12_amd64.deb
+    dest: /tmp/amsd_3.6.0-1867-debian12_amd64.deb
+    owner: root
+    group: root
+    mode: "0644"
+  when: _amsd_installed.rc != 0
+
+- name: Packages | Install amsd (HPE Agentless Management Service)
+  ansible.builtin.apt:
+    deb: /tmp/amsd_3.6.0-1867-debian12_amd64.deb
+    state: present
+  when: _amsd_installed.rc != 0
+
+- name: Packages | Remove amsd .deb from /tmp
+  ansible.builtin.file:
+    path: /tmp/amsd_3.6.0-1867-debian12_amd64.deb
+    state: absent
+  when: _amsd_installed.rc != 0
+
 # --- OpenZFS ---
 - name: Packages | Install OpenZFS
   ansible.builtin.apt:
