@@ -57,41 +57,27 @@
     {{ nas_zfs_disks | join(' ') }}
   when: not _pool_exists.rc == 0
 
-# --- Create datasets ---
-- name: ZFS | Create dataset '{{ nas_zfs_pool }}/shared'
+# --- Create datasets (one per Samba share → paths always in sync) ---
+# Dataset name = share name, mountpoint = nas_zfs_mountpoint/share_name
+- name: ZFS | Create dataset for each Samba share
   community.general.zfs:
-    name: "{{ nas_zfs_pool }}/shared"
+    name: "{{ nas_zfs_pool }}/{{ item.name }}"
     state: present
     extra_zfs_properties:
-      mountpoint: "{{ nas_zfs_mountpoint }}/shared"
-      recordsize: "1M"      # 1M optimal für große Medien-/Backup-Dateien
-      compression: "zstd"
-
-- name: ZFS | Create dataset '{{ nas_zfs_pool }}/angelika'
-  community.general.zfs:
-    name: "{{ nas_zfs_pool }}/angelika"
-    state: present
-    extra_zfs_properties:
-      mountpoint: "{{ nas_zfs_mountpoint }}/angelika"
+      mountpoint: "{{ nas_zfs_mountpoint }}/{{ item.name }}"
       recordsize: "1M"
       compression: "zstd"
+  loop: "{{ nas_samba_shares }}"
 
-# --- Ownership ---
-- name: ZFS | Set ownership on shared
+# --- Ownership (user from Samba share definition) ---
+- name: ZFS | Set ownership on datasets
   ansible.builtin.file:
-    path: "{{ nas_zfs_mountpoint }}/shared"
-    owner: raphael
-    group: raphael
+    path: "{{ nas_zfs_mountpoint }}/{{ item.name }}"
+    owner: "{{ item.force_user }}"
+    group: "{{ item.force_user }}"
     mode: "0755"
     state: directory
-
-- name: ZFS | Set ownership on angelika
-  ansible.builtin.file:
-    path: "{{ nas_zfs_mountpoint }}/angelika"
-    owner: raphael
-    group: raphael
-    mode: "0755"
-    state: directory
+  loop: "{{ nas_samba_shares }}"
 
 # --- Enable auto-mount on boot ---
 - name: ZFS | Enable zfs-mount systemd service

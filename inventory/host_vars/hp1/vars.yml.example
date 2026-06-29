@@ -33,14 +33,15 @@ nas_disk_id_usb:  ata-TOSHIBA_MQ04ABD200_Y4BRP0B5T             # sde
 nas_usb_disk_id: /dev/disk/by-id/ata-TOSHIBA_MQ04ABD200_Y4BRP0B5T-part1
 
 # --- Samba ---
+# Paths reference nas_zfs_mountpoint so they stay in sync with ZFS datasets.
 nas_samba_workgroup: smb
 nas_samba_shares:
   - name:        shared
-    path:        /raid5/shared
+    path:        "{{ nas_zfs_mountpoint }}/shared"
     valid_users: raphael
     force_user:  raphael
   - name:        angelika
-    path:        /raid5/angelika
+    path:        "{{ nas_zfs_mountpoint }}/angelika"
     valid_users: raphael
     force_user:  raphael
 
