@@ -416,6 +416,14 @@ Detailed operations guides are available in the `docs/` directory in three langu
 | **English** | [wordpress-operations.html](docs/wordpress-operations.html) | [nextcloud-operations.html](docs/nextcloud-operations.html) |
 | **Français** | [wordpress-exploitation.html](docs/wordpress-exploitation.html) | [nextcloud-exploitation.html](docs/nextcloud-exploitation.html) |
 
+### NAS hp1 (hp1 · 192.168.10.50 · Debian 13 · OpenZFS)
+
+| Sprache | Dokument |
+|---|---|
+| **Deutsch** | [nas-betrieb.html](docs/nas-betrieb.html) |
+| **English** | [nas-operations.html](docs/nas-operations.html) |
+| **Français** | [nas-exploitation.html](docs/nas-exploitation.html) |
+
 Each guide covers: architecture, configuration reference, playbook execution, performance optimisations, security layers, and troubleshooting.
 
 ---
