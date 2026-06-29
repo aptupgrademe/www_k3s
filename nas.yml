@@ -32,7 +32,14 @@
   become_method: su
 
   roles:
-    - nas_packages   # Install ZFS, Samba, Jenkins (Java)
-    - nas_zfs        # Create RAIDZ1 pool and datasets (aborts if md0 exists)
-    - nas_samba      # Deploy smb.conf and ensure service runs
-    - nas_jenkins    # Deploy Jenkins config, jobs and ensure service runs
+    - nas_packages        # Install ZFS, Samba, Jenkins (Java), utilities
+    - common_sysctl       # Kernel tuning: BBR, TCP, backlog, THP madvise
+    - common_msmtp        # E-Mail relay (for Jenkins/cron notifications)
+    - common_apt_automatic # Automatic security updates (unattended-upgrades)
+    - nas_zfs             # Create RAIDZ1 pool + datasets (aborts if md0 exists)
+    - nas_samba           # Deploy smb.conf and ensure service runs
+    - nas_jenkins         # Deploy Jenkins config, jobs and ensure service runs
+    # Optional – add when ready:
+    # - common_node_exporter
+    # - common_prometheus
+    # - common_grafana

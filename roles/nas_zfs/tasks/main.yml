@@ -36,15 +36,22 @@
   when: not _pool_exists.rc == 0
 
 # --- Create RAIDZ1 pool ---
+# compression=zstd: better ratio than lz4 for documents/backups, low CPU overhead
+# ashift=12: 4K sector alignment for modern SSDs
+# xattr=sa: stores xattrs in inodes (faster for Samba)
+# atime=off: no access-time updates → fewer writes
+# dnodesize=auto: larger dnodes for better metadata performance
 - name: ZFS | Create RAIDZ1 pool '{{ nas_zfs_pool }}'
   ansible.builtin.command: >
     zpool create -f
     -o ashift=12
-    -O compression=lz4
+    -o autotrim=on
+    -O compression=zstd
     -O atime=off
     -O xattr=sa
     -O dnodesize=auto
     -O recordsize=128k
+    -O snapdir=hidden
     -O mountpoint={{ nas_zfs_mountpoint }}
     {{ nas_zfs_pool }} raidz
     {{ nas_zfs_disks | join(' ') }}
@@ -57,7 +64,8 @@
     state: present
     extra_zfs_properties:
       mountpoint: "{{ nas_zfs_mountpoint }}/shared"
-      recordsize: "1M"
+      recordsize: "1M"      # 1M optimal für große Medien-/Backup-Dateien
+      compression: "zstd"
 
 - name: ZFS | Create dataset '{{ nas_zfs_pool }}/angelika'
   community.general.zfs:
@@ -66,6 +74,7 @@
     extra_zfs_properties:
       mountpoint: "{{ nas_zfs_mountpoint }}/angelika"
       recordsize: "1M"
+      compression: "zstd"
 
 # --- Ownership ---
 - name: ZFS | Set ownership on shared

@@ -13,8 +13,8 @@
 # The msmtp package on AlmaLinux creates a /usr/sbin/sendmail symlink so that
 # cron, rkhunter and dnf-automatic can send mail without a full MTA.
 # -----------------------------------------------------------------------------
-- name: msmtp | Install packages
-  ansible.builtin.dnf:
+- name: msmtp | Install package (distro-agnostic)
+  ansible.builtin.package:
     name: msmtp
     state: present
 
