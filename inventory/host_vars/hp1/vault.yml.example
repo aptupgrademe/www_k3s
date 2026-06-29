@@ -1,5 +1,5 @@
 ---
 # Encrypt with: ansible-vault encrypt inventory/host_vars/hp1/vault.yml
-ansible_become_password: "CHANGEME"   # root password (used with su -)
-nas_samba_user_password: "CHANGEME"   # Samba password for raphael
-nas_pihole_password:     "CHANGEME"   # Pi-hole web interface password
+ansible_become_password: "CHANGE_ME"   # root password (used with su -)
+nas_samba_user_password: "CHANGE_ME"   # Samba password for raphael
+nas_pihole_password:     "CHANGE_ME"   # Pi-hole web interface password
