@@ -143,6 +143,8 @@
   <tr><td><code>nas_smart</code></td><td>SMART-Überwachung aller Festplatten (tägl./wöchentl. Self-Tests)</td></tr>
   <tr><td><code>nas_samba</code></td><td>Samba-Freigaben: shared, angelika</td></tr>
   <tr><td><code>nas_jenkins</code></td><td>Jenkins Port 8090, Jobs: Backup-CVJM, Backup-Sofie</td></tr>
+  <tr><td><code>nas_pihole</code></td><td>Pi-hole v6 DNS-Adblocker (Port 8000/4443, DNS 8.8.8.8/8.8.4.4, Interface eno1)</td></tr>
+  <tr><td><code>nas_gitlab</code></td><td>GitLab CE 19.1 – lokaler Git-Server (http://192.168.10.50, Prometheus deaktiviert)</td></tr>
 </table>
 </section>
 
@@ -236,13 +238,22 @@
   <tr><td><code>nas_zfs_disks</code></td><td>3× by-id Pfade</td><td>Die 3 RAIDZ1-SSDs (sda/sdc/sdd)</td></tr>
   <tr><td><code>nas_samba_shares</code></td><td>shared, angelika</td><td>Freigaben – steuern auch ZFS-Datasets</td></tr>
   <tr><td><code>nas_jenkins_port</code></td><td>8090</td><td>Jenkins HTTP-Port</td></tr>
+  <tr><td><code>nas_pihole_interface</code></td><td>eno1</td><td>Netzwerk-Interface für Pi-hole</td></tr>
+  <tr><td><code>nas_pihole_web_port</code></td><td>8000</td><td>Pi-hole Web-Port (verschoben wegen GitLab auf 80)</td></tr>
+  <tr><td><code>nas_gitlab_external_url</code></td><td>http://192.168.10.50</td><td>GitLab-URL</td></tr>
   <tr><td><code>email</code></td><td>raphael.muench@proton.me</td><td>E-Mail für SMART/ZED/Jenkins/Cron</td></tr>
 </table>
 
 <h3>Secrets (vault.yml)</h3>
 <pre><code># Verschlüsseln mit: ansible-vault encrypt inventory/host_vars/hp1/vault.yml
 ansible_become_password: "..."   # root-Passwort (su -)
-nas_samba_user_password: "..."   # Samba-Passwort für raphael</code></pre>
+nas_samba_user_password: "..."   # Samba-Passwort für raphael
+nas_pihole_password:     "..."   # Pi-hole Web-Interface
+nas_ssh_private_key: |           # /home/raphael/.ssh/id_rsa (für Jenkins-Backup-SSH)
+  -----BEGIN OPENSSH PRIVATE KEY-----
+  ...
+  -----END OPENSSH PRIVATE KEY-----
+nas_ssh_private_key_2: |         # /home/raphael/.ssh/id_rsa.pub (zweiter Key, Passphrase)</code></pre>
 
 <div class="callout callout-danger">
   <strong>vault.yml niemals unverschlüsselt committen</strong>
