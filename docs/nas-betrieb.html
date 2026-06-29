@@ -452,6 +452,68 @@ ls /var/lib/jenkins/jobs/Backup-CVJM/builds/
 cat /var/lib/jenkins/jobs/Backup-CVJM/builds/lastFailedBuild/log</code></pre>
 </section>
 
+<!-- PI-HOLE -->
+<section id="pihole">
+<h2>Pi-hole</h2>
+
+<h3>Zugriff</h3>
+<table>
+  <tr><th>Parameter</th><th>Wert</th></tr>
+  <tr><td>Web-Interface (HTTP)</td><td><code>http://192.168.10.50:8000/admin</code></td></tr>
+  <tr><td>Web-Interface (HTTPS)</td><td><code>https://192.168.10.50:4443/admin</code></td></tr>
+  <tr><td>DNS-Port</td><td><code>53</code> (UDP/TCP)</td></tr>
+  <tr><td>Interface</td><td><code>eno1</code></td></tr>
+  <tr><td>Upstream DNS</td><td><code>8.8.8.8</code> / <code>8.8.4.4</code></td></tr>
+</table>
+
+<div class="callout callout-info">
+  <strong>Port 8000 statt 80</strong>
+  Pi-hole läuft bewusst auf Port 8000, weil GitLab CE Port 80 belegt.
+  Der DNS-Port 53 ist unverändert.
+</div>
+
+<h3>DNS auf Geräten eintragen</h3>
+<p>Um Pi-hole zu nutzen, DNS der Geräte im Netzwerk auf <code>192.168.10.50</code> setzen oder im Router als DNS-Server eintragen.</p>
+<pre><code># Pi-hole Status
+systemctl status pihole-FTL
+pihole status
+
+# Logs
+journalctl -u pihole-FTL -f
+
+# Blocklists aktualisieren (gravity)
+pihole -g</code></pre>
+</section>
+
+<!-- GITLAB -->
+<section id="gitlab">
+<h2>GitLab</h2>
+
+<h3>Zugriff</h3>
+<table>
+  <tr><th>Parameter</th><th>Wert</th></tr>
+  <tr><td>Web-Interface</td><td><code>http://192.168.10.50</code></td></tr>
+  <tr><td>SSH (Git)</td><td><code>git@192.168.10.50:gruppe/repo.git</code></td></tr>
+  <tr><td>HTTP (Git)</td><td><code>http://192.168.10.50/gruppe/repo.git</code></td></tr>
+  <tr><td>Root-User</td><td><code>root</code></td></tr>
+  <tr><td>Gruppe</td><td><code>homelab</code></td></tr>
+  <tr><td>Repo</td><td><code>homelab/www_k3s</code></td></tr>
+</table>
+
+<h3>GitLab-Verwaltung</h3>
+<pre><code># Status aller GitLab-Dienste
+gitlab-ctl status
+
+# Neustart
+gitlab-ctl restart
+
+# Logs
+gitlab-ctl tail
+
+# Konfiguration neu einlesen (nach Änderung von gitlab.rb)
+gitlab-ctl reconfigure</code></pre>
+</section>
+
 <!-- PERFORMANCE -->
 <section id="performance">
 <h2>Performance</h2>

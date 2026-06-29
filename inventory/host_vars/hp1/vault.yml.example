@@ -3,6 +3,8 @@
 ansible_become_password: "CHANGE_ME"   # root password (used with su -)
 nas_samba_user_password: "CHANGE_ME"   # Samba password for raphael
 nas_pihole_password:     "CHANGE_ME"   # Pi-hole web interface password
+nas_gitlab_root_password:    "CHANGE_ME"   # GitLab root password (set on first run)
+nas_gitlab_raphael_password: "CHANGE_ME"   # GitLab password for user raphael
 
 # SSH private keys for raphael (used by Jenkins backup jobs to connect to remote servers)
 # id_rsa = unencrypted private key
