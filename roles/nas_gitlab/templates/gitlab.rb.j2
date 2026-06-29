@@ -1,0 +1,31 @@
+# Managed by Ansible (nas_gitlab) – do not edit manually
+# GitLab CE configuration for hp1 (homelab, local network only)
+
+# --- External URL ---
+external_url '{{ nas_gitlab_external_url }}'
+
+# --- SSH ---
+{% if nas_gitlab_ssh_port is defined %}
+gitlab_rails['gitlab_shell_ssh_port'] = {{ nas_gitlab_ssh_port }}
+{% endif %}
+
+# --- Email (via msmtp/sendmail) ---
+{% if email is defined %}
+gitlab_rails['smtp_enable'] = false
+gitlab_rails['gitlab_email_from'] = '{{ email }}'
+gitlab_rails['gitlab_email_reply_to'] = '{{ email }}'
+{% endif %}
+
+# --- Disable monitoring stack (using external Prometheus) ---
+prometheus['enable'] = false
+node_exporter['enable'] = false
+prometheus_monitoring['enable'] = false
+alertmanager['enable'] = false
+grafana['enable'] = false
+
+# --- Performance tuning for homelab ---
+# Reduce memory footprint on a NAS that does other things too
+puma['worker_processes'] = 2
+sidekiq['concurrency'] = 5
+postgresql['shared_buffers'] = "256MB"
+postgresql['max_worker_processes'] = 4

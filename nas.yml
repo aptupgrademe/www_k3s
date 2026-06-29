@@ -42,6 +42,8 @@
     - nas_smart            # SMART disk health monitoring (daily/weekly self-tests)
     - nas_samba            # Deploy smb.conf and ensure service runs
     - nas_jenkins          # Deploy Jenkins config, jobs and ensure service runs
+    - nas_pihole           # Pi-hole v6 DNS ad-blocker (port 8000/4443, interface eno1)
+    - nas_gitlab           # GitLab CE (http://192.168.10.50, prometheus disabled)
     # Optional – add when ready:
     # - common_node_exporter
     # - common_prometheus

@@ -1,0 +1,63 @@
+---
+# =============================================================================
+# Role: nas_gitlab
+# Purpose: Install and configure GitLab CE on Debian 13.
+#
+# Extracted from hp1 (192.168.10.50):
+#   Version:      GitLab CE 19.1.1
+#   External URL: http://192.168.10.50
+#   Repos:        www_k3s (private)
+#   Prometheus:   disabled (using external Prometheus stack)
+# =============================================================================
+
+# --- Dependencies ---
+- name: GitLab | Install dependencies
+  ansible.builtin.apt:
+    name:
+      - curl
+      - openssh-server
+      - ca-certificates
+      - tzdata
+      - perl
+    state: present
+    update_cache: true
+
+# --- GitLab package repository ---
+- name: GitLab | Add GitLab CE apt repository
+  ansible.builtin.shell: |
+    curl -sS https://packages.gitlab.com/install/repositories/gitlab/gitlab-ce/script.deb.sh | bash
+  args:
+    creates: /etc/apt/sources.list.d/gitlab_gitlab-ce.list
+  changed_when: true
+
+# --- Install GitLab CE ---
+- name: GitLab | Install gitlab-ce
+  ansible.builtin.apt:
+    name: "gitlab-ce{{ ('=' + nas_gitlab_version) if nas_gitlab_version is defined else '' }}"
+    state: "{{ 'present' if nas_gitlab_version is defined else 'latest' }}"
+    update_cache: true
+  environment:
+    EXTERNAL_URL: "{{ nas_gitlab_external_url }}"
+
+# --- Configuration ---
+- name: GitLab | Deploy gitlab.rb
+  ansible.builtin.template:
+    src: gitlab.rb.j2
+    dest: /etc/gitlab/gitlab.rb
+    owner: root
+    group: root
+    mode: "0600"
+    backup: true
+  notify: reconfigure gitlab
+
+# --- Ensure service is running ---
+- name: GitLab | Ensure GitLab services are running
+  ansible.builtin.command: gitlab-ctl status
+  register: _gitlab_status
+  changed_when: false
+  failed_when: false
+
+- name: GitLab | Start GitLab if not running
+  ansible.builtin.command: gitlab-ctl start
+  when: "'down:' in (_gitlab_status.stdout | default(''))"
+  changed_when: true

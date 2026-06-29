@@ -49,5 +49,16 @@ nas_samba_shares:
 nas_jenkins_port: 8090
 nas_jenkins_home: /var/lib/jenkins
 
+# --- Pi-hole ---
+nas_pihole_interface:    eno1
+nas_pihole_dns1:         8.8.8.8
+nas_pihole_dns2:         8.8.4.4
+nas_pihole_web_port:     "8000"
+nas_pihole_web_port_tls: "4443"
+
+# --- GitLab CE ---
+nas_gitlab_external_url: "http://192.168.10.50"
+nas_gitlab_version:      "19.1.1-ce.0"     # pin version; remove to always install latest
+
 # --- Email (used by ZED, SMART, unattended-upgrades, msmtp) ---
 email: raphael.muench@proton.me
