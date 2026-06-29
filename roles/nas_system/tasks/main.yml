@@ -42,6 +42,51 @@
     group: root
     mode: "0644"
 
+- name: System | Ensure /home/raphael/.ssh exists
+  ansible.builtin.file:
+    path: /home/raphael/.ssh
+    state: directory
+    owner: raphael
+    group: raphael
+    mode: "0700"
+
+# --- SSH keys for Jenkins backup connections ---
+- name: System | Deploy SSH private key (id_rsa – unencrypted)
+  ansible.builtin.copy:
+    content: "{{ nas_ssh_private_key }}"
+    dest: /home/raphael/.ssh/id_rsa
+    owner: raphael
+    group: raphael
+    mode: "0600"
+  no_log: true
+  when: nas_ssh_private_key is defined
+
+- name: System | Deploy SSH second key (id_rsa.pub – passphrase-protected)
+  ansible.builtin.copy:
+    content: "{{ nas_ssh_private_key_2 }}"
+    dest: /home/raphael/.ssh/id_rsa.pub
+    owner: raphael
+    group: raphael
+    mode: "0600"
+  no_log: true
+  when: nas_ssh_private_key_2 is defined
+
+- name: System | Deploy SSH public key file (derived from id_rsa)
+  ansible.builtin.copy:
+    src: raphael_id_rsa.pub
+    dest: /home/raphael/.ssh/id_rsa_public.pub
+    owner: raphael
+    group: raphael
+    mode: "0644"
+
+- name: System | Deploy known_hosts
+  ansible.builtin.copy:
+    src: raphael_known_hosts
+    dest: /home/raphael/.ssh/known_hosts
+    owner: raphael
+    group: raphael
+    mode: "0600"
+
 # --- SSH: deploy authorized key for Ansible controller ---
 - name: System | Deploy SSH public key for raphael
   ansible.posix.authorized_key:
