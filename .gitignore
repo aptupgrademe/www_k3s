@@ -17,3 +17,7 @@ inventory/host_vars/*/vars.yml
 # Main inventory – contains real server IPs.
 # Copy hosts.yml.example → hosts.yml and fill in your values.
 inventory/hosts.yml
+
+# Internal fix/audit notes – never published to a remote.
+docs/*-fixes-*.md
+docs/*-audit*.md
