@@ -82,32 +82,36 @@
 
 
 # -----------------------------------------------------------------------------
-# Auto-propupd after dnf-automatic
-# dnf-automatic updates system binaries nightly → rkhunter detects changed
-# file hashes and sends false-positive "infected" emails.
-# This drop-in runs --propupd automatically after every dnf-automatic run
-# so the baseline stays in sync with legitimate package updates.
+# Auto-propupd after ANY dnf transaction (manual and automatic)
+# A native dnf plugin is the most reliable hook – it runs in the same
+# process as dnf, after every transaction that actually changed packages.
+# The old dnf-automatic drop-in only fired for the nightly scheduled job,
+# not for manual "dnf upgrade" runs; the plugin covers both.
+# Plugin path: /usr/lib/python3.9/site-packages/dnf-plugins/
 # -----------------------------------------------------------------------------
-- name: rkhunter | Ensure dnf-automatic drop-in directory exists
-  ansible.builtin.file:
-    path: /etc/systemd/system/dnf-automatic.service.d
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
-
-- name: rkhunter | Deploy dnf-automatic drop-in for auto-propupd
+- name: rkhunter | Deploy dnf plugin for auto-propupd
   ansible.builtin.copy:
-    dest: /etc/systemd/system/dnf-automatic.service.d/rkhunter-propupd.conf
+    dest: /usr/lib/python3.9/site-packages/dnf-plugins/rkhunter_propupd.py
     owner: root
     group: root
     mode: "0644"
     content: |
-      [Service]
-      ExecStartPost=/usr/bin/rkhunter --propupd --nocolors
-  register: rkhunter_dropin
+      import dnf
+      import subprocess
 
-- name: rkhunter | Reload systemd after drop-in change
-  ansible.builtin.systemd:
-    daemon_reload: true
-  when: rkhunter_dropin.changed
+      class RkhunterPropupd(dnf.Plugin):
+          """Run rkhunter --propupd after every dnf transaction."""
+          name = "rkhunter-propupd"
+
+          def transaction(self):
+              if self.base.transaction and len(self.base.transaction) > 0:
+                  subprocess.run(
+                      ["/usr/bin/rkhunter", "--propupd", "--nocolors"],
+                      capture_output=True
+                  )
+
+# Remove legacy drop-in (superseded by the plugin above)
+- name: rkhunter | Remove obsolete dnf-automatic drop-in
+  ansible.builtin.file:
+    path: /etc/systemd/system/dnf-automatic.service.d/rkhunter-propupd.conf
+    state: absent
