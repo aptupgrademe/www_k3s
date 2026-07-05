@@ -5,6 +5,10 @@
 **IP:** 192.168.10.50 (LAN)  
 **Datum:** 2026-07-01
 
+**Alle Schritte als PowerShell-Skripte:** siehe separates Repo
+[aptupgrademe/powershell_NAS](https://github.com/aptupgrademe/powershell_NAS)
+(inkl. englischer README)
+
 ---
 
 ## Hardware
@@ -165,7 +169,7 @@ New-GPLink -Name "Windows11-UpdatePolicy" -Target $domain -LinkEnabled Yes
 
 ## 5. Server-Hardening & Performance
 
-Vollständiges Skript: [Set-ServerHardeningHomelab.ps1](Set-ServerHardeningHomelab.ps1)
+Vollständiges Skript: [05-Set-ServerHardeningHomelab.ps1](https://github.com/aptupgrademe/powershell_NAS/blob/main/05-Set-ServerHardeningHomelab.ps1)
 
 ```powershell
 # Power Plan: Ausbalanciert (skaliert CPU mit Last)
