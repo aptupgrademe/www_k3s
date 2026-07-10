@@ -55,7 +55,7 @@ nextcloud_image_collabora: "collabora/code:26.04.1.4.1"
 nextcloud_image_busybox:   "busybox:1"
 blog_image_busybox:        "busybox:1"
 
-blog_image_wordpress:      "wordpress:7.0-php8.3-fpm"
+blog_image_wordpress:      "wordpress:7.0.1-php8.3-fpm"
 blog_image_mariadb:        "mariadb:10.11"
 blog_image_nginx:          "nginx:1.30-alpine"
 # Redis: object cache for WordPress (pure in-memory, no persistence)

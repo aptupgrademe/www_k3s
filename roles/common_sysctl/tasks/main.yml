@@ -21,8 +21,13 @@
     mode: "0644"
   notify: apply sysctl
 
+# Run via systemd-run (transient unit under PID 1) rather than directly in
+# the SSH session: sshd's hardening drop-in (common_ssh, ProtectKernelTunables=yes)
+# masks /proc/sys read-only inside the SSH session's private mount namespace,
+# so a plain `sysctl --system` here always fails with "permission denied".
+# systemd-run escapes that namespace without touching the hardening itself.
 - name: Sysctl | Apply settings immediately
-  ansible.builtin.command: sysctl --system
+  ansible.builtin.command: systemd-run --wait --pipe --quiet -- sysctl --system
   changed_when: false
 
 
