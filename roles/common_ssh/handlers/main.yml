@@ -5,5 +5,11 @@
 - name: Reload sshd
   ansible.builtin.systemd:
     name: sshd
-    state: reloaded
+    # Must be "restarted", not "reloaded": systemd only re-applies exec-time
+    # sandboxing (RestrictAddressFamilies, ProtectKernelTunables, ...) when the
+    # unit is (re)started. A reload just SIGHUPs the running process, so
+    # hardening.conf changes would silently never take effect. OpenSSH is safe
+    # to restart here — the listening master respawns, but already-established
+    # sessions are handled by independent forked child processes and survive.
+    state: restarted
     daemon_reload: true

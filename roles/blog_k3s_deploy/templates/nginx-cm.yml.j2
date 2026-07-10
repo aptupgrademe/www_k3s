@@ -142,9 +142,10 @@ data:
     request_slowlog_timeout = 5s
 
     ; --- Pool tuning ---
-    pm.max_children      = 10
-    pm.start_servers     = 2
-    pm.min_spare_servers = 1
-    pm.max_spare_servers = 4
+    ; Sized for a 4-core node with wordpress-fpm cpu limit=2000m, memory limit=768Mi.
+    pm.max_children      = 16
+    pm.start_servers     = 4
+    pm.min_spare_servers = 2
+    pm.max_spare_servers = 8
     ; Recycle workers after 500 requests to prevent PHP memory leaks
     pm.max_requests      = 500

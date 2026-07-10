@@ -114,6 +114,11 @@
 # -----------------------------------------------------------------------------
 # STEP 7: systemd hardening drop-in for sshd
 # Conservative: no NoNewPrivileges (sshd needs setuid for user sessions).
+# AF_NETLINK is required in the allow-list: without it, any tool invoked in an
+# SSH session that talks to the kernel over netlink (nft, ip, ss, ...) fails
+# with "Unable to initialize Netlink socket" since it inherits sshd's seccomp
+# filter. This previously made it impossible to diagnose or fix nftables
+# issues remotely.
 # -----------------------------------------------------------------------------
 - name: Deploy sshd systemd hardening drop-in
   ansible.builtin.copy:
@@ -130,5 +135,5 @@
       RestrictRealtime=yes
       RestrictSUIDSGID=yes
       LockPersonality=yes
-      RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+      RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
   notify: Reload sshd

@@ -42,6 +42,8 @@ spec:
       containers:
       - name: mariadb
         image: {{ blog_image_mariadb }}
+        securityContext:
+          allowPrivilegeEscalation: false
         args:
         - --slow-query-log=1
         - --slow-query-log-file=/var/lib/mysql/slow.log
@@ -85,10 +87,12 @@ spec:
         resources:
           requests:
             memory: "256Mi"
-            cpu: "100m"
+            cpu: "200m"
           limits:
+            # Node has 4 cores; InnoDB's purge/IO/page-cleaner background
+            # threads benefit from more than 0.5 core under load.
             memory: "768Mi"
-            cpu: "500m"
+            cpu: "1500m"
         readinessProbe:
           exec:
             command:
@@ -119,6 +123,8 @@ spec:
       # -------------------------------------------------------------------
       - name: mysqld-exporter
         image: {{ blog_image_mysqld_exporter }}
+        securityContext:
+          allowPrivilegeEscalation: false
         args:
         - --config.my-cnf=/etc/mysqld_exporter.cnf
         - --web.listen-address=:9104

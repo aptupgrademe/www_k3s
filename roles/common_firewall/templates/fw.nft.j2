@@ -85,6 +85,15 @@ table inet filter {
     # ExternalServices (e.g. Grafana :3000); kubelet probes ingress-nginx on :10254.
     ip saddr {{ server_ipv4 }} tcp dport { 3000, 10254 } accept
 
+    # Allow pods to reach the host's own HTTP(S) port (hairpin: pod -> node's
+    # public IP -> ingress-nginx hostNetwork). Required for cert-manager's
+    # HTTP-01 self-check, which runs from inside the pod network and requests
+    # the challenge over the site's public hostname before telling Let's
+    # Encrypt to validate. Without this, the self-check times out forever and
+    # certificates can never renew, even though the challenge is served
+    # correctly to real (external) validators.
+    ip saddr {{ k3s_pod_cidr }} tcp dport { 80, 443 } accept
+
     # -------------------------------------------------------------------------
     # Block private and reserved IPv4 source ranges
     # -------------------------------------------------------------------------

@@ -24,6 +24,8 @@ spec:
       containers:
       - name: redis
         image: {{ blog_image_redis }}
+        securityContext:
+          allowPrivilegeEscalation: false
         # Disable all persistence – RAM-only cache, restarts start fresh.
         command: ["redis-server", "--save", "", "--appendonly", "no"]
         ports:
@@ -35,7 +37,7 @@ spec:
             cpu: "10m"
           limits:
             memory: "128Mi"
-            cpu: "100m"
+            cpu: "200m"
         readinessProbe:
           exec:
             command: ["redis-cli", "ping"]

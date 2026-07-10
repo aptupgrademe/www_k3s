@@ -1,6 +1,15 @@
-# Ingress for WordPress blog – managed by Ansible (blog_k3s_deploy)
-# cert-manager issues the Let's Encrypt TLS certificate automatically.
-# wp-login.php rate-limiting is applied via nginx.org annotations.
+# Ingress resources – managed by Ansible (blog_k3s_deploy)
+# F5 nginx-ingress requires Mergeable Ingresses when multiple Ingresses share
+# the same hostname (e.g. main Ingress + cert-manager ACME solver Ingress).
+#   master: TLS + server-level config, NO paths (F5 requirement)
+#   minion: paths/routing + location-level config, NO TLS
+# cert-manager solver Ingresses are created as minions via ClusterIssuer
+# ingressTemplate annotations, so their challenge locations are merged in.
+# Mirrors the pattern used by next_k3s_deploy/templates/ingress.yml.j2.
+
+# ============================================================
+# WordPress – MASTER (TLS + server config, no paths)
+# ============================================================
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -8,19 +17,16 @@ metadata:
   name: wordpress
   namespace: wordpress
   annotations:
-    # TLS certificate issued by cert-manager
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    # Force HTTPS
-    nginx.org/ssl-redirect: "true"
-    # Security headers added to every response in the location context
-    nginx.org/location-snippets: |
-      add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
-      add_header X-Frame-Options "SAMEORIGIN" always;
-      add_header X-Content-Type-Options "nosniff" always;
-      add_header Referrer-Policy "same-origin" always;
-      add_header X-Permitted-Cross-Domain-Policies "none" always;
-    # Rate-limit wp-login.php (5 r/s per IP, burst 5) + block sensitive paths
+    nginx.org/mergeable-ingress-type: "master"
+    nginx.org/ssl-redirect: "false"
+    # HTTPS redirect with /.well-known/ exception for ACME HTTP-01 challenges,
+    # plus WordPress hardening (deny sensitive files, rate-limit wp-login.php).
     nginx.org/server-snippets: |
+      set $redirect_https 0;
+      if ($scheme = http)                       { set $redirect_https 1; }
+      if ($request_uri ~ "^/.well-known/")      { set $redirect_https 0; }
+      if ($redirect_https = 1)                  { return 301 https://$host$request_uri; }
       location = /xmlrpc.php  { deny all; return 403; }
       location = /readme.html { deny all; return 403; }
       location = /license.txt { deny all; return 403; }
@@ -32,6 +38,35 @@ metadata:
         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
       }
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - {{ blog_hostname }}
+    secretName: wordpress-tls
+  rules:
+  - host: {{ blog_hostname }}
+    # No http.paths – required for F5 nginx-ingress master Ingress.
+    # Paths are defined in the wordpress-routes minion Ingress below.
+
+# ============================================================
+# WordPress – MINION (paths + location-level config)
+# ============================================================
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wordpress-routes
+  namespace: wordpress
+  annotations:
+    nginx.org/mergeable-ingress-type: "minion"
+    # Security headers added to every response in the location context
+    nginx.org/location-snippets: |
+      add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+      add_header X-Frame-Options "SAMEORIGIN" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header Referrer-Policy "same-origin" always;
+      add_header X-Permitted-Cross-Domain-Policies "none" always;
     # Upload size
     nginx.org/client-max-body-size: "500m"
     nginx.org/proxy-read-timeout: "300s"
@@ -40,10 +75,6 @@ metadata:
     nginx.org/path-regex: "case_sensitive"
 spec:
   ingressClassName: nginx
-  tls:
-  - hosts:
-    - {{ blog_hostname }}
-    secretName: wordpress-tls
   rules:
   - host: {{ blog_hostname }}
     http:

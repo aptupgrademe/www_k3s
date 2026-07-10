@@ -1433,7 +1433,7 @@ k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
   </tr>
   <tr>
     <td>PHP-FPM Pool</td>
-    <td>max_children=10, max_requests=500 (worker recycling to prevent memory leaks)</td>
+    <td>max_children=16, start_servers=4, min/max_spare=2/8, max_requests=500 (worker recycling to prevent memory leaks). Sized for the node's 4 cores together with the wordpress-fpm container's cpu limit (2000m).</td>
     <td><code>blog_k3s_deploy</code> → ConfigMap <code>wordpress-fpm-pool-config</code></td>
   </tr>
   <tr>
@@ -1443,7 +1443,7 @@ k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
   </tr>
   <tr>
     <td>MariaDB InnoDB</td>
-    <td>buffer_pool=384 MB, innodb_flush_log_at_trx_commit=2, max_connections=50, K8s limit 768 Mi</td>
+    <td>buffer_pool=384 MB, innodb_flush_log_at_trx_commit=2, max_connections=50, K8s limits: memory 768 Mi, cpu 1500m (4-core node – lets background threads run in parallel)</td>
     <td><code>blog_k3s_deploy</code> → <code>mariadb-deployment.yml.j2</code></td>
   </tr>
   <tr>

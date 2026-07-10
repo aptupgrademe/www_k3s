@@ -59,6 +59,8 @@ spec:
       # -------------------------------------------------------------------
       - name: wordpress-fpm
         image: {{ blog_image_wordpress }}
+        securityContext:
+          allowPrivilegeEscalation: false
         env:
         # Database
         - name: WORDPRESS_DB_HOST
@@ -110,10 +112,12 @@ spec:
         resources:
           requests:
             memory: "256Mi"
-            cpu: "100m"
+            cpu: "200m"
           limits:
-            memory: "512Mi"
-            cpu: "500m"
+            # Node has 4 cores; give FPM room to run pm.max_children workers
+            # truly in parallel instead of throttling them to <1 core.
+            memory: "768Mi"
+            cpu: "2000m"
         readinessProbe:
           tcpSocket:
             port: 9000
@@ -134,6 +138,8 @@ spec:
       # -------------------------------------------------------------------
       - name: php-fpm-exporter
         image: {{ blog_image_fpm_exporter }}
+        securityContext:
+          allowPrivilegeEscalation: false
         env:
         - name: PHP_FPM_SCRAPE_URI
           value: "tcp://127.0.0.1:9000/fpm-status"
@@ -156,6 +162,8 @@ spec:
       # -------------------------------------------------------------------
       - name: nginx
         image: {{ blog_image_nginx }}
+        securityContext:
+          allowPrivilegeEscalation: false
         ports:
         - containerPort: 80
           name: http
@@ -172,7 +180,7 @@ spec:
             cpu: "25m"
           limits:
             memory: "128Mi"
-            cpu: "250m"
+            cpu: "500m"
         readinessProbe:
           tcpSocket:
             port: 80

@@ -42,7 +42,7 @@
         - traefik
         - servicelb
       flannel-backend: vxlan
-      write-kubeconfig-mode: "0644"
+      write-kubeconfig-mode: "0600"
   notify: Restart k3s service
 
 

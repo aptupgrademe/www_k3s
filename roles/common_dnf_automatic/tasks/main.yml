@@ -10,6 +10,13 @@
     name: dnf-automatic
     state: present
 
+# Provides `needs-restarting`, used during manual full-system updates
+# to check whether a reboot is required (see docs/*-betrieb.html).
+- name: dnf-automatic | Install dnf-utils (needs-restarting)
+  ansible.builtin.dnf:
+    name: dnf-utils
+    state: present
+
 # upgrade_type = security  → only apply packages tagged as security fixes
 - name: dnf-automatic | Set upgrade_type to security
   ansible.builtin.lineinfile:
