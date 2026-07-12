@@ -281,7 +281,7 @@
 <main>
 
 <h1>Nextcloud – Betriebs&shy;dokumentation</h1>
-<p class="subtitle">Nextcloud 33 auf K3s (AlmaLinux 9) &middot; Letzte Aktualisierung: Mai 2026</p>
+<p class="subtitle">Nextcloud 33 auf K3s (AlmaLinux 9) &middot; Letzte Aktualisierung: Juli 2026</p>
 
 <!-- ─────────────────────────── ÜBERBLICK ─────────────────────────────── -->
 <section id="ueberblick">
@@ -1187,7 +1187,22 @@ curl -s http://127.0.0.1:9104/metrics | grep mysql_up</code></pre>
 <ol class="steps">
   <li>
     <pre><code>ssh -p 10022 root@server
-dnf upgrade -y</code></pre>
+systemd-run --wait --pipe -- dnf upgrade -y</code></pre>
+    <p style="font-size:13px;color:var(--muted)">
+      Über <code>systemd-run</code> ausführen, nicht direkt in der SSH-Shell: sshds
+      systemd-Hardening-Drop-in (<code>common_ssh</code>-Rolle,
+      <code>ProtectKernelModules=yes</code>) sperrt jede SSH-Session — auch diese —
+      in eine private Mount-Namespace, in der <code>/usr/lib/modules</code> als
+      leeres, read-only tmpfs maskiert ist. Ein direktes <code>dnf upgrade -y</code>
+      scheitert dadurch bei Kernel-Paketen mit einer irreführenden
+      "nicht genug Speicherplatz"-Meldung (Ansible umgeht das, indem
+      <code>kernel*</code> im automatisierten Upgrade-Task der Rolle
+      <code>blog_packages</code> ausgeschlossen wird; Security-Kernel-Updates
+      landen trotzdem täglich über <code>dnf-automatic</code>, das lokal läuft,
+      nicht über SSH). <code>systemd-run</code> führt den Befehl stattdessen als
+      eigenständige Unit unter PID&nbsp;1 aus, außerhalb dieser Sandbox. Details
+      siehe <a href="#troubleshooting">Troubleshooting</a>.
+    </p>
   </li>
   <li>
     Prüfen ob ein Reboot nötig ist:
@@ -1474,6 +1489,38 @@ k3s kubectl get jobs -n nextcloud --sort-by=.metadata.creationTimestamp | tail -
 
 # Logs des letzten Job-Pods:
 k3s kubectl logs -n nextcloud -l job-name=nextcloud-cron-&lt;id&gt;</code></pre>
+
+<h3>"Permission denied" / "Read-only file system" bei dnf, sysctl oder /sys-Schreibzugriffen über SSH</h3>
+<p>
+  sshds systemd-Hardening-Drop-in (<code>common_ssh</code>-Rolle,
+  <code>/etc/systemd/system/sshd.service.d/hardening.conf</code>) setzt
+  <code>ProtectKernelModules=yes</code> und <code>ProtectKernelTunables=yes</code>.
+  Jede SSH-Session — auch Ansibles eigene Verbindung — läuft dadurch in einer
+  privaten Mount-Namespace, in der <code>/usr/lib/modules</code> als leeres,
+  read-only tmpfs maskiert ist und <code>/proc/sys</code> / <code>/sys</code>
+  read-only gemountet sind. Das ist beabsichtigt (verhindert, dass ein Angreifer
+  mit SSH-Zugriff Kernel-Module lädt oder Tunables manipuliert), bricht aber
+  jeden Befehl, der direkt über SSH dorthin schreiben will:
+</p>
+<ul>
+  <li><code>dnf upgrade -y</code> scheitert beim Installieren eines neuen Kernels
+      mit einer irreführenden "nicht genug Speicherplatz auf /usr/lib/modules"-Meldung
+      (Ansible umgeht das, indem <code>kernel*</code> im automatisierten Upgrade-Task
+      der Rolle <code>blog_packages</code> ausgeschlossen wird; Security-Kernel-Updates
+      landen trotzdem täglich über den <code>dnf-automatic</code>-Timer, der lokal
+      läuft, nicht über SSH).</li>
+  <li><code>sysctl --system</code> / <code>sysctl -w ...</code> scheitert bei fast
+      jedem Key mit "permission denied".</li>
+  <li>Schreiben nach <code>/sys/kernel/mm/transparent_hugepage/enabled</code>
+      (THP-Modus) scheitert mit "Read-only file system".</li>
+</ul>
+<p>
+  Fix: Befehl in <code>systemd-run --wait --pipe --</code> einpacken, damit er als
+  eigenständige Unit unter PID&nbsp;1 läuft statt sshds private Namespace zu erben,
+  z.B. <code>systemd-run --wait --pipe -- sysctl --system</code>. Das ist bereits
+  in den Tasks und Handlern der Rolle <code>common_sysctl</code> umgesetzt. Die
+  sshd-Härtung dafür nicht abschwächen oder entfernen — sie ist beabsichtigt.
+</p>
 </section>
 
 <!-- ─────────────────────────── PERFORMANCE ──────────────────────────── -->
@@ -1492,6 +1539,11 @@ k3s kubectl logs -n nextcloud -l job-name=nextcloud-cron-&lt;id&gt;</code></pre>
     <td>HTTP/2</td>
     <td>Multiplexing (mehrere Requests parallel über eine TCP-Verbindung), HPACK-Header-Kompression, ALPN-Aushandlung im TLS-Handshake</td>
     <td><code>common_k3s</code> → nginx-ingress Helm-Values (<code>http2: "true"</code>)</td>
+  </tr>
+  <tr>
+    <td>Upstream Keepalive</td>
+    <td>Ingress verwendet wiederverwendbare Verbindungen zum Backend-Pod statt für jeden Request eine neue TCP-Verbindung zu öffnen (live gegen das WordPress-Deployment auf demselben gemeinsamen Controller verifiziert: der generierte Upstream-Block hatte vorher keine <code>keepalive</code>-Direktive)</td>
+    <td><code>common_k3s</code> → nginx-ingress Helm-Values (<code>keepalive: "32"</code>)</td>
   </tr>
   <tr>
     <td>TLS – OCSP Stapling</td>
@@ -1592,7 +1644,7 @@ openssl s_client -connect nextcloud.example.com:443 -status 2>/dev/null | \
   </tr>
   <tr>
     <td>HTTP – Security-Header</td>
-    <td>HSTS (max-age=31536000), X-Frame-Options: SAMEORIGIN, X-Content-Type-Options: nosniff, Referrer-Policy: strict-origin-when-cross-origin, X-Permitted-Cross-Domain-Policies: none; Rate-Limiting Login (5 r/s)</td>
+    <td>HSTS (max-age=31536000), X-Frame-Options: SAMEORIGIN, X-Content-Type-Options: nosniff, Referrer-Policy: same-origin, X-Permitted-Cross-Domain-Policies: none, X-Download-Options: noopen, Permissions-Policy (Geolocation/Mikrofon/Kamera/Payment deaktiviert), X-Robots-Tag: noindex/nofollow, Cross-Origin-Opener-Policy: same-origin, Cross-Origin-Resource-Policy: same-site, Content-Security-Policy-Report-Only (beobachtet Verstöße nur, erzwingt noch nichts — erlaubt den Collabora-Host für das Dokument-Editor-iframe/WebSocket, noch nicht gegen eine laufende Instanz verifiziert); Rate-Limiting Login (5 r/s)</td>
     <td><code>common_k3s</code> (nginx-ingress (F5) Helm-Values + Ingress-Annotations)</td>
   </tr>
   <tr>

@@ -67,6 +67,15 @@ metadata:
       add_header X-Content-Type-Options "nosniff" always;
       add_header Referrer-Policy "same-origin" always;
       add_header X-Permitted-Cross-Domain-Policies "none" always;
+      add_header Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()" always;
+      # Deprecated/ignored by modern browsers (superseded by CSP); kept only
+      # to satisfy scanner checklists, no actual effect.
+      add_header X-XSS-Protection "1; mode=block" always;
+      # Report-Only: observes violations without blocking anything. Yoast's
+      # inline JSON-LD, WP block-library inline CSS, and the /grafana/ proxy
+      # path all need auditing before this can be promoted to an enforcing
+      # Content-Security-Policy.
+      add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' wss: https:; frame-ancestors 'self'; base-uri 'self'; object-src 'none'" always;
     # Upload size
     nginx.org/client-max-body-size: "500m"
     nginx.org/proxy-read-timeout: "300s"

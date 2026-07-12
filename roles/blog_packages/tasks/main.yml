@@ -58,6 +58,11 @@
       - git
       - cronie                # required for rkhunter daily cron job
       - nano
+
+      # --- Performance/troubleshooting diagnostics ---
+      - htop
+      - sysstat                # iostat, mpstat, sar
+      - strace
     state: present
 
 

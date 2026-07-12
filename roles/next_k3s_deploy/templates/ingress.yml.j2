@@ -70,6 +70,13 @@ metadata:
       add_header X-Robots-Tag "noindex, nofollow" always;
       add_header Cross-Origin-Opener-Policy "same-origin" always;
       add_header Cross-Origin-Resource-Policy "same-site" always;
+      # Report-Only: observes violations without blocking anything. frame-src
+      # and connect-src include the Collabora host for the document-editing
+      # iframe and its WebSocket connection. Needs auditing (Nextcloud apps
+      # ecosystem is at least as varied as WordPress plugins) before this can
+      # be promoted to an enforcing Content-Security-Policy. Not yet verified
+      # against a live Nextcloud instance (cvjm/sofie hosts not deployed yet).
+      add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' wss: https://{{ collabora_hostname }}; frame-src 'self' https://{{ collabora_hostname }}; frame-ancestors 'self'; base-uri 'self'; object-src 'none'" always;
     nginx.org/client-max-body-size: "512m"
     nginx.org/proxy-read-timeout: "300s"
     nginx.org/proxy-send-timeout: "300s"

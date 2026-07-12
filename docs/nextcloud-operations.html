@@ -281,7 +281,7 @@
 <main>
 
 <h1>Nextcloud – Operations Guide</h1>
-<p class="subtitle">Nextcloud 33 on K3s (AlmaLinux 9) &middot; Last updated: May 2026</p>
+<p class="subtitle">Nextcloud 33 on K3s (AlmaLinux 9) &middot; Last updated: July 2026</p>
 
 <!-- ─────────────────────────── OVERVIEW ─────────────────────────────── -->
 <section id="ueberblick">
@@ -1185,7 +1185,17 @@ curl -s http://127.0.0.1:9104/metrics | grep mysql_up</code></pre>
 <ol class="steps">
   <li>
     <pre><code>ssh -p 10022 root@server
-dnf upgrade -y</code></pre>
+systemd-run --wait --pipe -- dnf upgrade -y</code></pre>
+    <p style="font-size:13px;color:var(--muted)">
+      Run via <code>systemd-run</code>, not directly in the SSH shell: sshd's systemd
+      hardening drop-in (<code>common_ssh</code>, <code>ProtectKernelModules=yes</code>)
+      confines every SSH session — including Ansible's own connection — to a private
+      mount namespace where <code>/usr/lib/modules</code> is masked as an empty
+      read-only tmpfs. A plain <code>dnf upgrade -y</code> here always fails on kernel
+      packages with a misleading "not enough disk space" error. <code>systemd-run</code>
+      executes the command as a transient unit under PID&nbsp;1 instead, outside that
+      sandbox. See <a href="#troubleshooting">Troubleshooting</a> for details.
+    </p>
   </li>
   <li>
     Check if a reboot is needed:
@@ -1472,6 +1482,37 @@ k3s kubectl get jobs -n nextcloud --sort-by=.metadata.creationTimestamp | tail -
 
 # Logs of the last job pod:
 k3s kubectl logs -n nextcloud -l job-name=nextcloud-cron-&lt;id&gt;</code></pre>
+
+<h3>"Permission Denied" / "Read-Only File System" on dnf, sysctl, or /sys Writes via SSH</h3>
+<p>
+  sshd's systemd hardening drop-in (<code>common_ssh</code> role,
+  <code>/etc/systemd/system/sshd.service.d/hardening.conf</code>) sets
+  <code>ProtectKernelModules=yes</code> and <code>ProtectKernelTunables=yes</code>.
+  Every SSH session — including Ansible's own connection — therefore runs in a
+  private mount namespace where <code>/usr/lib/modules</code> is masked as an
+  empty read-only tmpfs and <code>/proc/sys</code> / <code>/sys</code> are
+  mounted read-only. This is intentional (prevents an attacker with SSH access
+  from loading/tampering with kernel modules or tunables), but it breaks any
+  command run directly over SSH that needs to write there:
+</p>
+<ul>
+  <li><code>dnf upgrade -y</code> fails to install a new kernel with a misleading
+      "not enough disk space on /usr/lib/modules" error (Ansible works around
+      this by excluding <code>kernel*</code> from the automated upgrade task
+      in <code>blog_packages</code>; security kernel updates still land via the
+      daily <code>dnf-automatic</code> timer, which runs locally, not over SSH).</li>
+  <li><code>sysctl --system</code> / <code>sysctl -w ...</code> fails with
+      "permission denied" on nearly every key.</li>
+  <li>Writing to <code>/sys/kernel/mm/transparent_hugepage/enabled</code> (THP mode)
+      fails with "Read-only file system".</li>
+</ul>
+<p>
+  Fix: wrap the command in <code>systemd-run --wait --pipe --</code> so it runs as
+  a transient unit under PID&nbsp;1 instead of inheriting sshd's private namespace,
+  e.g. <code>systemd-run --wait --pipe -- sysctl --system</code>. This is already
+  done in the <code>common_sysctl</code> role's tasks and handlers. Do not weaken
+  or remove the sshd hardening to work around this — it is deliberate.
+</p>
 </section>
 
 <!-- ─────────────────────────── PERFORMANCE ──────────────────────────── -->
@@ -1490,6 +1531,11 @@ k3s kubectl logs -n nextcloud -l job-name=nextcloud-cron-&lt;id&gt;</code></pre>
     <td>HTTP/2</td>
     <td>Multiplexing (multiple requests in parallel over one TCP connection), HPACK header compression, ALPN negotiation in TLS handshake</td>
     <td><code>common_k3s</code> → nginx-ingress Helm values (<code>http2: "true"</code>)</td>
+  </tr>
+  <tr>
+    <td>Upstream Keepalive</td>
+    <td>Ingress reuses pooled connections to the backend pod instead of opening a new TCP connection per request (verified live against the WordPress deployment on the same shared controller: the generated upstream block previously had no <code>keepalive</code> directive at all)</td>
+    <td><code>common_k3s</code> → nginx-ingress Helm values (<code>keepalive: "32"</code>)</td>
   </tr>
   <tr>
     <td>TLS – OCSP Stapling</td>
@@ -1590,7 +1636,7 @@ openssl s_client -connect nextcloud.example.com:443 -status 2>/dev/null | \
   </tr>
   <tr>
     <td>HTTP – Security Headers</td>
-    <td>HSTS (max-age=31536000), X-Frame-Options: SAMEORIGIN, X-Content-Type-Options: nosniff, Referrer-Policy: strict-origin-when-cross-origin, X-Permitted-Cross-Domain-Policies: none; rate limiting login (5 r/s)</td>
+    <td>HSTS (max-age=31536000), X-Frame-Options: SAMEORIGIN, X-Content-Type-Options: nosniff, Referrer-Policy: same-origin, X-Permitted-Cross-Domain-Policies: none, X-Download-Options: noopen, Permissions-Policy (geolocation/microphone/camera/payment disabled), X-Robots-Tag: noindex/nofollow, Cross-Origin-Opener-Policy: same-origin, Cross-Origin-Resource-Policy: same-site, Content-Security-Policy-Report-Only (observes violations only, not yet enforcing — allows the Collabora host for the document-editing iframe/WebSocket, not yet verified against a live instance); rate limiting login (5 r/s)</td>
     <td><code>common_k3s</code> (nginx-ingress (F5) Helm values + ingress annotations)</td>
   </tr>
   <tr>

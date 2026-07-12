@@ -282,7 +282,7 @@
 <main>
 
 <h1>WordPress – Betriebs&shy;dokumentation</h1>
-<p class="subtitle">WordPress 7.0 auf K3s (AlmaLinux 9) &middot; Letzte Aktualisierung: Juni 2026</p>
+<p class="subtitle">WordPress 7.0.1 auf K3s (AlmaLinux 9) &middot; Letzte Aktualisierung: Juli 2026</p>
 
 <!-- ─────────────────────────── ÜBERBLICK ─────────────────────────────── -->
 <section id="ueberblick">
@@ -298,7 +298,7 @@
 <div class="card-grid">
   <div class="card">
     <div class="label">WordPress</div>
-    <div class="value">7.0.x (wordpress:7.0-php8.3-fpm)</div>
+    <div class="value">7.0.1 (wordpress:7.0.1-php8.3-fpm)</div>
   </div>
   <div class="card">
     <div class="label">Betriebssystem</div>
@@ -358,7 +358,7 @@
 <span class="c-pod">│  fastcgi       │ :9000                  │</span>
 <span class="c-pod">│  ┌─────────────▼─────────────────────┐  │</span>
 <span class="c-pod">│  │  wordpress-fpm  PHP-FPM 8.3       │  │</span>
-<span class="c-pod">│  │  wordpress:7.0-php8.3-fpm                │  │</span>
+<span class="c-pod">│  │  wordpress:7.0.1-php8.3-fpm              │  │</span>
 <span class="c-pod">│  └───────────────────────────────────┘  │</span>
 <span class="c-pod">└──────────────────────────────────────────┘</span>
         │
@@ -415,7 +415,7 @@
 <h3>WordPress-Pod im Detail</h3>
 <div class="card">
   <h4>Container 1: <code>wordpress-fpm</code></h4>
-  <p>Das offizielle <code>wordpress:7.0-php8.3-fpm</code>-Image. Führt PHP-FPM auf Port 9000 aus.
+  <p>Das offizielle <code>wordpress:7.0.1-php8.3-fpm</code>-Image. Führt PHP-FPM auf Port 9000 aus.
   Beim ersten Start installiert der Docker-Entrypoint WordPress automatisch anhand
   der Umgebungsvariablen (DB-Host, DB-Name, DB-User, DB-Passwort).
   WordPress-Dateien werden in <code>/var/www/html</code> auf dem gemeinsamen
@@ -568,7 +568,7 @@ real_ip_recursive on;</code></pre>
   <tr>
     <td>Security-Header</td>
     <td><code>nginx.org/location-snippets</code></td>
-    <td>HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy</td>
+    <td>HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, X-XSS-Protection, CSP (Report-Only)</td>
   </tr>
   <tr>
     <td>Upload-Limit</td>
@@ -702,7 +702,7 @@ k3s kubectl get secret wordpress-secrets -n wordpress \
 </p>
 
 <pre><code># inventory/group_vars/all.yml
-blog_image_wordpress: "wordpress:7.0-php8.3-fpm"   # WordPress PHP-FPM
+blog_image_wordpress: "wordpress:7.0.1-php8.3-fpm"   # WordPress PHP-FPM
 blog_image_mariadb:   "mariadb:10.11"       # MariaDB LTS
 blog_image_nginx:     "nginx:1.30-alpine"   # nginx Sidecar</code></pre>
 
@@ -710,9 +710,9 @@ blog_image_nginx:     "nginx:1.30-alpine"   # nginx Sidecar</code></pre>
 <table>
   <tr><th>Tag-Format</th><th>Bedeutung</th><th>Beispiel</th></tr>
   <tr>
-    <td><code>7.0-fpm</code></td>
-    <td>Folgt Patch-Updates in WordPress 7.0.x automatisch beim Pull</td>
-    <td><code>wordpress:7.0-php8.3-fpm</code></td>
+    <td><code>7.0.1-fpm</code></td>
+    <td>Fest auf einen bestimmten WordPress-Patch-Release gepinnt; wird manuell in Ansible hochgesetzt</td>
+    <td><code>wordpress:7.0.1-php8.3-fpm</code></td>
   </tr>
   <tr>
     <td><code>10.11</code></td>
@@ -737,11 +737,11 @@ blog_image_nginx:     "nginx:1.30-alpine"   # nginx Sidecar</code></pre>
 </table>
 
 <div class="callout callout-warn">
-  <strong>Patch-Update ohne Tag-Änderung</strong>
-  Wenn Docker Hub z.B. <code>wordpress:7.0-php8.3-fpm</code> auf 7.0.1 aktualisiert,
-  passiert auf dem Server <em>nichts automatisch</em>. Der Tag ist lokal gecacht.
-  Manuell updaten:
-  <pre style="margin-top:8px"><code>crictl pull docker.io/library/wordpress:7.0-php8.3-fpm
+  <strong>Rebuild ohne Tag-Änderung</strong>
+  Wenn Docker Hub <code>wordpress:7.0.1-php8.3-fpm</code> unter demselben Tag neu baut
+  (z.B. ein Base-Image-Security-Patch), passiert auf dem Server <em>nichts automatisch</em>.
+  Der Tag ist lokal gecacht. Refresh erzwingen:
+  <pre style="margin-top:8px"><code>crictl pull docker.io/library/wordpress:7.0.1-php8.3-fpm
 k3s kubectl rollout restart deployment/wordpress -n wordpress</code></pre>
 </div>
 </section>
@@ -1171,7 +1171,22 @@ k3s kubectl logs -n wordpress -l job-name=wordpress-cron-&lt;id&gt;</code></pre>
 <ol class="steps">
   <li>
     <pre><code>ssh -p 10022 root@217.154.101.78
-dnf upgrade -y</code></pre>
+systemd-run --wait --pipe -- dnf upgrade -y</code></pre>
+    <p style="font-size:13px;color:var(--muted)">
+      Über <code>systemd-run</code> ausführen, nicht direkt in der SSH-Shell: sshds
+      systemd-Hardening-Drop-in (<code>common_ssh</code>-Rolle,
+      <code>ProtectKernelModules=yes</code>) sperrt jede SSH-Session — auch diese —
+      in eine private Mount-Namespace, in der <code>/usr/lib/modules</code> als
+      leeres, read-only tmpfs maskiert ist. Ein direktes <code>dnf upgrade -y</code>
+      scheitert dadurch bei Kernel-Paketen mit einer irreführenden
+      "nicht genug Speicherplatz"-Meldung (Ansible umgeht das, indem
+      <code>kernel*</code> im automatisierten Upgrade-Task der Rolle
+      <code>blog_packages</code> ausgeschlossen wird; Security-Kernel-Updates
+      landen trotzdem täglich über <code>dnf-automatic</code>, das lokal läuft,
+      nicht über SSH). <code>systemd-run</code> führt den Befehl stattdessen als
+      eigenständige Unit unter PID&nbsp;1 aus, außerhalb dieser Sandbox. Details
+      siehe <a href="#troubleshooting">Troubleshooting</a>.
+    </p>
   </li>
   <li>
     Prüfen ob ein Reboot nötig ist:
@@ -1185,14 +1200,14 @@ k3s kubectl get pods -n wordpress</code></pre>
   </li>
 </ol>
 
-<h3>WordPress-Update: Patch innerhalb desselben Tags</h3>
+<h3>WordPress-Update: Rebuild innerhalb desselben Tags</h3>
 <p>
-  Wenn Docker Hub <code>wordpress:7.0-php8.3-fpm</code> auf 7.0.1 aktualisiert
-  und der Tag im Ansible unverändert bleibt:
+  Wenn Docker Hub <code>wordpress:7.0.1-php8.3-fpm</code> neu baut (z.B. ein
+  Base-Image-Security-Patch) und der Tag im Ansible unverändert bleibt:
 </p>
 <ol class="steps">
   <li>Neues Image manuell pullen:
-    <pre><code>crictl pull docker.io/library/wordpress:7.0-php8.3-fpm</code></pre>
+    <pre><code>crictl pull docker.io/library/wordpress:7.0.1-php8.3-fpm</code></pre>
   </li>
   <li>Pod neu starten:
     <pre><code>k3s kubectl rollout restart deployment/wordpress -n wordpress
@@ -1200,7 +1215,7 @@ k3s kubectl rollout status  deployment/wordpress -n wordpress --timeout=300s</co
   </li>
 </ol>
 
-<h3>WordPress-Update: Minor-Versionssprung (z.B. 7.0 → 7.1)</h3>
+<h3>WordPress-Update: Versionssprung (z.B. 7.0.1 → 7.1)</h3>
 
 <div class="callout callout-danger">
   <strong>Backup vor jedem Major-Update!</strong>
@@ -1209,7 +1224,7 @@ k3s kubectl rollout status  deployment/wordpress -n wordpress --timeout=300s</co
 
 <ol class="steps">
   <li>Tag in <code>inventory/group_vars/all.yml</code> ändern:
-    <pre><code>blog_image_wordpress: "wordpress:7.0-php8.3-fpm"</code></pre>
+    <pre><code>blog_image_wordpress: "wordpress:7.0.1-php8.3-fpm"</code></pre>
   </li>
   <li>Playbook ausführen – K3s zieht das neue Image und rollt den Pod durch:
     <pre><code>ansible-playbook blog.yml --limit www.apt-upgrade.me --ask-vault-pass</code></pre>
@@ -1393,6 +1408,38 @@ k3s kubectl get pods -n wordpress --sort-by=.metadata.creationTimestamp | tail -
 # Manuell auslösen (für Test):
 k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
   php /var/www/html/wp-cron.php</code></pre>
+
+<h3>"Permission denied" / "Read-only file system" bei dnf, sysctl oder /sys-Schreibzugriffen über SSH</h3>
+<p>
+  sshds systemd-Hardening-Drop-in (<code>common_ssh</code>-Rolle,
+  <code>/etc/systemd/system/sshd.service.d/hardening.conf</code>) setzt
+  <code>ProtectKernelModules=yes</code> und <code>ProtectKernelTunables=yes</code>.
+  Jede SSH-Session — auch Ansibles eigene Verbindung — läuft dadurch in einer
+  privaten Mount-Namespace, in der <code>/usr/lib/modules</code> als leeres,
+  read-only tmpfs maskiert ist und <code>/proc/sys</code> / <code>/sys</code>
+  read-only gemountet sind. Das ist beabsichtigt (verhindert, dass ein Angreifer
+  mit SSH-Zugriff Kernel-Module lädt oder Tunables manipuliert), bricht aber
+  jeden Befehl, der direkt über SSH dorthin schreiben will:
+</p>
+<ul>
+  <li><code>dnf upgrade -y</code> scheitert beim Installieren eines neuen Kernels
+      mit einer irreführenden "nicht genug Speicherplatz auf /usr/lib/modules"-Meldung
+      (Ansible umgeht das, indem <code>kernel*</code> im automatisierten Upgrade-Task
+      der Rolle <code>blog_packages</code> ausgeschlossen wird; Security-Kernel-Updates
+      landen trotzdem täglich über den <code>dnf-automatic</code>-Timer, der lokal
+      läuft, nicht über SSH).</li>
+  <li><code>sysctl --system</code> / <code>sysctl -w ...</code> scheitert bei fast
+      jedem Key mit "permission denied".</li>
+  <li>Schreiben nach <code>/sys/kernel/mm/transparent_hugepage/enabled</code>
+      (THP-Modus) scheitert mit "Read-only file system".</li>
+</ul>
+<p>
+  Fix: Befehl in <code>systemd-run --wait --pipe --</code> einpacken, damit er als
+  eigenständige Unit unter PID&nbsp;1 läuft statt sshds private Namespace zu erben,
+  z.B. <code>systemd-run --wait --pipe -- sysctl --system</code>. Das ist bereits
+  in den Tasks und Handlern der Rolle <code>common_sysctl</code> umgesetzt. Die
+  sshd-Härtung dafür nicht abschwächen oder entfernen — sie ist beabsichtigt.
+</p>
 </section>
 
 <!-- ─────────────────────────── SICHERHEIT ───────────────────────────── -->
@@ -1412,6 +1459,11 @@ k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
     <td>HTTP/2</td>
     <td>Multiplexing (mehrere Requests parallel über eine TCP-Verbindung), HPACK-Header-Kompression, ALPN-Aushandlung im TLS-Handshake</td>
     <td><code>common_k3s</code> → nginx-ingress Helm-Values (<code>http2: "true"</code>)</td>
+  </tr>
+  <tr>
+    <td>Upstream Keepalive</td>
+    <td>Ingress verwendet wiederverwendbare Verbindungen zum Backend-Pod statt für jeden Request eine neue TCP-Verbindung zu öffnen (live verifiziert: der generierte Upstream-Block hatte vorher keine <code>keepalive</code>-Direktive)</td>
+    <td><code>common_k3s</code> → nginx-ingress Helm-Values (<code>keepalive: "32"</code>)</td>
   </tr>
   <tr>
     <td>TLS – OCSP Stapling</td>
@@ -1580,7 +1632,7 @@ k3s kubectl exec deployment/mariadb -n wordpress -- \
   </tr>
   <tr>
     <td>HTTP – Security-Header</td>
-    <td>HSTS (max-age=31536000), X-Frame-Options: SAMEORIGIN, X-Content-Type-Options: nosniff, Referrer-Policy: strict-origin-when-cross-origin, X-Permitted-Cross-Domain-Policies: none</td>
+    <td>HSTS (max-age=31536000), X-Frame-Options: SAMEORIGIN, X-Content-Type-Options: nosniff, Referrer-Policy: same-origin, X-Permitted-Cross-Domain-Policies: none, Permissions-Policy (Geolocation/Mikrofon/Kamera/Payment deaktiviert), X-XSS-Protection (veraltet, in modernen Browsern wirkungslos), Content-Security-Policy-Report-Only (beobachtet Verstöße nur, erzwingt noch nichts)</td>
     <td><code>blog_k3s_deploy</code> (Ingress location-snippets)</td>
   </tr>
   <tr>

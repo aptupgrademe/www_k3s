@@ -23,6 +23,15 @@ controller:
       # Enables multiplexing, header compression (HPACK) and ALPN negotiation.
       http2: "true"
 
+      # --- Upstream connection reuse ---
+      # Without this, the controller opens a new TCP connection to the backend
+      # pod for every single proxied request (verified live: the generated
+      # upstream block had no keepalive directive at all). This pools idle
+      # connections per worker instead, for every upstream cluster-wide.
+      # Global ConfigMap key only — there is no working per-Ingress annotation
+      # for this in the F5 nginx-ingress (nginx.org) controller.
+      keepalive: "32"
+
       # --- TLS hardening ---
       ssl-protocols: "TLSv1.2 TLSv1.3"
       ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305"

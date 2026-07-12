@@ -76,11 +76,19 @@
 # -----------------------------------------------------------------------------
 # STEP 5: Full system update
 # -----------------------------------------------------------------------------
+# Kernel packages are excluded: sshd's systemd hardening drop-in
+# (common_ssh, ProtectKernelModules=yes) puts every SSH session — including
+# Ansible's own connection — into a private mount namespace where
+# /usr/lib/modules is masked as an empty read-only tmpfs. Installing a new
+# kernel there always fails. Security kernel updates still land via
+# dnf-automatic (common_dnf_automatic), which runs locally via a systemd
+# timer, outside the SSH session and thus unaffected by that sandboxing.
 - name: Upgrade all system packages to the latest version
   ansible.builtin.dnf:
     name: "*"
     state: latest
     update_cache: true
+    exclude: kernel*
 
 
 # -----------------------------------------------------------------------------
@@ -114,6 +122,11 @@
       - rdiff-backup
       - tmux
       - nano
+
+      # --- Performance/troubleshooting diagnostics ---
+      - htop
+      - sysstat                # iostat, mpstat, sar
+      - strace
 
       # --- Prerequisite for Ansible MySQL modules ---
       - python3-PyMySQL

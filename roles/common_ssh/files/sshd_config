@@ -26,9 +26,11 @@ Port 10022
 
 # Logging
 #SyslogFacility AUTH
-#LogLevel INFO
+# VERBOSE logs the key fingerprint used per login attempt (forensic value,
+# pairs with the login banner and rkhunter monitoring already in place).
+LogLevel VERBOSE
 
-#LoginGraceTime 2m
+LoginGraceTime 20
 #StrictModes yes
 #MaxAuthTries 6
 #MaxSessions 10
@@ -96,11 +98,16 @@ PrintMotd no
 #UsePrivilegeSeparation sandbox
 #PermitUserEnvironment no
 #Compression delayed
-# ClientAliveInterval 10
-# ClientAliveCountMax 10
+# Detect and drop dead/idle sessions instead of letting them hang indefinitely
+# (no ClientAliveInterval was set before, so stale sessions never timed out).
+ClientAliveInterval 300
+ClientAliveCountMax 2
 #UseDNS no
 #PidFile /var/run/sshd.pid
-#MaxStartups 10:30:100
+# Lower ceiling on concurrent unauthenticated connections (reduces exposure
+# to connection-flood resource exhaustion); fail2ban already handles
+# per-IP brute-force banning separately.
+MaxStartups 10:30:60
 PermitTunnel no
 #ChrootDirectory none
 #VersionAddendum none
@@ -137,8 +144,11 @@ TCPKeepAlive yes
 # Show the login banner (defined in roles/common_ssh/templates/sshd_banner.j2).
 Banner /etc/ssh/sshd_banner
 
-# Optional: restrict to strong ciphers/MACs (uncomment when needed)
-#KexAlgorithms curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256
-#Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr
-#MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-512,hmac-sha2-256,umac-128@openssh.com
+# Restrict to strong, modern algorithms only (AEAD ciphers, ETM MACs).
+# Removes legacy fallbacks OpenSSH still offers by default (e.g. SHA-1 MACs,
+# non-ETM MACs). Zero compatibility cost: every OpenSSH client from the last
+# ~8+ years supports all of the below.
+KexAlgorithms curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256
+Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com
+MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,umac-128-etm@openssh.com
 
