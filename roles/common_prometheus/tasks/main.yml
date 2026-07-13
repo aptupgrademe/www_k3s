@@ -115,6 +115,14 @@
     - reload systemd
     - restart prometheus
 
+- name: Prometheus | Ensure prometheus.service.d drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/system/prometheus.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Prometheus | Deploy systemd hardening drop-in
   ansible.builtin.copy:
     dest: /etc/systemd/system/prometheus.service.d/hardening.conf

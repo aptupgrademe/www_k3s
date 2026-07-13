@@ -281,7 +281,7 @@
 <main>
 
 <h1>Nextcloud – Operations Guide</h1>
-<p class="subtitle">Nextcloud 33 on K3s (AlmaLinux 9) &middot; Last updated: July 2026</p>
+<p class="subtitle">Nextcloud 34 on K3s (AlmaLinux 9) &middot; Last updated: July 2026</p>
 
 <!-- ─────────────────────────── OVERVIEW ─────────────────────────────── -->
 <section id="ueberblick">
@@ -297,7 +297,7 @@
 <div class="card-grid">
   <div class="card">
     <div class="label">Nextcloud</div>
-    <div class="value">33.x (nextcloud:33-fpm)</div>
+    <div class="value">34.x (nextcloud:34-fpm)</div>
   </div>
   <div class="card">
     <div class="label">Operating System</div>
@@ -424,7 +424,7 @@
   permissions. Without this step, Nextcloud cannot write anything to <code>/var/www/html</code>.</p>
 
   <h4>Container 1: <code>nextcloud-fpm</code></h4>
-  <p>The official <code>nextcloud:33-fpm</code> image. Runs PHP-FPM on port 9000.
+  <p>The official <code>nextcloud:34-fpm</code> image. Runs PHP-FPM on port 9000.
   If <code>/var/www/html</code> is empty, the Docker entrypoint automatically installs
   Nextcloud based on the environment variables (DB, Admin, Redis).
   During an update, <code>occ upgrade</code> runs automatically.</p>
@@ -737,7 +737,7 @@ k3s kubectl get secret nextcloud-secrets -n nextcloud \
 </p>
 
 <pre><code># inventory/group_vars/all.yml
-nextcloud_image_fpm:       "nextcloud:33-fpm"      # Nextcloud PHP-FPM
+nextcloud_image_fpm:       "nextcloud:34-fpm"      # Nextcloud PHP-FPM
 nextcloud_image_nginx:     "nginx:1.30-alpine"          # nginx Sidecar
 nextcloud_image_collabora: "collabora/code:25.04.9.4.1" # Collabora CODE
 nextcloud_image_busybox:   "busybox:1"             # Init container</code></pre>
@@ -747,8 +747,8 @@ nextcloud_image_busybox:   "busybox:1"             # Init container</code></pre>
   <tr><th>Tag Format</th><th>Meaning</th><th>Example</th></tr>
   <tr>
     <td><code>33-fpm</code></td>
-    <td>Follows minor and patch updates in Nextcloud 33.x automatically on pull</td>
-    <td><code>nextcloud:33-fpm</code></td>
+    <td>Follows minor and patch updates in Nextcloud 34.x automatically on pull</td>
+    <td><code>nextcloud:34-fpm</code></td>
   </tr>
   <tr>
     <td><code>34-fpm</code></td>
@@ -769,10 +769,10 @@ nextcloud_image_busybox:   "busybox:1"             # Init container</code></pre>
 
 <div class="callout callout-warn">
   <strong>Patch Update Without Tag Change</strong>
-  When Docker Hub updates e.g. <code>nextcloud:33-fpm</code> from 33.0.2 to 33.0.3,
+  When Docker Hub updates e.g. <code>nextcloud:34-fpm</code> from 34.0.1 to 34.0.2,
   <em>nothing happens automatically</em> on the server. The tag is cached locally.
   Update manually:
-  <pre style="margin-top:8px"><code>crictl pull docker.io/library/nextcloud:33-fpm
+  <pre style="margin-top:8px"><code>crictl pull docker.io/library/nextcloud:34-fpm
 k3s kubectl rollout restart deployment/nextcloud -n nextcloud</code></pre>
 </div>
 </section>
@@ -801,13 +801,16 @@ k3s kubectl rollout restart deployment/nextcloud -n nextcloud</code></pre>
 'default_locale'       => 'de_DE',
 'force_language'       => 'de',
 
-// Session (1 hour, no "stay logged in")
+// Session (1 hour; keepalive means background activity, e.g. Collabora
+// autosaving, refreshes it – auto_logout still ends genuinely idle sessions)
 'session_lifetime'               => 3600,
 'auto_logout'                    => true,
+'session_keepalive'              => true,
 'remember_login_cookie_lifetime' => 0,
 
-// Redis (cache, locking, sessions)
-'memcache.local'       => '\\OC\\Memcache\\Redis',
+// Cache: local on APCu (in-process, no network round-trip), locking +
+// distributed stay on Redis (only Redis gives cross-process consistency)
+'memcache.local'       => '\\OC\\Memcache\\APCu',
 'memcache.distributed' => '\\OC\\Memcache\\Redis',
 'memcache.locking'     => '\\OC\\Memcache\\Redis',
 'redis' => ['host' => 'redis', 'port' => 6379],
@@ -1212,12 +1215,12 @@ k3s kubectl get pods -n nextcloud</code></pre>
 
 <h3>Container Update: Patch Within the Same Tag</h3>
 <p>
-  When Docker Hub updates e.g. <code>nextcloud:33-fpm</code> from 33.0.2 to 33.0.3
+  When Docker Hub updates e.g. <code>nextcloud:34-fpm</code> from 34.0.1 to 34.0.2
   and the tag in Ansible remains unchanged:
 </p>
 <ol class="steps">
   <li>Pull new image manually:
-    <pre><code>crictl pull docker.io/library/nextcloud:33-fpm</code></pre>
+    <pre><code>crictl pull docker.io/library/nextcloud:34-fpm</code></pre>
   </li>
   <li>Restart pod (now uses the freshly pulled image):
     <pre><code>k3s kubectl rollout restart deployment/nextcloud -n nextcloud

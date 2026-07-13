@@ -38,6 +38,7 @@
     mode: "0644"
   loop:
     - nginx-k3s-wp-login.conf
+    - nginx-k3s-nc-login.conf
     - nginx-k3s-scanner.conf
     - nginx-k3s-bad-paths.conf
   notify: restart fail2ban
@@ -55,6 +56,22 @@
 # -----------------------------------------------------------------------------
 # Service
 # -----------------------------------------------------------------------------
+# On a genuinely fresh host, fail2ban's own log file doesn't exist yet. The
+# recidive jail (jail.local) reads it (logpath = /var/log/fail2ban.log), and
+# fail2ban parses all jail configs *before* its own logger creates that file
+# on first start – so on a first-ever start this fails immediately with
+# "Have not found any log file for recidive jail" (exit-code 255, service
+# never comes up). Pre-creating the file avoids the chicken-and-egg race.
+- name: Fail2Ban | Ensure fail2ban.log exists (needed by recidive jail on first-ever start)
+  ansible.builtin.file:
+    path: /var/log/fail2ban.log
+    state: touch
+    owner: root
+    group: root
+    mode: "0640"
+    modification_time: preserve
+    access_time: preserve
+
 - name: Fail2Ban | Enable and start service
   ansible.builtin.systemd:
     name: fail2ban

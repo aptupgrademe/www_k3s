@@ -120,6 +120,14 @@
 # filter. This previously made it impossible to diagnose or fix nftables
 # issues remotely.
 # -----------------------------------------------------------------------------
+- name: Ensure sshd.service.d drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/system/sshd.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Deploy sshd systemd hardening drop-in
   ansible.builtin.copy:
     dest: /etc/systemd/system/sshd.service.d/hardening.conf

@@ -38,6 +38,37 @@
 
 
 # -----------------------------------------------------------------------------
+# Reboot if the running kernel's module directory is genuinely gone
+# -----------------------------------------------------------------------------
+# Cloud images occasionally already have a newer kernel installed (by the
+# provider's first-boot update or a prior dnf-automatic run) before Ansible
+# ever connects, while still running the old, now-unpacked kernel. Any task
+# that reads /lib/modules/<running kernel> (e.g. common_sysctl's modprobe for
+# tcp_bbr) then fails with a confusing "No such file or directory" instead of
+# a clear "reboot needed" message.
+#
+# Must check via systemd-run, NOT ansible.builtin.stat directly: once
+# common_ssh's hardening drop-in (ProtectKernelModules=yes) is active – which
+# it already is on any host that completed a common_ssh run before, including
+# earlier partial runs of this same play – /lib/modules is masked empty
+# inside the SSH session's own private mount namespace. A plain stat here
+# would see that mask and wrongly conclude a reboot is needed even when the
+# real kernel modules are perfectly fine. systemd-run escapes that sandbox.
+- name: Check whether the running kernel's module directory still exists
+  ansible.builtin.command: >-
+    systemd-run --wait --pipe --quiet --
+    test -d /lib/modules/{{ ansible_kernel }}
+  register: running_kernel_modules
+  changed_when: false
+  failed_when: false
+
+- name: Reboot – running kernel's modules are gone, a newer kernel is already installed
+  ansible.builtin.reboot:
+    reboot_timeout: 300
+  when: running_kernel_modules.rc != 0
+
+
+# -----------------------------------------------------------------------------
 # Package installation
 # -----------------------------------------------------------------------------
 - name: Install host packages

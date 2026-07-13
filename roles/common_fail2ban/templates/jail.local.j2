@@ -62,6 +62,23 @@ findtime = 600
 
 
 # -----------------------------------------------------------------------------
+# HTTP – Nextcloud login brute force
+# Mirrors nginx-k3s-wp-login above. Rate-limiting at nginx-ingress (nc_login
+# zone, 5 r/s) already slows attackers; fail2ban bans IPs that keep trying
+# despite the rate limit. Harmless no-op on hosts without a Nextcloud
+# deployment – the filter simply never matches.
+# -----------------------------------------------------------------------------
+[nginx-k3s-nc-login]
+enabled  = true
+port     = 80,443
+filter   = nginx-k3s-nc-login
+logpath  = /var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/0.log
+backend  = polling
+maxretry = 10
+findtime = 600
+
+
+# -----------------------------------------------------------------------------
 # HTTP – vulnerability/directory scanner detection
 # 20 blocked requests (403/404) within 60 s = automated scanner → ban.
 # Threshold is intentionally generous to avoid false positives from

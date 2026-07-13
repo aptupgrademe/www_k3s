@@ -17,7 +17,29 @@ data:
         root /var/www/html;
         index index.php index.html;
 
-        client_max_body_size 512m;
+        # Matches PHP_UPLOAD_LIMIT (nextcloud-deployment.yml.j2) and the
+        # nginx.org/client-max-body-size ingress annotation (ingress.yml.j2) –
+        # all three must agree, otherwise uploads between the smaller and
+        # larger value pass one layer only to fail at the next.
+        client_max_body_size 2g;
+
+        # Batches TCP packets before sending (pairs with sendfile, already on
+        # by default) – small efficiency gain for large file transfers.
+        tcp_nopush on;
+
+        # -------------------------------------------------------
+        # Gzip compression (HTML, CSS, JS, JSON, XML, fonts)
+        # Mirrors roles/blog_k3s_deploy/templates/nginx-cm.yml.j2
+        # -------------------------------------------------------
+        gzip              on;
+        gzip_vary         on;
+        gzip_proxied      any;
+        gzip_comp_level   6;
+        gzip_min_length   1024;
+        gzip_types
+            text/plain text/css text/xml text/javascript
+            application/javascript application/json application/xml
+            application/rss+xml image/svg+xml font/woff2;
 
         # -------------------------------------------------------
         # .well-known
@@ -75,6 +97,8 @@ data:
             fastcgi_intercept_errors      on;
             fastcgi_request_buffering     off;
             fastcgi_read_timeout          300s;
+            # Hide PHP version from response headers
+            fastcgi_hide_header           X-Powered-By;
         }
 
         # -------------------------------------------------------
@@ -102,3 +126,32 @@ data:
         access_log /dev/stdout;
         error_log  /dev/stderr warn;
     }
+---
+# Upload/memory limits are already handled via the official image's
+# PHP_MEMORY_LIMIT/PHP_UPLOAD_LIMIT env vars (see nextcloud-deployment.yml.j2)
+# – intentionally not duplicated here to avoid conflicting settings.
+# OPcache has no equivalent env var in the image, so it needs this file.
+# Mirrors roles/blog_k3s_deploy/templates/nginx-cm.yml.j2; max_accelerated_files
+# is not yet verified against a live instance – Nextcloud's app ecosystem may
+# need a higher value than WordPress's 10000, check `opcache_get_status()` /
+# opcache.log after rollout.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nextcloud-php-config
+  namespace: nextcloud
+data:
+  opcache.ini: |
+    ; --- Realpath cache (avoid repeated filesystem lookups) ---
+    realpath_cache_size = 4096K
+    realpath_cache_ttl  = 3600
+
+    ; --- OPcache (production tuning) ---
+    ; validate_timestamps=0: never check file mtimes – pod restart clears cache on deploy
+    opcache.enable                 = 1
+    opcache.memory_consumption     = 128
+    opcache.interned_strings_buffer = 16
+    opcache.max_accelerated_files  = 10000
+    opcache.validate_timestamps    = 0
+    opcache.revalidate_freq        = 0
+    opcache.fast_shutdown          = 1

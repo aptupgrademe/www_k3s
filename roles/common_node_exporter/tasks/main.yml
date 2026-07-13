@@ -75,6 +75,14 @@
     - reload systemd
     - restart node_exporter
 
+- name: Node Exporter | Ensure node_exporter.service.d drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/system/node_exporter.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Node Exporter | Deploy systemd hardening drop-in
   ansible.builtin.copy:
     dest: /etc/systemd/system/node_exporter.service.d/hardening.conf

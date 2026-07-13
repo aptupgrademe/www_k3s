@@ -189,6 +189,18 @@
   changed_when: false
   failed_when: false
 
+# Collabora's WOPI discovery document – proves Collabora is not just "pod
+# Running" but actually answers requests and can tell Nextcloud which editor
+# actions it supports. A real discovery.xml starts with <wopi-discovery>.
+- name: Verify | HTTPS – Collabora discovery.xml (WOPI) reachable
+  ansible.builtin.shell: |
+    curl -sk --max-time {{ verify_http_timeout }} \
+      --resolve "{{ collabora_hostname }}:443:127.0.0.1" \
+      "https://{{ collabora_hostname }}/hosting/discovery" 2>/dev/null
+  register: _v_collabora_discovery
+  changed_when: false
+  failed_when: false
+
 
 # =============================================================================
 # BLOCK 4 – SECURITY BLOCKING
@@ -280,6 +292,21 @@
   changed_when: false
   failed_when: false
 
+# Not yet verified against a live instance (no Nextcloud+richdocuments
+# deployment was up at the time this was written) – the richdocuments app
+# config key for the Collabora server URL is documented as "wopi_url" across
+# current richdocuments versions, but double-check the actual key name here
+# (occ config:app:get richdocuments wopi_url) once this runs for real, in
+# case a version mismatch renames or splits it.
+- name: Verify | Nextcloud – richdocuments WOPI URL configured correctly
+  ansible.builtin.shell: |
+    k3s kubectl exec deployment/nextcloud -n nextcloud \
+      --container nextcloud-fpm -- \
+      php /var/www/html/occ config:app:get richdocuments wopi_url 2>/dev/null || echo ''
+  register: _v_richdocuments_url
+  changed_when: false
+  failed_when: false
+
 
 # =============================================================================
 # COMPUTE BOOLEAN RESULTS
@@ -313,6 +340,8 @@
     _r_server:         "{{ 'nginx/' not in (_v_headers.stdout | default('')) }}"
     # /login – curl stdout is the HTTP status code
     _r_login:          "{{ _v_login.stdout | default('000') | trim | int == 200 }}"
+    # Collabora – discovery.xml root element present = Collabora is genuinely answering, not just "pod Running"
+    _r_collabora_disco: "{{ '<wopi-discovery' in (_v_collabora_discovery.stdout | default('')) }}"
     # Status / installed
     _r_installed:      "{{ (_v_status.content | default('') | from_json).installed | default(false) | bool }}"
     _r_maintenance:    "{{ not ((_v_status.content | default('') | from_json).maintenance | default(false) | bool) }}"
@@ -327,6 +356,7 @@
     _r_redis:          "{{ (_v_redis.stdout | default('') | trim) == 'ok' }}"
     _r_mariadb_pod:    "{{ (_v_mariadb_pod.stdout | default('') | trim) == 'ok' }}"
     _r_bbr:            "{{ (_v_bbr.stdout | default('') | trim) == 'bbr' }}"
+    _r_richdocuments:  "{{ (_v_richdocuments_url.stdout | default('') | trim) == collabora_url }}"
 
     # Detail strings für den Report
     _d_f2b_jails:      "{{ _v_f2b_status.stdout | default('') | regex_search('Jail list:\\s*(.*)', '\\1') | first | default('?') | trim }}"
@@ -336,6 +366,7 @@
     _d_server_hdr:     "{{ _v_headers.stdout | default('') | regex_search('server: ([^\r\n]+)', '\\1') | first | default('(not set)') }}"
     _d_nc_version:     "{{ (_v_status.content | default('{}') | from_json).versionstring | default('?') }}"
     _d_bg_mode:        "{{ _v_bg_mode.stdout | default('?') | trim }}"
+    _d_richdocuments:  "{{ _v_richdocuments_url.stdout | default('') | trim | default('(empty)', true) }}"
 
 
 # =============================================================================
@@ -350,13 +381,13 @@
          _r_f2b_svc, _r_f2b_jails, _r_k3s, _r_mariadb_svc, _r_redis_svc,
          _r_auditd, _r_selinux,
          _r_nc_pods, _r_collabora, _r_ingress, _r_certmgr, _r_noerror,
-         _r_https, _r_tls, _r_hsts, _r_server, _r_login,
+         _r_https, _r_tls, _r_hsts, _r_server, _r_login, _r_collabora_disco,
          _r_installed, _r_maintenance,
          _r_env, _r_config, _r_data,
-         _r_occ, _r_bg_mode, _r_redis, _r_mariadb_pod, _r_bbr]
+         _r_occ, _r_bg_mode, _r_redis, _r_mariadb_pod, _r_bbr, _r_richdocuments]
         | select | list | length
       }}
-    _total_count: 31
+    _total_count: 33
 
 
 # =============================================================================
@@ -397,6 +428,7 @@
         {{ _ok if _r_hsts | bool else _fail }}  HSTS header                  {{ 'present' if _r_hsts | bool else _r ~ 'MISSING' ~ _z }}
         {{ _ok if _r_server | bool else _fail }}  Server header (no leak)      {{ _d_server_hdr }}
         {{ _ok if _r_login | bool else _fail }}  /login reachable             HTTP {{ _v_login.stdout | default('TIMEOUT') | trim }}
+        {{ _ok if _r_collabora_disco | bool else _fail }}  Collabora discovery.xml      {{ 'valid WOPI document' if _r_collabora_disco | bool else _r ~ 'NOT REACHABLE or invalid response!' ~ _z }}
         {{ _ok if _r_installed | bool else _fail }}  Nextcloud installed          {{ 'yes (' ~ _d_nc_version ~ ')' if _r_installed | bool else _r ~ 'NO – installation incomplete!' ~ _z }}
         {{ _ok if _r_maintenance | bool else _fail }}  Maintenance mode            {{ 'off' if _r_maintenance | bool else _r ~ 'ACTIVE – Nextcloud unreachable!' ~ _z }}
 
@@ -411,6 +443,7 @@
         {{ _ok if _r_redis | bool else _fail }}  Redis (pod → host)           {{ 'ok' if _r_redis | bool else _r ~ 'ERROR – Redis unreachable!' ~ _z }}
         {{ _ok if _r_mariadb_pod | bool else _fail }}  MariaDB (pod → host)         {{ 'ok' if _r_mariadb_pod | bool else _r ~ 'ERROR – port 3306 unreachable!' ~ _z }}
         {{ _ok if _r_bbr | bool else _fail }}  TCP BBR                      {{ _v_bbr.stdout | default('?') | trim }}
+        {{ _ok if _r_richdocuments | bool else _fail }}  richdocuments WOPI URL       {{ _d_richdocuments }}{{ '' if _r_richdocuments | bool else _r ~ '  ← should be ' ~ collabora_url ~ _z }}
 
       {{ _h }}══════════════════════════════════════════════════════════════{{ _z }}
       {% if _pass_count | int == _total_count | int %}
@@ -419,6 +452,56 @@
         {{ _r }}{{ _b }}  RESULT:  {{ _pass_count }}/{{ _total_count }} checks passed  ✗  {{ _total_count | int - _pass_count | int }} FAILED{{ _z }}
       {% endif %}
       {{ _h }}══════════════════════════════════════════════════════════════{{ _z }}
+
+
+# =============================================================================
+# EMAIL – notify once the playbook run has finished verifying the deployment
+# Reuses the same msmtp relay + address (common_msmtp, "email" host var) that
+# rkhunter and dnf-automatic already send to. Placed before the assert below
+# so it fires even when a critical check fails – that's the case you most
+# want to hear about, not less.
+# =============================================================================
+
+- name: Verify | Build list of failed check names for the email body
+  ansible.builtin.set_fact:
+    _failed_checks_list: >-
+      {{
+        [
+          ['nftables service', _r_nft_svc], ['nftables inet filter', _r_nft_tables],
+          ['nftables policy drop', _r_nft_policy], ['nftables banned4 set', _r_nft_banned4],
+          ['fail2ban service', _r_f2b_svc], ['fail2ban jails', _r_f2b_jails],
+          ['k3s service', _r_k3s], ['MariaDB (host)', _r_mariadb_svc], ['Redis (host)', _r_redis_svc],
+          ['auditd service', _r_auditd], ['SELinux enforcing', _r_selinux],
+          ['nextcloud namespace pods', _r_nc_pods], ['Collabora pod', _r_collabora],
+          ['ingress-nginx pods', _r_ingress], ['cert-manager pods', _r_certmgr],
+          ['pods in error state', _r_noerror],
+          ['HTTPS connectivity', _r_https], ['TLS certificate', _r_tls],
+          ['HSTS header', _r_hsts], ['Server header', _r_server], ['/login reachable', _r_login],
+          ['Collabora discovery.xml', _r_collabora_disco],
+          ['Nextcloud installed', _r_installed], ['Maintenance mode off', _r_maintenance],
+          ['/.env blocked', _r_env], ['/config/config.php blocked', _r_config], ['/data/ blocked', _r_data],
+          ['OCC status', _r_occ], ['background job mode', _r_bg_mode],
+          ['Redis pod->host', _r_redis], ['MariaDB pod->host', _r_mariadb_pod], ['TCP BBR', _r_bbr],
+          ['richdocuments WOPI URL', _r_richdocuments]
+        ] | rejectattr('1') | map(attribute='0') | list
+      }}
+
+- name: Verify | Send deployment result email
+  ansible.builtin.shell: |
+    {
+      echo "Nextcloud deployment on $(hostname -f) finished."
+      echo ""
+      echo "Result: {{ _pass_count }}/{{ _total_count }} checks passed."
+      {% if _failed_checks_list | length > 0 %}
+      echo ""
+      echo "Failed checks:"
+      {% for name in _failed_checks_list %}
+      echo "  - {{ name }}"
+      {% endfor %}
+      {% endif %}
+    } | mail -s "[$(hostname -f)] Nextcloud deployment: {{ 'OK' if _pass_count | int == _total_count | int else 'WARNING' }} ({{ _pass_count }}/{{ _total_count }})" {{ email }}
+  changed_when: false
+  failed_when: false
 
 
 # =============================================================================

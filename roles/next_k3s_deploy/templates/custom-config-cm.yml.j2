@@ -17,9 +17,16 @@ data:
       'default_phone_region' => 'DE',
 
       // --- Session ---
+      // session_keepalive=true: without it, a long Collabora editing session
+      // with a pause >1h can outlive the Nextcloud login session (Collabora's
+      // own background saves don't refresh it), risking a failed save-back
+      // or a forced re-login mid-edit. With keepalive on, background activity
+      // (including Collabora) refreshes the session as long as the tab stays
+      // open; auto_logout still ends genuinely idle/closed sessions after
+      // session_lifetime.
       'session_lifetime'               => 3600,
       'auto_logout'                    => true,
-      'session_keepalive'              => false,
+      'session_keepalive'              => true,
       'remember_login_cookie_lifetime' => 0,
 
       // --- Maintenance ---
@@ -37,10 +44,14 @@ data:
       'log_rotate_size' => 104857600,
       'syslog_tag'      => 'Nextcloud',
 
-      // --- Redis ---
+      // --- Caching ---
+      // Nextcloud's own recommended split: local cache on APCu (in-process,
+      // no network round-trip – APCu is available in the image but was
+      // unused), locking + distributed cache stay on Redis since only Redis
+      // gives the cross-process/cross-pod consistency locking actually needs.
       'filelocking.enabled'  => true,
       'memcache.locking'     => '\\OC\\Memcache\\Redis',
-      'memcache.local'       => '\\OC\\Memcache\\Redis',
+      'memcache.local'       => '\\OC\\Memcache\\APCu',
       'memcache.distributed' => '\\OC\\Memcache\\Redis',
       'redis' => array(
         'host' => 'redis',

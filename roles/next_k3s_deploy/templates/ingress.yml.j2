@@ -77,7 +77,9 @@ metadata:
       # be promoted to an enforcing Content-Security-Policy. Not yet verified
       # against a live Nextcloud instance (cvjm/sofie hosts not deployed yet).
       add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' wss: https://{{ collabora_hostname }}; frame-src 'self' https://{{ collabora_hostname }}; frame-ancestors 'self'; base-uri 'self'; object-src 'none'" always;
-    nginx.org/client-max-body-size: "512m"
+    # Must match client_max_body_size (nginx-cm.yml.j2) and PHP_UPLOAD_LIMIT
+    # (nextcloud-deployment.yml.j2) – all three gate the same upload.
+    nginx.org/client-max-body-size: "2g"
     nginx.org/proxy-read-timeout: "300s"
     nginx.org/proxy-send-timeout: "300s"
     nginx.org/path-regex: "case_sensitive"

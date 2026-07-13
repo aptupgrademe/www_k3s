@@ -133,11 +133,16 @@ spec:
           value: "{{ mail_from_address }}"
         - name: MAIL_DOMAIN
           value: "{{ mail_domain }}"
-        # PHP limits (for large file uploads)
+        # PHP limits (for large file uploads, up to 2G). memory_limit must
+        # exceed upload_limit (PHP requirement: it needs to be able to
+        # allocate at least post_max_size/upload_max_filesize) – 3G leaves
+        # headroom above the 2G ceiling. Matches client_max_body_size in
+        # nginx-cm.yml.j2 and the nginx.org/client-max-body-size ingress
+        # annotation – all three must agree.
         - name: PHP_MEMORY_LIMIT
-          value: "512M"
+          value: "3G"
         - name: PHP_UPLOAD_LIMIT
-          value: "300M"
+          value: "2G"
         ports:
         - containerPort: 9000
           name: fpm
@@ -152,6 +157,9 @@ spec:
         - name: fpm-pool-config
           mountPath: /usr/local/etc/php-fpm.d/z-monitoring.conf
           subPath: z-monitoring.conf
+        - name: php-config
+          mountPath: /usr/local/etc/php/conf.d/opcache.ini
+          subPath: opcache.ini
         - name: tmp
           mountPath: /tmp
         resources:
@@ -159,7 +167,13 @@ spec:
             memory: "512Mi"   # real idle ~200-300 MB; 512 gives scheduler headroom
             cpu: "250m"
           limits:
-            memory: "2Gi"     # 8 GB host: plenty of room for sync, preview, large uploads
+            # Raised from 2Gi: PHP_MEMORY_LIMIT is now 3G (needed for 2G
+            # uploads), so the container must be allowed to actually reach
+            # that. On the current 3.5Gi test host this is tight if Collabora
+            # (up to 3Gi) is also under load simultaneously – fine on the
+            # 8Gi production hosts this was originally sized for, but worth
+            # a real-world check on smaller hosts.
+            memory: "4Gi"
             cpu: "1500m"
         readinessProbe:
           tcpSocket:
@@ -253,12 +267,22 @@ spec:
       - name: fpm-pool-config
         configMap:
           name: nextcloud-fpm-pool-config
+      - name: php-config
+        configMap:
+          name: nextcloud-php-config
       # RAM-backed tmpfs for PHP-FPM temp files (uploads, occ tmp, previews).
       # Content is lost on pod restart – acceptable for transient files.
+      # 256Mi (not 64Mi): `occ app:install` downloads the app tarball AND
+      # extracts it into /tmp simultaneously. richdocuments' tarball alone is
+      # ~14.5MB compressed; verified live that 64Mi truncates the extraction
+      # ("Archive may be corrupted" – file size mismatch), causing the app to
+      # silently fail to install and Collabora documents to download instead
+      # of opening in the editor. 256Mi leaves comfortable headroom for this
+      # and any other app of similar or larger size.
       - name: tmp
         emptyDir:
           medium: Memory
-          sizeLimit: 64Mi
+          sizeLimit: 256Mi
 ---
 apiVersion: v1
 kind: Service

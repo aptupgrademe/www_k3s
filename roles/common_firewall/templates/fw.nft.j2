@@ -194,7 +194,7 @@ table inet filter {
     tcp dport { 80, 443 } ct state new accept
     udp dport 443          ct state new accept  # QUIC outgoing
 
-    # SMTP submission (Nextcloud mail)
+    # SMTP submission (msmtp – rkhunter/cron/dnf-automatic on both blog and nextcloud hosts)
     tcp dport 465 ct state new accept  # TLS
     tcp dport 587 ct state new accept  # STARTTLS
 

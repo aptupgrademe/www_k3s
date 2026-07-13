@@ -6,11 +6,27 @@
 #          across reboots.
 # =============================================================================
 
+# community.general.modprobe reads /lib/modules/<kernel>/modules.builtin to
+# check module state. sshd's hardening drop-in (common_ssh, already deployed
+# and active by this point in the play – common_ssh runs before common_sysctl)
+# masks /lib/modules as empty inside the SSH session's private mount
+# namespace, so that read fails with a misleading "No such file or directory"
+# instead of a permission error. Load it via systemd-run instead, escaping
+# that sandbox, and write the persistent modules-load.d entry directly (what
+# modprobe's persistent=present does internally) so it also loads at boot via
+# systemd-modules-load.service – unaffected since that's not an SSH session.
 - name: Sysctl | Load tcp_bbr kernel module
-  community.general.modprobe:
-    name: tcp_bbr
-    state: present
-    persistent: present
+  ansible.builtin.command: systemd-run --wait --pipe --quiet -- modprobe tcp_bbr
+  changed_when: false
+
+- name: Sysctl | Persist tcp_bbr kernel module across reboots
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/tcp_bbr.conf
+    content: |
+      tcp_bbr
+    owner: root
+    group: root
+    mode: "0644"
 
 - name: Sysctl | Deploy web server kernel tuning
   ansible.builtin.template:

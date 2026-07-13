@@ -51,8 +51,8 @@ cert_manager_chart_version:  "1.21.0"
 # =============================================================================
 # Monitoring stack versions – update here to roll out across all hosts
 # =============================================================================
-node_exporter_version: "1.11.1"
-prometheus_version:    "3.12.0"
+node_exporter_version: "1.12.0"
+prometheus_version:    "3.13.1"
 prometheus_retention:  "30d"
 # grafana_admin_pass: set per host in host_vars/<host>/vault.yml
 
@@ -70,14 +70,14 @@ prometheus_retention:  "30d"
 #   Nginx:      https://hub.docker.com/_/nginx/tags      (filter: *-alpine)
 # =============================================================================
 nextcloud_image_fpm:       "nextcloud:34-fpm"
-nextcloud_image_nginx:     "nginx:1.30-alpine"
+nextcloud_image_nginx:     "nginx:1.31-alpine"
 nextcloud_image_collabora: "collabora/code:26.04.1.4.1"
 nextcloud_image_busybox:   "busybox:1"
 blog_image_busybox:        "busybox:1"
 
 blog_image_wordpress:      "wordpress:7.0.1-php8.3-fpm"
 blog_image_mariadb:        "mariadb:10.11"
-blog_image_nginx:          "nginx:1.30-alpine"
+blog_image_nginx:          "nginx:1.31-alpine"
 # Redis: object cache for WordPress (pure in-memory, no persistence)
 # Check: https://hub.docker.com/_/redis/tags  (filter: *-alpine)
 blog_image_redis:          "redis:7-alpine"

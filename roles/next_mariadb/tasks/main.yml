@@ -62,6 +62,14 @@
       # Risk: up to 1 second of committed transactions lost on hard crash.
       # Benefit: significantly faster write throughput for Nextcloud workloads.
       innodb_flush_log_at_trx_commit = 2
+      # Bounds per-connection/session memory use. Mirrors the WordPress pod's
+      # MariaDB tuning (roles/blog_k3s_deploy/templates/mariadb-deployment.yml.j2)
+      # for a similarly modest host. max_connections in particular may need
+      # raising for heavier sync-client/WebDAV concurrency – not yet verified
+      # against a live Nextcloud instance.
+      max_connections                = 50
+      tmp_table_size                 = 32M
+      max_heap_table_size            = 32M
       # Slow query log – written to the MariaDB error log (picked up by journald).
       # Queries taking longer than long_query_time seconds are logged.
       slow_query_log                 = 1
