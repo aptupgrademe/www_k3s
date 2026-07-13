@@ -21,6 +21,9 @@
     _warn: "\x1b[33m⚠\x1b[0m"
     _info: "\x1b[36mℹ\x1b[0m"
     _na:   "\x1b[90m–\x1b[0m"
+    # Bold red – used to make "update available" / "not yet deployed" hard to miss.
+    _br:   "\x1b[1;31m"
+    _upd:  "\x1b[1;31m⚠\x1b[0m"
 
 
 # =============================================================================
@@ -59,7 +62,10 @@
     import sys, json
     data = json.load(sys.stdin)
     if data:
-        print(data[0]['chart'].replace('cert-manager-', '', 1))
+        # jetstack/cert-manager chart versions are 'v'-prefixed (unlike most
+        # charts, e.g. nginx-ingress); strip it so it compares equal to the
+        # unprefixed cert_manager_chart_version in group_vars/all.yml.
+        print(data[0]['chart'].replace('cert-manager-', '', 1).lstrip('v'))
     else:
         print('not deployed')
     " 2>/dev/null || echo 'not deployed'
@@ -95,7 +101,9 @@
     helm search repo jetstack/cert-manager -o json 2>/dev/null | python3 -c "
     import sys, json
     data = json.load(sys.stdin)
-    print(data[0]['version'] if data else '?')
+    # Strip the 'v' prefix jetstack uses (see deployed-version task above)
+    # so this compares equal to the unprefixed group_vars value.
+    print(data[0]['version'].lstrip('v') if data else '?')
     " 2>/dev/null || echo '?'
   register: _vc_certmgr_latest
   changed_when: false
@@ -181,24 +189,24 @@
       {{ _h }}╚══════════════════════════════════════════════════════════╝{{ _z }}
 
       {{ _h }}── Infrastructure ────────────────────────────────────────────{{ _z }}
-        {{ _na if _f_k3s_na | bool else (_ok if _f_k3s_ok | bool else _warn) }}  K3s
+        {{ _na if _f_k3s_na | bool else (_ok if _f_k3s_ok | bool else _upd) }}  K3s
               installed : {{ _r_k3s_inst }}
-              latest    : {{ _r_k3s_new }}{{ '  ' ~ _y ~ '← update available' ~ _z if (not _f_k3s_ok | bool and not _f_k3s_na | bool and _r_k3s_new != '?') else '' }}
+              latest    : {{ (_br + _r_k3s_new + '  ⚠ UPDATE AVAILABLE' + _z) if (not _f_k3s_ok | bool and not _f_k3s_na | bool and _r_k3s_new != '?') else _r_k3s_new }}
 
-        {{ _na if _f_helm_na | bool else (_ok if _f_helm_ok | bool else _warn) }}  Helm
+        {{ _na if _f_helm_na | bool else (_ok if _f_helm_ok | bool else _upd) }}  Helm
               installed : {{ _r_helm_inst }}
-              latest    : {{ _r_helm_new }}{{ '  ' ~ _y ~ '← update available' ~ _z if (not _f_helm_ok | bool and not _f_helm_na | bool and _r_helm_new != '?') else '' }}
+              latest    : {{ (_br + _r_helm_new + '  ⚠ UPDATE AVAILABLE' + _z) if (not _f_helm_ok | bool and not _f_helm_na | bool and _r_helm_new != '?') else _r_helm_new }}
 
       {{ _h }}── Helm Charts ────────────────────────────────────────────────{{ _z }}
-        {{ _ok if (_f_nginx_dep | bool and _f_nginx_ok | bool) else _warn }}  nginx-ingress (F5)
+        {{ _ok if (_f_nginx_dep | bool and _f_nginx_ok | bool) else _upd }}  nginx-ingress (F5)
               configured: {{ _r_nginx_cfg }}
-              deployed  : {{ _r_nginx_dep }}{{ '  ' ~ _r ~ '← not yet deployed' ~ _z if not _f_nginx_dep | bool else '' }}
-              latest    : {{ _r_nginx_new }}{{ '  ' ~ _y ~ '← update available in group_vars' ~ _z if (not _f_nginx_ok | bool and _r_nginx_new != '?') else '' }}
+              deployed  : {{ (_br + _r_nginx_dep + '  ⚠ NOT YET DEPLOYED' + _z) if not _f_nginx_dep | bool else _r_nginx_dep }}
+              latest    : {{ (_br + _r_nginx_new + '  ⚠ UPDATE AVAILABLE IN group_vars' + _z) if (not _f_nginx_ok | bool and _r_nginx_new != '?') else _r_nginx_new }}
 
-        {{ _ok if (_f_cm_dep | bool and _f_cm_ok | bool) else _warn }}  cert-manager
+        {{ _ok if (_f_cm_dep | bool and _f_cm_ok | bool) else _upd }}  cert-manager
               configured: {{ _r_cm_cfg }}
-              deployed  : {{ _r_cm_dep }}{{ '  ' ~ _r ~ '← not yet deployed' ~ _z if not _f_cm_dep | bool else '' }}
-              latest    : {{ _r_cm_new }}{{ '  ' ~ _y ~ '← update available in group_vars' ~ _z if (not _f_cm_ok | bool and _r_cm_new != '?') else '' }}
+              deployed  : {{ (_br + _r_cm_dep + '  ⚠ NOT YET DEPLOYED' + _z) if not _f_cm_dep | bool else _r_cm_dep }}
+              latest    : {{ (_br + _r_cm_new + '  ⚠ UPDATE AVAILABLE IN group_vars' + _z) if (not _f_cm_ok | bool and _r_cm_new != '?') else _r_cm_new }}
 
       {{ _h }}── Container Images (configured in group_vars/all.yml) ────────{{ _z }}
       {% if 'blog' in group_names %}

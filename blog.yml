@@ -76,26 +76,26 @@
 
 
   roles:
-    - common_version_check  # Pre-flight: show component versions + available updates
-    - blog_packages         # Host packages: nftables, SELinux tools, utilities only
-    - common_ssh            # SSH hardening (port, key-only auth)
-    - common_firewall       # nftables IPv4/IPv6 rules
-    - common_sysctl         # Kernel tuning: TCP BBR, connection timeouts, backlog
-    - blog_selinux          # SELinux enforcing + container_file_t for HostPath  ← before deploy!
-    - common_k3s            # K3s + Helm + cert-manager + nginx-ingress (F5)
-    - blog_k3s_deploy       # WordPress K8s manifests applied (pods start in background)
+    - { role: common_version_check, tags: [common_version_check] }  # Pre-flight: show component versions + available updates
+    - { role: blog_packages,        tags: [blog_packages] }         # Host packages: nftables, SELinux tools, utilities only
+    - { role: common_ssh,           tags: [common_ssh] }            # SSH hardening (port, key-only auth)
+    - { role: common_firewall,      tags: [common_firewall] }       # nftables IPv4/IPv6 rules
+    - { role: common_sysctl,        tags: [common_sysctl] }         # Kernel tuning: TCP BBR, connection timeouts, backlog
+    - { role: blog_selinux,         tags: [blog_selinux] }          # SELinux enforcing + container_file_t for HostPath  ← before deploy!
+    - { role: common_k3s,           tags: [common_k3s] }            # K3s + Helm + cert-manager + nginx-ingress (F5)
+    - { role: blog_k3s_deploy,      tags: [blog_k3s_deploy] }       # WordPress K8s manifests applied (pods start in background)
 
     # These roles run while K8s pods initialise – saves 2-3 min wall-clock time.
-    - common_node_exporter  # Node Exporter (metrics, port 9100)
-    - common_prometheus     # Prometheus (scrapes node:9100 + K3s NodePorts, port 9090)
-    - common_grafana        # Grafana (dashboards 1860/7362/4912, port 3000)
-    - common_fail2ban       # Fail2Ban: SSH + nginx + WordPress login protection
-    - common_msmtp          # msmtp sendmail relay (rkhunter, cron, dnf-automatic)
-    - common_dnf_automatic  # Automatic security-only updates via dnf-automatic
-    - common_rkhunter       # Rootkit detection with daily scan
-    - common_auditd         # Linux Audit Daemon with security-relevant rules
-    - common_logrotate      # Log rotation for Grafana, Prometheus, fail2ban, rkhunter
+    - { role: common_node_exporter, tags: [common_node_exporter] }  # Node Exporter (metrics, port 9100)
+    - { role: common_prometheus,    tags: [common_prometheus] }     # Prometheus (scrapes node:9100 + K3s NodePorts, port 9090)
+    - { role: common_grafana,       tags: [common_grafana] }        # Grafana (dashboards 1860/7362/4912, port 3000)
+    - { role: common_fail2ban,      tags: [common_fail2ban] }       # Fail2Ban: SSH + nginx + WordPress login protection
+    - { role: common_msmtp,         tags: [common_msmtp] }          # msmtp sendmail relay (rkhunter, cron, dnf-automatic)
+    - { role: common_dnf_automatic, tags: [common_dnf_automatic] }  # Automatic security-only updates via dnf-automatic
+    - { role: common_rkhunter,      tags: [common_rkhunter] }       # Rootkit detection with daily scan
+    - { role: common_auditd,        tags: [common_auditd] }         # Linux Audit Daemon with security-relevant rules
+    - { role: common_logrotate,     tags: [common_logrotate] }      # Log rotation for Grafana, Prometheus, fail2ban, rkhunter
 
     # WordPress setup waits for pod readiness → by now pods are Running.
-    - blog_wordpress        # WordPress install + plugins via kubectl exec
-    - blog_verify           # Post-deployment smoke tests (services, K8s, HTTPS, security, performance)
+    - { role: blog_wordpress,       tags: [blog_wordpress] }        # WordPress install + plugins via kubectl exec
+    - { role: blog_verify,          tags: [blog_verify] }           # Post-deployment smoke tests (services, K8s, HTTPS, security, performance)

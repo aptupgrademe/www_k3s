@@ -4,6 +4,11 @@
 # =============================================================================
 # Helm is the Kubernetes package manager. We use it to install cert-manager
 # and F5 nginx-ingress from their official Helm charts.
+#
+# Installed from the official release tarball (get.helm.sh) rather than a
+# get-helm-<major> shell script, so upgrades are a simple version-pin bump –
+# same pattern as k3s_version in install_k3s.yml. No Kubernetes-facing service
+# to restart here (Helm is just a CLI), so no handler/flush needed.
 # =============================================================================
 
 - name: Helm | Check if helm binary already exists
@@ -11,25 +16,47 @@
     path: /usr/local/bin/helm
   register: helm_binary
 
-- name: Helm | Download Helm installer script
+# Strip the +g<hash> build suffix (e.g. "v3.20.1+ga2369ca") so this compares
+# equal to the clean helm_version pin (e.g. "v4.2.3").
+- name: Helm | Check installed helm version
+  ansible.builtin.shell: helm version --short 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1
+  register: helm_installed_version
+  changed_when: false
+  failed_when: false
+
+- name: Helm | Download release tarball (install or upgrade to {{ helm_version }})
   ansible.builtin.get_url:
-    url: https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
-    dest: /tmp/get-helm-3.sh
+    url: "https://get.helm.sh/helm-{{ helm_version }}-linux-amd64.tar.gz"
+    dest: /tmp/helm.tar.gz
+    mode: "0644"
+  when: not helm_binary.stat.exists or (helm_installed_version.stdout | trim) != helm_version
+  register: helm_download
+
+- name: Helm | Extract release tarball
+  ansible.builtin.unarchive:
+    src: /tmp/helm.tar.gz
+    dest: /tmp
+    remote_src: true
+  when: helm_download.changed | default(false)
+
+- name: Helm | Install/upgrade binary to /usr/local/bin
+  ansible.builtin.copy:
+    src: /tmp/linux-amd64/helm
+    dest: /usr/local/bin/helm
     mode: "0755"
-  when: not helm_binary.stat.exists
+    owner: root
+    group: root
+    remote_src: true
+  when: helm_download.changed | default(false)
 
-- name: Helm | Install Helm
-  ansible.builtin.command: /tmp/get-helm-3.sh
-  environment:
-    HELM_INSTALL_DIR: /usr/local/bin
-    USE_SUDO: "false"
-  when: not helm_binary.stat.exists
-  changed_when: true
-
-- name: Helm | Remove installer script
+- name: Helm | Clean up download/extraction artifacts
   ansible.builtin.file:
-    path: /tmp/get-helm-3.sh
+    path: "{{ item }}"
     state: absent
+  loop:
+    - /tmp/helm.tar.gz
+    - /tmp/linux-amd64
+  when: helm_download.changed | default(false)
 
 - name: Helm | Set KUBECONFIG for Helm commands (K3s writes here)
   ansible.builtin.lineinfile:

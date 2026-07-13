@@ -21,12 +21,32 @@ blog_k3s_www_dir: /srv/wordpress-www
 blog_k3s_db_dir: /srv/wordpress-db
 
 # =============================================================================
+# K3s version – pinned (not "latest") so upgrades are deliberate and
+# reproducible. common_k3s compares this against the installed version and
+# upgrades in place (binary swap + service restart) if they differ.
+# Verify latest: https://github.com/k3s-io/k3s/releases
+# =============================================================================
+k3s_version: "v1.36.2+k3s1"
+
+# =============================================================================
+# Helm version – pinned (not the v3-only get-helm-3 installer script) so
+# upgrades are deliberate and reproducible, same pattern as k3s_version above.
+# Migrated from Helm v3 to v4 (2026-07-12): checked against this repo's Helm
+# usage (classic helm repo add/search/update, helm upgrade --install, no
+# --atomic/--force flags, no OCI registries, no Go SDK usage) – none of the
+# known v4 breaking changes apply. Helm 3 itself stopped receiving bugfixes
+# 2026-07-08, security patches end 2026-11-11.
+# Verify latest: https://github.com/helm/helm/releases
+# =============================================================================
+helm_version: "v4.2.3"
+
+# =============================================================================
 # Helm chart versions – update here to roll out across all hosts
 # Verify latest: https://artifacthub.io/packages/helm/nginx-stable/nginx-ingress  (F5)
 #                https://artifacthub.io/packages/helm/cert-manager/cert-manager
 # =============================================================================
-ingress_nginx_chart_version: "2.5.1"
-cert_manager_chart_version:  "1.20.2"
+ingress_nginx_chart_version: "2.6.1"
+cert_manager_chart_version:  "1.21.0"
 
 # =============================================================================
 # Monitoring stack versions – update here to roll out across all hosts

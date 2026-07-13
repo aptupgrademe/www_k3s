@@ -1,0 +1,6 @@
+---
+# Passed to the reboot-required check below; uses the host's 'email' variable
+# from vault (same pattern as rkhunter_mail in common_rkhunter).
+# Override if a separate monitoring address is desired:
+# dnf_automatic_reboot_mail: "monitoring@example.com"
+dnf_automatic_reboot_mail: "{{ email }}"

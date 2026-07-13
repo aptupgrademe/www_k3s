@@ -93,6 +93,11 @@ spec:
             define('WP_REDIS_PORT',     6379);
             define('WP_REDIS_DATABASE', 0);
             define('WP_REDIS_SCHEME',   'tcp');
+            // Bounds cache growth: without this, object-cache entries never
+            // expire (verified live: 4481 keys in Redis, only 29 had a TTL).
+            // Combined with Redis' own maxmemory/eviction below, this keeps
+            // the dataset self-cleaning instead of growing indefinitely.
+            define('WP_REDIS_MAXTTL', 86400);
             define('WP_CACHE', true);
             define('WPCACHEHOME', '/var/www/html/wp-content/plugins/wp-super-cache/');
         ports:

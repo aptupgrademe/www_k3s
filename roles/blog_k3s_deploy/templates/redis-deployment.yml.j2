@@ -27,7 +27,13 @@ spec:
         securityContext:
           allowPrivilegeEscalation: false
         # Disable all persistence – RAM-only cache, restarts start fresh.
-        command: ["redis-server", "--save", "", "--appendonly", "no"]
+        # maxmemory is set well below the 128Mi container limit (mem_fragmentation_ratio
+        # observed at 2.73 live, i.e. actual RSS usage is well above Redis' own
+        # accounting) so Redis evicts under its own steam instead of being
+        # OOM-killed by the kernel once the cgroup limit is hit. allkeys-lru is
+        # correct here since every key in this instance is a disposable cache
+        # entry – nothing needs eviction protection.
+        command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "80mb", "--maxmemory-policy", "allkeys-lru"]
         ports:
         - containerPort: 6379
           name: redis

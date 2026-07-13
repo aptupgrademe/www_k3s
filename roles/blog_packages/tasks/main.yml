@@ -58,6 +58,7 @@
       - git
       - cronie                # required for rkhunter daily cron job
       - nano
+      - tmux
 
       # --- Performance/troubleshooting diagnostics ---
       - htop

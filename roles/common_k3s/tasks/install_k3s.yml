@@ -47,25 +47,40 @@
 
 
 # -----------------------------------------------------------------------------
-# Install K3s
+# Install / upgrade K3s
 # -----------------------------------------------------------------------------
 - name: K3s | Check if k3s binary already exists
   ansible.builtin.stat:
     path: /usr/local/bin/k3s
   register: k3s_binary
 
+# Empty string (not installed) never equals k3s_version, so this correctly
+# triggers a download on first install too.
+- name: K3s | Check installed k3s version
+  ansible.builtin.shell: k3s --version 2>/dev/null | awk '{print $3}'
+  register: k3s_installed_version
+  changed_when: false
+  failed_when: false
+
 # Split into two steps to avoid SSH timeout on slow connections:
 # 1. Download the k3s binary directly via get_url (controlled timeout, progress visible).
 # 2. Run the install script with INSTALL_K3S_SKIP_DOWNLOAD=true so it only
 #    sets up the service files without fetching the binary again.
-- name: K3s | Download k3s binary
+#
+# Pinned to k3s_version (group_vars/all.yml) rather than "latest" – this also
+# runs when the binary already exists but is a different version, upgrading
+# in place. K3s' documented manual-upgrade procedure is exactly this: replace
+# the binary, restart the service (see notify below) – the embedded sqlite/
+# etcd datastore survives untouched.
+- name: K3s | Download k3s binary (install or upgrade to {{ k3s_version }})
   ansible.builtin.get_url:
-    url: https://github.com/k3s-io/k3s/releases/latest/download/k3s
+    url: "https://github.com/k3s-io/k3s/releases/download/{{ k3s_version }}/k3s"
     dest: /usr/local/bin/k3s
     mode: "0755"
     owner: root
     group: root
-  when: not k3s_binary.stat.exists
+  when: not k3s_binary.stat.exists or (k3s_installed_version.stdout | trim) != k3s_version
+  notify: Restart k3s service
   timeout: 600
 
 - name: K3s | Download K3s install script
@@ -81,6 +96,13 @@
   args:
     creates: /etc/systemd/system/k3s.service
   when: not k3s_binary.stat.exists
+
+# Handlers otherwise only run at the very end of the whole play – far too
+# late for a version upgrade. Flush immediately so the restart (new binary)
+# happens here, before "Wait for the API server" below and before any later
+# role (e.g. blog_k3s_deploy) runs against a stale, about-to-be-replaced K3s.
+- name: K3s | Apply pending handlers (restart on config/binary change)
+  ansible.builtin.meta: flush_handlers
 
 
 # -----------------------------------------------------------------------------
