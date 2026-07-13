@@ -608,6 +608,48 @@ wopi_allowed_hosts:
   - "10.42.0.0/16"   # Pod CIDR (Collabora pod → Nextcloud WOPI)
   - "10.43.0.0/16"   # Service CIDR
   - "collabora.inspired-as-code.de"</code></pre>
+
+<h3>NetworkPolicy (Calico)</h3>
+<p>
+  K3s's default CNI (Flannel) does not enforce Kubernetes <code>NetworkPolicy</code>
+  objects at all – they can exist in the cluster without having any effect
+  (verified live: a deny-all policy changed nothing until Calico was installed).
+  The <code>common_calico</code> role adds Calico in <strong>policy-only mode</strong>:
+  only Felix (the policy engine) and kube-controllers run, reading Pods and
+  NetworkPolicy objects straight from the Kubernetes API. Flannel keeps doing
+  all pod networking, IP allocation and the CNI plugin invocation unchanged –
+  Calico only adds enforcement on top.
+</p>
+<p>
+  <code>next_k3s_deploy</code> applies one policy, <code>collabora-netpol</code>,
+  restricting the Collabora pod: unlike <code>nextcloud-fpm</code>, Collabora has
+  no legitimate reason to ever reach MariaDB or Redis directly, so its egress is
+  limited to DNS, the Nextcloud pod (WOPI, port 80/443) and nothing else.
+  Ingress is limited to nginx-ingress (host IP) and the Nextcloud pod.
+</p>
+<pre><code># Check the policy is present and see Calico's pods
+kubectl get networkpolicy -n nextcloud
+kubectl get pods -n kube-system -l 'k8s-app in (calico-node,calico-kube-controllers)'
+
+# Prove enforcement is actually active (temporary test policy)
+kubectl exec -n nextcloud deployment/collabora -- nc -z -w4 &lt;mariadb-host-ip&gt; 3306
+# → should time out / fail; if it succeeds, Calico isn't enforcing</code></pre>
+<div class="callout callout-info">
+  <strong>Only Nextcloud is covered, not WordPress</strong>
+  This is deliberate: WordPress's realistic compromise path (a vulnerable
+  plugin inside <code>wordpress-fpm</code>) already needs direct DB access
+  legitimately, so a NetworkPolicy would not stop it there. Collabora's threat
+  model is different – it parses arbitrary uploaded documents and has no
+  legitimate DB/Redis access to lose, so restricting it is a real, enforceable
+  security gain rather than theatre.
+</div>
+<div class="callout callout-warn">
+  <strong>Adding a new pod/service to the <code>nextcloud</code> namespace?</strong>
+  Only the Collabora pod is restricted; everything else in the namespace is
+  still default-allow. If you add a NetworkPolicy for another pod, remember
+  Calico enforces per <em>pod label selector</em>, not by pod name – double
+  check the <code>podSelector</code> matches before assuming a policy applies.
+</div>
 </section>
 
 <!-- ─────────────────────────── FILES ──────────────────────────────── -->

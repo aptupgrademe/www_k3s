@@ -41,6 +41,18 @@ k3s_version: "v1.36.2+k3s1"
 helm_version: "v4.2.3"
 
 # =============================================================================
+# Calico version – pinned, same pattern as k3s_version/helm_version above.
+# Installed in "policy-only" mode (common_calico, Nextcloud only): only
+# Felix + kube-controllers, reading Pod/NetworkPolicy objects straight from
+# the Kubernetes API. K3s's built-in Flannel keeps doing all pod networking/
+# IPAM/CNI plugin duties untouched – Calico here only adds NetworkPolicy
+# enforcement, which Flannel alone silently ignores (verified live: a
+# deny-all policy had zero effect before this was installed).
+# Verify latest: https://github.com/projectcalico/calico/releases
+# =============================================================================
+calico_version: "v3.32.1"
+
+# =============================================================================
 # Helm chart versions – update here to roll out across all hosts
 # Verify latest: https://artifacthub.io/packages/helm/nginx-stable/nginx-ingress  (F5)
 #                https://artifacthub.io/packages/helm/cert-manager/cert-manager

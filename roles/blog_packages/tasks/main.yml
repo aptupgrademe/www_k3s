@@ -11,6 +11,24 @@
 
 
 # -----------------------------------------------------------------------------
+# Hostname
+# Without this the system hostname stays "localhost" (cloud image default),
+# which every $(hostname -f)-based mail subject (rkhunter, dnf-automatic
+# reboot check, etc.) then shows verbatim – useless when several servers
+# share the same alert setup, since you can't tell which one sent it.
+# -----------------------------------------------------------------------------
+- name: Set system hostname to the public FQDN
+  ansible.builtin.hostname:
+    name: "{{ blog_hostname }}"
+
+- name: Ensure /etc/hosts has a matching entry
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.1\.1'
+    line: "127.0.1.1  {{ blog_hostname }}"
+
+
+# -----------------------------------------------------------------------------
 # EPEL  (fail2ban lives here)
 # -----------------------------------------------------------------------------
 - name: Install EPEL repository

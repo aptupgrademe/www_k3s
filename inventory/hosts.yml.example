@@ -14,9 +14,3 @@ all:
           ansible_host: CHANGE_ME # public IPv4
         test:
           ansible_host: CHANGE_ME # shared with blog test server
-    nas:                          # NAS servers (OpenZFS + Samba + Jenkins)
-      hosts:
-        hp1:
-          ansible_host: 192.168.10.50
-          ansible_port: 22
-          ansible_user: raphael

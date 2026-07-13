@@ -73,6 +73,7 @@
     - { role: next_mariadb,          tags: [next_mariadb] }          # MariaDB setup + Nextcloud database and user
     - { role: next_selinux,          tags: [next_selinux] }          # SELinux enforcing + container_file_t contexts for K3s HostPath vols  ← before deploy!
     - { role: common_k3s,            tags: [common_k3s] }            # K3s single-node cluster + Helm + cert-manager + nginx-ingress (F5)
+    - { role: common_calico,         tags: [common_calico] }         # Calico policy-only mode: NetworkPolicy enforcement (Flannel alone ignores it)
     - { role: next_k3s_deploy,       tags: [next_k3s_deploy] }       # Nextcloud + Collabora K8s workloads applied (pods start in background)
 
     # These roles run while K8s pods initialise – saves 2-3 min wall-clock time.

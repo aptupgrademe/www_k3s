@@ -1,0 +1,24 @@
+---
+# =============================================================================
+# NetworkPolicy – Collabora egress/ingress restriction
+# =============================================================================
+# Requires Calico (common_calico) for enforcement – Flannel alone accepts
+# but ignores NetworkPolicy objects, so applying this without common_calico
+# would be a silent no-op, not a broken deploy.
+
+- name: NetworkPolicy | Template Collabora NetworkPolicy manifest
+  ansible.builtin.template:
+    src: networkpolicy.yml.j2
+    dest: /tmp/k8s-collabora-networkpolicy.yml
+    mode: "0644"
+
+- name: NetworkPolicy | Apply Collabora NetworkPolicy
+  ansible.builtin.command: >
+    k3s kubectl apply -f /tmp/k8s-collabora-networkpolicy.yml
+  register: networkpolicy_apply
+  changed_when: "'created' in networkpolicy_apply.stdout or 'configured' in networkpolicy_apply.stdout"
+
+- name: NetworkPolicy | Remove temporary manifest
+  ansible.builtin.file:
+    path: /tmp/k8s-collabora-networkpolicy.yml
+    state: absent

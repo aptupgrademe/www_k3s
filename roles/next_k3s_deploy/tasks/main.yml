@@ -13,6 +13,7 @@
 - ansible.builtin.import_tasks: external_services.yml
 - ansible.builtin.import_tasks: nextcloud.yml
 - ansible.builtin.import_tasks: collabora.yml
+- ansible.builtin.import_tasks: networkpolicy.yml
 - ansible.builtin.import_tasks: ingress.yml
 - ansible.builtin.import_tasks: cronjob.yml
 - ansible.builtin.import_tasks: exporters.yml

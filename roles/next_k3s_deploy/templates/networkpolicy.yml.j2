@@ -1,0 +1,73 @@
+# NetworkPolicy for Collabora – managed by Ansible (next_k3s_deploy)
+# Enforced by Calico Felix (installed via common_calico) – Flannel alone
+# silently ignores standard NetworkPolicy objects (empirically verified: a
+# deny-all policy had zero effect before Calico was installed).
+#
+# Threat model: Collabora parses arbitrary user-uploaded documents (a more
+# plausible RCE vector than most Nextcloud app code) and, unlike
+# nextcloud-fpm, has no legitimate reason to ever reach MariaDB or Redis
+# directly. This restricts Collabora to only what it actually needs
+# (verified live against this exact deployment) and denies everything else,
+# including the DB/cache ports on the same host IP.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: collabora-netpol
+  namespace: nextcloud
+spec:
+  podSelector:
+    matchLabels:
+      app: collabora
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # F5 nginx-ingress runs hostNetwork – traffic arrives carrying the host's
+  # own IP as source, not a pod IP.
+  - from:
+    - ipBlock:
+        cidr: {{ nextcloud_ipv4 }}/32
+    ports:
+    - protocol: TCP
+      port: 9980
+  # WOPI CheckFileInfo/discovery calls from the Nextcloud pod itself.
+  - from:
+    - podSelector:
+        matchLabels:
+          app: nextcloud
+    ports:
+    - protocol: TCP
+      port: 9980
+  egress:
+  # DNS
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  # WOPI callback to Nextcloud – internal ClusterIP path (verified live).
+  - to:
+    - podSelector:
+        matchLabels:
+          app: nextcloud
+    ports:
+    - protocol: TCP
+      port: 80
+  # WOPI callback to Nextcloud – public-hostname hairpin path via F5 ingress
+  # (verified live: Collabora reaches Nextcloud this way too). Port 443
+  # only – NOT 3306/6379, so MariaDB/Redis stay unreachable even though
+  # they share the same host IP.
+  - to:
+    - ipBlock:
+        cidr: {{ nextcloud_ipv4 }}/32
+    ports:
+    - protocol: TCP
+      port: 443

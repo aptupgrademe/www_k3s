@@ -19,17 +19,56 @@
 
 
 # --- richdocuments (Nextcloud Office) ----------------------------------------
+# occ app:install's own internal download+extract is unreliable for this app:
+# verified live that it deterministically truncates one specific file at the
+# exact same byte offset every time (6811648 of 7436509 bytes) – yet a plain
+# download + tar/PharData extraction of the identical tarball succeeds
+# perfectly (checked as both root and www-data). The root cause wasn't fully
+# isolated (looks like a bug in Nextcloud's own combined HTTP+extraction
+# pipeline for this specific archive, not a disk/memory/permission issue on
+# our side), so the pragmatic fix is to bypass it: fetch and extract the app
+# via Ansible's own well-tested modules directly onto the HostPath-backed www
+# directory, then let occ only handle registration/activation below – which
+# it does correctly once the files are already present ("already installed").
 
-- name: Apps | Install Nextcloud Office (richdocuments)
-  ansible.builtin.command: >
-    k3s kubectl exec deployment/nextcloud
-    --namespace nextcloud
-    --container nextcloud-fpm
-    --
-    runuser -u www-data -- php /var/www/html/occ app:install richdocuments
+- name: Apps | richdocuments - resolve current download URL from the app store
+  ansible.builtin.uri:
+    url: "https://apps.nextcloud.com/api/v1/platform/{{ nextcloud_image_fpm.split(':')[1].split('-')[0] }}.0.0/apps.json"
+    return_content: true
+  register: nc_appstore_apps
   when: "nc_app_list.stdout is not search('richdocuments: ')"
-  changed_when: true
 
+- name: Apps | richdocuments - download tarball (bypasses occ's flaky extractor)
+  ansible.builtin.get_url:
+    url: "{{ (nc_appstore_apps.json | selectattr('id', 'equalto', 'richdocuments') | first).releases[0].download }}"
+    dest: /tmp/richdocuments.tar.gz
+    mode: "0644"
+  when: "nc_app_list.stdout is not search('richdocuments: ')"
+
+- name: Apps | richdocuments - remove any partial/broken previous extraction
+  ansible.builtin.file:
+    path: "{{ nextcloud_k3s_www_dir }}/apps/richdocuments"
+    state: absent
+  when: "nc_app_list.stdout is not search('richdocuments: ')"
+
+- name: Apps | richdocuments - extract into the apps directory
+  ansible.builtin.unarchive:
+    src: /tmp/richdocuments.tar.gz
+    dest: "{{ nextcloud_k3s_www_dir }}/apps/"
+    remote_src: true
+    owner: "33"
+    group: "33"
+  when: "nc_app_list.stdout is not search('richdocuments: ')"
+
+- name: Apps | richdocuments - clean up downloaded tarball
+  ansible.builtin.file:
+    path: /tmp/richdocuments.tar.gz
+    state: absent
+  when: "nc_app_list.stdout is not search('richdocuments: ')"
+
+# No "occ app:install" here on purpose – that's the buggy call this whole
+# block exists to avoid. With the files already pre-staged above, a plain
+# "occ app:enable" registers and activates the app in one step (verified live).
 - name: Apps | Enable Nextcloud Office (richdocuments)
   ansible.builtin.command: >
     k3s kubectl exec deployment/nextcloud

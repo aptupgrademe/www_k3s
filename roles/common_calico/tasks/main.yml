@@ -1,0 +1,61 @@
+---
+# =============================================================================
+# Role: common_calico
+# Purpose: Install Calico in "policy-only" mode – Felix + kube-controllers
+#          only, reading Pod/NetworkPolicy objects straight from the
+#          Kubernetes API (DATASTORE_TYPE=kubernetes,
+#          CALICO_NETWORKING_BACKEND=none, no BGP, no IPAM, no CNI plugin
+#          install). K3s's built-in Flannel keeps doing all pod networking –
+#          this only adds the NetworkPolicy *enforcement* Flannel alone
+#          silently ignores (empirically verified on the test host: a
+#          deny-all NetworkPolicy had zero effect until Calico was
+#          installed, and worked immediately afterwards).
+#
+#          Derived from the official Canal manifest (Calico for policy +
+#          Flannel for networking), stripped of the install-cni init
+#          container, the kube-flannel container and the canal-config
+#          CNI/flannel settings – K3s's own embedded Flannel already does
+#          that job, and installing Canal's own copy would conflict with it.
+#
+#          The calico-node RBAC intentionally mirrors upstream's full
+#          calico-node ClusterRole rather than a hand-trimmed subset:
+#          calico-node runs several internal loops (CNI-kubeconfig token
+#          maintenance, tunnel-IP release, KubeVirt migration watch)
+#          unconditionally regardless of CALICO_NETWORKING_BACKEND – they
+#          don't skip themselves gracefully without these permissions, they
+#          fail loudly and leave the pod stuck at 0/1 Ready forever (verified
+#          live: missing any one of serviceaccounts/token, ipamhandles or the
+#          kubevirt watch reproduced this).
+# Target:  K3s single-node on AlmaLinux 9 (Nextcloud only – see nextcloud-k3s.yml)
+# =============================================================================
+
+- name: Calico | Template policy-only manifest
+  ansible.builtin.template:
+    src: calico-policy-only.yml.j2
+    dest: /tmp/k8s-calico-policy-only.yml
+    mode: "0644"
+
+- name: Calico | Apply policy-only manifest
+  ansible.builtin.command: >
+    k3s kubectl apply -f /tmp/k8s-calico-policy-only.yml
+  register: calico_apply
+  changed_when: "'created' in calico_apply.stdout or 'configured' in calico_apply.stdout"
+
+- name: Calico | Remove temporary manifest
+  ansible.builtin.file:
+    path: /tmp/k8s-calico-policy-only.yml
+    state: absent
+
+- name: Calico | Wait for calico-node DaemonSet to be ready (up to 3 min)
+  ansible.builtin.command: >
+    k3s kubectl -n kube-system rollout status daemonset/calico-node
+    --timeout=180s
+  changed_when: false
+  when: calico_apply.changed
+
+- name: Calico | Wait for kube-controllers Deployment to be ready (up to 2 min)
+  ansible.builtin.command: >
+    k3s kubectl -n kube-system rollout status deployment/calico-kube-controllers
+    --timeout=120s
+  changed_when: false
+  when: calico_apply.changed
