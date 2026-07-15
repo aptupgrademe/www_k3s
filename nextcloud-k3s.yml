@@ -53,14 +53,16 @@
 # =============================================================================
 - name: Install packages and configure server
   hosts: nextcloud
-  # gather_subset: collect only OS/network/virtual facts.
-  # Skips slow hardware inventory (lspci, dmidecode) → saves ~3-5 s.
+  # gather_subset: only "min" – the sole facts actually used anywhere in
+  # this repo are ansible_kernel (next_packages reboot check) and
+  # ansible_distribution (common_firewall), both part of "min". network/
+  # virtual facts (interfaces, virtualization type) aren't referenced by any
+  # role, so skipping them saves the interface-enumeration/dmidecode time
+  # without losing anything actually used.
   # Full facts are cached to /tmp/ansible_facts_cache for 1 h (see ansible.cfg).
   gather_facts: true
   gather_subset:
     - min
-    - network
-    - virtual
   become: false
 
 

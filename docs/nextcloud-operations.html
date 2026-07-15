@@ -317,7 +317,7 @@
   </div>
   <div class="card">
     <div class="label">Online Office</div>
-    <div class="value">Collabora CODE 25.04</div>
+    <div class="value">Collabora CODE 26.04</div>
   </div>
 </div>
 
@@ -351,7 +351,7 @@
 <span class="c-pod">┌──────────────────────┐   ┌──────────────────���───┐</span>
 <span class="c-pod">│  Pod: nextcloud      │   │  Pod: collabora      │</span>
 <span class="c-pod">│  ┌────────────────┐  │   │  Collabora CODE      │</span>
-<span class="c-pod">│  │ nginx sidecar  │  │   │  25.04               │</span>
+<span class="c-pod">│  │ nginx sidecar  │  │   │  26.04               │</span>
 <span class="c-pod">│  │ :80  (static + │  │   │  :9980               │</span>
 <span class="c-pod">│  │  PHP proxy)    │  │   └──────────────────────┘</span>
 <span class="c-pod">│  └───────┬────────┘  │</span>
@@ -430,7 +430,7 @@
   During an update, <code>occ upgrade</code> runs automatically.</p>
 
   <h4>Container 2: <code>nginx</code></h4>
-  <p>nginx sidecar (<code>nginx:1.30-alpine</code>) on port 80. Serves
+  <p>nginx sidecar (<code>nginx:1.31-alpine</code>) on port 80. Serves
   static requests directly from the shared volume; PHP requests are forwarded via
   FastCGI to port 9000. TLS is already terminated by nginx-ingress (F5) –
   nginx only speaks plain HTTP.</p>
@@ -683,8 +683,9 @@ kubectl exec -n nextcloud deployment/collabora -- nc -z -w4 &lt;mariadb-host-ip&
   <tr><td><code>next_mariadb</code></td><td>MariaDB setup, create database and user, bind-address to 0.0.0.0</td></tr>
   <tr><td><code>next_redis</code></td><td>Redis bind configuration (localhost + host IP)</td></tr>
   <tr><td><code>next_selinux</code></td><td>SELinux enforcing, <code>container_file_t</code> for HostPath directories</td></tr>
-  <tr><td><code>next_k3s_deploy</code></td><td>K8s manifests: namespace, secrets, ConfigMaps, deployments, ingress, CronJob</td></tr>
+  <tr><td><code>next_k3s_deploy</code></td><td>K8s manifests: namespace, secrets, ConfigMaps, deployments, ingress, CronJob, NetworkPolicy</td></tr>
   <tr><td><code>next_config</code></td><td>Post-deploy via <code>kubectl exec occ</code>: trusted_domains, apps, WOPI config</td></tr>
+  <tr><td><code>common_calico</code></td><td>Calico policy-only mode (Felix + kube-controllers) – required for NetworkPolicy to actually be enforced</td></tr>
 </table>
 
 <h3>Templates (generating the K8s manifests)</h3>
@@ -724,6 +725,11 @@ kubectl exec -n nextcloud deployment/collabora -- nc -z -w4 &lt;mariadb-host-ip&
     <td><code>cronjob.yml.j2</code></td>
     <td>K8s CronJob</td>
     <td>Runs <code>occ cron.php</code> every 5 minutes</td>
+  </tr>
+  <tr>
+    <td><code>networkpolicy.yml.j2</code></td>
+    <td>NetworkPolicy <code>collabora-netpol</code></td>
+    <td>Restricts Collabora's ingress/egress – needs <code>common_calico</code> to actually be enforced</td>
   </tr>
 </table>
 </section>
@@ -780,32 +786,32 @@ k3s kubectl get secret nextcloud-secrets -n nextcloud \
 
 <pre><code># inventory/group_vars/all.yml
 nextcloud_image_fpm:       "nextcloud:34-fpm"      # Nextcloud PHP-FPM
-nextcloud_image_nginx:     "nginx:1.30-alpine"          # nginx Sidecar
-nextcloud_image_collabora: "collabora/code:25.04.9.4.1" # Collabora CODE
+nextcloud_image_nginx:     "nginx:1.31-alpine"          # nginx Sidecar
+nextcloud_image_collabora: "collabora/code:26.04.1.4.1" # Collabora CODE
 nextcloud_image_busybox:   "busybox:1"             # Init container</code></pre>
 
 <h3>Tag Strategy</h3>
 <table>
   <tr><th>Tag Format</th><th>Meaning</th><th>Example</th></tr>
   <tr>
-    <td><code>33-fpm</code></td>
+    <td><code>34-fpm</code></td>
     <td>Follows minor and patch updates in Nextcloud 34.x automatically on pull</td>
-    <td><code>nextcloud:34-fpm</code></td>
+    <td><code>nextcloud:34-fpm</code> (current)</td>
   </tr>
   <tr>
-    <td><code>34-fpm</code></td>
+    <td><code>35-fpm</code></td>
     <td>Next major version – must be set explicitly</td>
     <td>Change required in <code>all.yml</code></td>
   </tr>
   <tr>
-    <td><code>1.29-alpine</code></td>
+    <td><code>1.31-alpine</code></td>
     <td>nginx minor track; patch updates come automatically</td>
-    <td><code>nginx:1.30-alpine</code></td>
+    <td><code>nginx:1.31-alpine</code> (current)</td>
   </tr>
   <tr>
-    <td><code>25.04</code></td>
+    <td><code>26.04</code></td>
     <td>Collabora release cycle (quarterly)</td>
-    <td><code>collabora/code:25.04</code> → <code>25.08</code></td>
+    <td><code>collabora/code:26.04.1.4.1</code> (current) → <code>26.08</code></td>
   </tr>
 </table>
 
@@ -1285,7 +1291,7 @@ k3s kubectl rollout status  deployment/nextcloud -n nextcloud --timeout=300s</co
   <li>Change tag in <code>inventory/group_vars/all.yml</code>:
     <pre><code>nextcloud_image_fpm: "nextcloud:34-fpm"
 # if applicable also:
-nextcloud_image_collabora: "collabora/code:25.08"</code></pre>
+nextcloud_image_collabora: "collabora/code:26.08"</code></pre>
   </li>
   <li>Run playbook – K3s pulls the new image automatically and rolls out the pod:
     <pre><code>ansible-playbook nextcloud-k3s.yml --limit test --ask-vault-pass</code></pre>

@@ -5,7 +5,7 @@
 [![K3s](https://img.shields.io/badge/K3s-latest-blue.svg)](https://k3s.io/)
 [![AlmaLinux](https://img.shields.io/badge/AlmaLinux-9-green.svg)](https://almalinux.org/)
 [![Nextcloud](https://img.shields.io/badge/Nextcloud-34-0082C9.svg)](https://nextcloud.com/)
-[![WordPress](https://img.shields.io/badge/WordPress-7.0-21759B.svg)](https://wordpress.org/)
+[![WordPress](https://img.shields.io/badge/WordPress-7.0.1-21759B.svg)](https://wordpress.org/)
 
 Ansible playbooks to deploy and manage internet-facing servers
 (K3s on AlmaLinux 9) fully automated.
@@ -68,7 +68,7 @@ Internet
 - **Calico (policy-only mode)** – NetworkPolicy enforcement for Nextcloud;
   Collabora is restricted from ever reaching MariaDB/Redis directly, since
   K3s's default Flannel CNI does not enforce NetworkPolicy objects at all
-- **WordPress 7.0** with PHP-FPM, nginx sidecar, MariaDB pod and **Redis Object Cache** pod
+- **WordPress 7.0.1** with PHP-FPM, nginx sidecar, MariaDB pod and **Redis Object Cache** pod
 - Automatic installation on first pod start via container env vars and WP-CLI
 - WordPress WP-Cron as Kubernetes CronJob (no HTTP trigger)
 - **Pre-flight version check** (`common_version_check`) shows installed vs. latest versions

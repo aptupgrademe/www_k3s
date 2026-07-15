@@ -314,11 +314,11 @@
   </div>
   <div class="card">
     <div class="label">Web Server</div>
-    <div class="value">nginx 1.30 (Sidecar)</div>
+    <div class="value">nginx 1.31 (Sidecar)</div>
   </div>
   <div class="card">
     <div class="label">Ingress</div>
-    <div class="value">nginx-ingress F5 2.5.1</div>
+    <div class="value">nginx-ingress F5 2.6.1</div>
   </div>
 </div>
 
@@ -422,7 +422,7 @@
   HostPath volume.</p>
 
   <h4>Container 2: <code>nginx</code></h4>
-  <p>nginx sidecar (<code>nginx:1.30-alpine</code>) on port 80. Serves
+  <p>nginx sidecar (<code>nginx:1.31-alpine</code>) on port 80. Serves
   static requests directly from the shared volume; PHP requests are forwarded via
   FastCGI to port 9000. TLS is already terminated by nginx-ingress (F5)
   – this nginx only speaks plain HTTP.</p>
@@ -704,7 +704,7 @@ k3s kubectl get secret wordpress-secrets -n wordpress \
 <pre><code># inventory/group_vars/all.yml
 blog_image_wordpress: "wordpress:7.0.1-php8.3-fpm"   # WordPress PHP-FPM
 blog_image_mariadb:   "mariadb:10.11"       # MariaDB LTS
-blog_image_nginx:     "nginx:1.30-alpine"   # nginx Sidecar</code></pre>
+blog_image_nginx:     "nginx:1.31-alpine"   # nginx Sidecar</code></pre>
 
 <h3>Tag Strategy</h3>
 <table>
@@ -720,9 +720,9 @@ blog_image_nginx:     "nginx:1.30-alpine"   # nginx Sidecar</code></pre>
     <td><code>mariadb:10.11</code> (LTS until June 2028)</td>
   </tr>
   <tr>
-    <td><code>1.30-alpine</code></td>
+    <td><code>1.31-alpine</code></td>
     <td>nginx stable branch; minor patches come automatically</td>
-    <td><code>nginx:1.30-alpine</code></td>
+    <td><code>nginx:1.31-alpine</code></td>
   </tr>
 </table>
 
