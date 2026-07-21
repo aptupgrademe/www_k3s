@@ -85,6 +85,33 @@
     reboot_timeout: 300
   when: running_kernel_modules.rc != 0
 
+# -----------------------------------------------------------------------------
+# Broader reboot check (glibc, systemd, openssl, ...) via needs-restarting -r
+# -----------------------------------------------------------------------------
+# The module-directory check above only catches the kernel-already-replaced
+# case. needs-restarting -r (yum-utils) additionally flags a pending reboot
+# for security-relevant userspace updates from dnf-automatic (glibc, systemd,
+# openssl, etc.) that don't touch /lib/modules at all. Runs via systemd-run
+# for the same ProtectKernelModules-sandboxing reason as the check above.
+- name: Ensure yum-utils is installed (needed for needs-restarting)
+  ansible.builtin.dnf:
+    name: yum-utils
+    state: present
+
+- name: Check whether a reboot is otherwise pending (needs-restarting -r)
+  ansible.builtin.command: >-
+    systemd-run --wait --pipe --quiet --
+    needs-restarting -r
+  register: needs_restarting
+  changed_when: false
+  failed_when: false
+
+# needs-restarting -r exits 1 when a reboot is required, 0 when not.
+- name: Reboot – needs-restarting reports a pending reboot
+  ansible.builtin.reboot:
+    reboot_timeout: 300
+  when: needs_restarting.rc == 1
+
 
 # -----------------------------------------------------------------------------
 # Package installation
