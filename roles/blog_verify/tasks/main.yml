@@ -255,7 +255,7 @@
     _r_nft_policy:  "{{ (_v_nft_policy.stdout | default('0') | trim | int) > 0 }}"
     _r_nft_banned4: "{{ _v_nft_banned4.rc | default(1) == 0 }}"
     _r_f2b_svc:     "{{ _v_f2b_svc.stdout | default('') == 'active' }}"
-    _r_f2b_jails:   "{{ (_v_f2b_status.stdout | default('') | regex_search('Number of jail:\\s*(\\d+)', '\\1') | first | default('0') | int) >= verify_f2ban_min_jails }}"
+    _r_f2b_jails:   "{{ (_v_f2b_status.stdout | default('') | regex_search('Number of jail:\\s*(\\d+)', '\\1') | default([], true) | first | default('0') | int) >= verify_f2ban_min_jails }}"
     _r_k3s:         "{{ _v_k3s_svc.stdout | default('') == 'active' }}"
     _r_auditd:      "{{ _v_auditd_svc.stdout | default('') == 'active' }}"
     _r_selinux:     "{{ _v_selinux.stdout | default('') == 'Enforcing' }}"

@@ -320,7 +320,7 @@
     _r_nft_policy:     "{{ (_v_nft_policy.stdout | default('0') | trim | int) > 0 }}"
     _r_nft_banned4:    "{{ _v_nft_banned4.rc | default(1) == 0 }}"
     _r_f2b_svc:        "{{ _v_f2b_svc.stdout | default('') == 'active' }}"
-    _r_f2b_jails:      "{{ (_v_f2b_status.stdout | default('') | regex_search('Number of jail:\\s*(\\d+)', '\\1') | first | default('0') | int) >= verify_f2ban_min_jails }}"
+    _r_f2b_jails:      "{{ (_v_f2b_status.stdout | default('') | regex_search('Number of jail:\\s*(\\d+)', '\\1') | default([], true) | first | default('0') | int) >= verify_f2ban_min_jails }}"
     _r_k3s:            "{{ _v_k3s_svc.stdout | default('') == 'active' }}"
     _r_mariadb_svc:    "{{ _v_mariadb_svc.stdout | default('') == 'active' }}"
     _r_redis_svc:      "{{ _v_redis_svc.stdout | default('') == 'active' }}"
@@ -359,11 +359,11 @@
     _r_richdocuments:  "{{ (_v_richdocuments_url.stdout | default('') | trim) == collabora_url }}"
 
     # Detail strings für den Report
-    _d_f2b_jails:      "{{ _v_f2b_status.stdout | default('') | regex_search('Jail list:\\s*(.*)', '\\1') | first | default('?') | trim }}"
+    _d_f2b_jails:      "{{ _v_f2b_status.stdout | default('') | regex_search('Jail list:\\s*(.*)', '\\1') | default([], true) | first | default('?') | trim }}"
     _d_nc_pods:        "{{ _v_nc_pods.stdout | default('?') | trim | replace('\n', '  ') }}"
     _d_collabora:      "{{ _v_collabora_pods.stdout | default('?') | trim | replace('\n', '  ') }}"
     _d_error_pods:     "{{ _v_error_pods.stdout | default('') | trim | replace('\n', ', ') | default('none', true) }}"
-    _d_server_hdr:     "{{ _v_headers.stdout | default('') | regex_search('server: ([^\r\n]+)', '\\1') | first | default('(not set)') }}"
+    _d_server_hdr:     "{{ _v_headers.stdout | default('') | regex_search('server: ([^\r\n]+)', '\\1') | default([], true) | first | default('(not set)') }}"
     _d_nc_version:     "{{ (_v_status.content | default('{}') | from_json).versionstring | default('?') }}"
     _d_bg_mode:        "{{ _v_bg_mode.stdout | default('?') | trim }}"
     _d_richdocuments:  "{{ _v_richdocuments_url.stdout | default('') | trim | default('(empty)', true) }}"
