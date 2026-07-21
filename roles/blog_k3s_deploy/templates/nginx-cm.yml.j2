@@ -47,21 +47,6 @@ data:
         # Block username enumeration via ?author= parameter
         if ($arg_author != "") { return 403; }
 
-        # EMERGENCY MITIGATION (2026-07-19, reinstated 2026-07-20): "wp2shell"
-        # unauthenticated RCE - chained SQLi (CVE-2026-60137) + REST
-        # batch-endpoint validation bypass (CVE-2026-63030), affects
-        # WordPress >=6.8. Fixed upstream in 7.0.2, but that Docker Hub tag's
-        # manifest is currently empty/broken (pushed 2026-07-20, zero
-        # platform images in the index - confirmed via the registry API,
-        # caused a production ImagePullBackOff and a short outage) so we're
-        # back on the vulnerable 7.0.1 image until a working 7.0.2 build
-        # actually lands. Re-check before removing this again.
-        # Two access paths must both be blocked: the pretty-permalink path
-        # AND WordPress's ?rest_route= query-param fallback routing (verified
-        # live that the query-param form bypasses a path-only location block).
-        location ~* ^/wp-json/+batch/v1 { deny all; }
-        if ($arg_rest_route ~* "batch") { return 403; }
-
         # -------------------------------------------------------
         # WordPress pretty permalinks
         # -------------------------------------------------------
