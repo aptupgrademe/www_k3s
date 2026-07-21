@@ -284,12 +284,12 @@
     _r_mariadb:     "{{ (_v_mariadb.stdout | default('') | trim) == 'ok' }}"
 
     # Detail strings for the report
-    _d_f2b_jails:   "{{ _v_f2b_status.stdout | default('') | regex_search('Jail list:\\s*(.*)', '\\1') | first | default('?') | trim }}"
+    _d_f2b_jails:   "{{ _v_f2b_status.stdout | default('') | regex_search('Jail list:\\s*(.*)', '\\1') | default([], true) | first | default('?') | trim }}"
     _d_wp_pods:     "{{ _v_wp_pods.stdout | default('?') | trim | replace('\n', '  ') }}"
     _d_ingress:     "{{ _v_ingress_pods.stdout | default('?') | trim | replace('\n', '  ') }}"
     _d_certmgr:     "{{ _v_cm_pods.stdout | default('?') | trim | replace('\n', '  ') }}"
     _d_error_pods:  "{{ _v_error_pods.stdout | default('') | trim | replace('\n', ', ') | default('none', true) }}"
-    _d_server_hdr:  "{{ _v_headers.stdout | default('') | regex_search('server: ([^\r\n]+)', '\\1') | first | default('(not set)') }}"
+    _d_server_hdr:  "{{ _v_headers.stdout | default('') | regex_search('server: ([^\r\n]+)', '\\1') | default([], true) | first | default('(not set)') }}"
     _d_rest:        "{{ 'no username leak' if (_v_rest_users.stdout.split('|')[1] | default('1') | int == 0) else 'USERNAME LEAK – check!' }}"
 
 
