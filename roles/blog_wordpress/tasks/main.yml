@@ -363,6 +363,13 @@
     --allow-root
   register: wp_plugin_update
   changed_when: "'Updated' in wp_plugin_update.stdout"
+  # wp-cli's `plugin update --all` exits 1 with "No plugins updated" when
+  # every plugin is already at the latest version -- not a real failure,
+  # just nothing to do (routinely the case now that the install task above
+  # uses --force and already fetches the latest version).
+  failed_when: >-
+    wp_plugin_update.rc != 0 and
+    'No plugins updated' not in wp_plugin_update.stderr
 
 # Ownership fix after updates – wp-cli runs as root and may create files
 # owned by root:root that PHP-FPM (www-data, uid 33) cannot write to.
