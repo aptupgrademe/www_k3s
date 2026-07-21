@@ -137,7 +137,7 @@
     k3s kubectl exec deployment/wordpress
     --namespace wordpress
     --container wordpress-fpm --
-    php /var/www/html/wp-cli.phar plugin install {{ item }} --activate
+    php /var/www/html/wp-cli.phar plugin install {{ item }} --activate --force
     --path=/var/www/html
     --allow-root
   loop: "{{ blog_wordpress_plugins | default([]) }}"
