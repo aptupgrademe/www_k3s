@@ -41,13 +41,31 @@
 
 
 # -----------------------------------------------------------------------------
-# Reboot-required notification
+# Automatic reboot after security update
 # dnf-automatic silently installs security updates (including the kernel) in
-# the background – nothing previously surfaced whether a reboot became
-# necessary. needs-restarting -r exits non-zero when one is pending; mail the
-# same address rkhunter already reports to, via the existing msmtp relay
-# (common_msmtp). Runs at 06:00, safely after dnf-automatic's own randomized
-# once-a-day window.
+# the background during its once-a-day window (00:00-01:00, see the timer's
+# own randomized delay). A pending reboot leaves a patched kernel/glibc/
+# systemd unused until the box actually restarts, so reboot automatically at
+# 03:30 - safely after the install window, in the least busy hour - if one is
+# genuinely pending. Mail is sent first so there's a record of why the box
+# went down, via the existing msmtp relay (common_msmtp), same address
+# rkhunter already reports to.
+# -----------------------------------------------------------------------------
+- name: dnf-automatic | Configure nightly automatic reboot if required
+  ansible.builtin.cron:
+    name: "automatic reboot after security update"
+    hour: "3"
+    minute: "30"
+    job: >-
+      OUT=$(/usr/bin/needs-restarting -r 2>&1);
+      [ $? -ne 0 ] && { echo "$OUT" | /usr/bin/mail -s "[$(hostname -f)] Rebooting now after security update" {{ dnf_automatic_reboot_mail }}; /usr/sbin/shutdown -r now; }
+    user: root
+
+# -----------------------------------------------------------------------------
+# Reboot-required check (safety net)
+# Runs at 06:00, after the 03:30 job above should already have rebooted the
+# box if needed. If a reboot is STILL pending at this point, the automatic
+# reboot failed or was blocked - mail so that doesn't go unnoticed.
 # -----------------------------------------------------------------------------
 - name: dnf-automatic | Configure daily reboot-required check
   ansible.builtin.cron:
@@ -56,5 +74,5 @@
     minute: "0"
     job: >-
       OUT=$(/usr/bin/needs-restarting -r 2>&1);
-      [ $? -ne 0 ] && echo "$OUT" | /usr/bin/mail -s "[$(hostname -f)] Reboot required after security update" {{ dnf_automatic_reboot_mail }}
+      [ $? -ne 0 ] && echo "$OUT" | /usr/bin/mail -s "[$(hostname -f)] WARNING: reboot still required after automatic reboot attempt" {{ dnf_automatic_reboot_mail }}
     user: root
