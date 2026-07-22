@@ -1,0 +1,95 @@
+---
+# =============================================================================
+# Role: blog_clamav
+# Purpose: Antivirus scanning of WordPress uploads (wp-content/uploads under
+#          blog_k3s_www_dir). On-demand only (nightly clamscan sweep via
+#          cron) - no clamd daemon, no real-time on-access scanning. That
+#          keeps resource usage low on a modest VPS, at the cost of only
+#          catching malware the morning after it was uploaded rather than
+#          instantly. Mirrors rkhunter's philosophy: silent on a clean run,
+#          an email only when something is actually found - detection only,
+#          nothing is deleted or moved automatically.
+# =============================================================================
+
+- name: ClamAV | Install packages
+  ansible.builtin.dnf:
+    name:
+      - clamav
+      - clamav-update
+    state: present
+
+
+# -----------------------------------------------------------------------------
+# Signature updates (freshclam)
+# -----------------------------------------------------------------------------
+# The packaged freshclam.conf ships with a placeholder "Example" line that
+# must be removed before freshclam will run at all - otherwise every
+# invocation (including the systemd service below) just errors out.
+- name: ClamAV | Remove the "Example" placeholder line from freshclam.conf
+  ansible.builtin.lineinfile:
+    path: /etc/freshclam.conf
+    regexp: '^Example'
+    state: absent
+
+# First run can take a few minutes (full signature database download).
+# Needed before the very first scan can find anything at all.
+- name: ClamAV | Initial virus signature download
+  ansible.builtin.command: freshclam
+  changed_when: true
+  failed_when: false
+
+- name: ClamAV | Enable freshclam auto-update service
+  ansible.builtin.systemd:
+    name: clamav-freshclam.service
+    enabled: true
+    state: started
+
+
+# -----------------------------------------------------------------------------
+# Nightly scan
+# -----------------------------------------------------------------------------
+- name: ClamAV | Ensure log directory exists
+  ansible.builtin.file:
+    path: /var/log/clamav
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+# nice/ionice keep the scan from competing with WordPress/K3s during the
+# night; --max-filesize/--max-scansize skip implausibly large files (viruses
+# are not hiding in multi-hundred-MB blobs, and scanning them wastes time).
+- name: ClamAV | Deploy nightly scan script
+  ansible.builtin.copy:
+    dest: /usr/local/sbin/wordpress-clamav-scan.sh
+    owner: root
+    group: root
+    mode: "0750"
+    content: |
+      #!/bin/bash
+      # Managed by Ansible (blog_clamav) - do not edit manually.
+      # Nightly scan of WordPress uploads. Mails {{ clamav_mail }} only when
+      # clamscan actually finds something (exit code 1) - a clean scan stays
+      # silent, mirroring rkhunter's --report-warnings-only philosophy.
+      set -u
+      SCAN_LOG="/var/log/clamav/wordpress-scan.log"
+      UPLOADS_DIR="{{ blog_k3s_www_dir }}/wp-content/uploads"
+
+      nice -n 19 ionice -c3 clamscan --recursive --infected --no-summary \
+        --max-filesize=200M --max-scansize=200M \
+        "$UPLOADS_DIR" > "$SCAN_LOG" 2>&1
+      RC=$?
+
+      if [ "$RC" -eq 1 ]; then
+        mail -s "[$(hostname -f)] ClamAV: infected file(s) found in WordPress uploads" {{ clamav_mail }} < "$SCAN_LOG"
+      fi
+
+      exit 0
+
+- name: ClamAV | Configure nightly cron scan
+  ansible.builtin.cron:
+    name: "clamav nightly WordPress uploads scan"
+    hour: "2"
+    minute: "45"
+    job: "/usr/local/sbin/wordpress-clamav-scan.sh"
+    user: root
