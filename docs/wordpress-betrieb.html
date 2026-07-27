@@ -1334,7 +1334,7 @@ k3s kubectl exec -n wordpress deployment/mariadb -c mariadb -- \
 
 # WP-CLI Maintenance
 k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
-  php /var/www/html/wp-cli.phar maintenance-mode activate --path=/var/www/html --allow-root</code></pre>
+  php /usr/local/lib/wp-cli/wp-cli.phar maintenance-mode activate --path=/var/www/html --allow-root</code></pre>
 </section>
 
 <!-- ──────────────────────── TROUBLESHOOTING ─────────────────────────── -->
@@ -1487,7 +1487,7 @@ k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
   </tr>
   <tr>
     <td>PHP-FPM Pool</td>
-    <td>max_children=10, max_requests=500 (Worker-Recycling gegen Memory-Leaks)</td>
+    <td>max_children=12, max_requests=500 (Worker-Recycling gegen Memory-Leaks)</td>
     <td><code>blog_k3s_deploy</code> → ConfigMap <code>wordpress-fpm-pool-config</code></td>
   </tr>
   <tr>
@@ -1551,7 +1551,7 @@ ss -tin dst www.apt-upgrade.me | grep bbr</code></pre>
 </p>
 <pre><code># Redis-Status im WordPress-Kontext prüfen
 k3s kubectl exec deployment/wordpress -n wordpress -c wordpress-fpm -- \
-  php /var/www/html/wp-cli.phar redis status --path=/var/www/html --allow-root
+  php /usr/local/lib/wp-cli/wp-cli.phar redis status --path=/var/www/html --allow-root
 
 # Redis-Pod direkt testen
 k3s kubectl exec deployment/redis -n wordpress -- redis-cli ping
@@ -1609,6 +1609,7 @@ k3s kubectl exec deployment/mariadb -n wordpress -- \
       <code>nginx-k3s-wp-login</code>: WP-Login-Brute-Force (10 POST in 600 s);
       <code>nginx-k3s-scanner</code>: Scanner (20× 40x in 60 s);
       <code>nginx-k3s-bad-paths</code>: bekannte Exploit-Pfade (/.env, /.git/, /phpinfo.php – 2 Versuche, 24 h Ban);
+      <code>nginx-k3s-grafana-login</code>: Grafana-Login-Brute-Force (5 fehlgeschlagene Logins/HTTP&nbsp;401 in 600&nbsp;s);
       <code>recidive</code>: Wiederholungstäter – 3× gebannt in 24 h → 30-Tage-Ban.
       Alle Verify-Tasks laufen per <code>curl --resolve hostname:443:127.0.0.1</code> (Quell-IP 127.0.0.1 ∈ ignoreip → kein Selbst-Ban).
       Logpfad: <code>/var/log/pods/ingress-nginx_*/nginx-ingress/0.log</code>
@@ -1667,7 +1668,7 @@ k3s kubectl exec deployment/mariadb -n wordpress -- \
   </tr>
   <tr>
     <td>Patches</td>
-    <td>dnf-automatic: Security-Updates täglich automatisch</td>
+    <td>dnf-automatic: Security-Updates täglich automatisch, danach automatischer Reboot um 03:30 Uhr falls nötig</td>
     <td><code>common_dnf_automatic</code></td>
   </tr>
   <tr>

@@ -1615,7 +1615,7 @@ k3s kubectl logs -n nextcloud -l job-name=nextcloud-cron-&lt;id&gt;</code></pre>
   </tr>
   <tr>
     <td>PHP-FPM Pool</td>
-    <td>max_children=10, max_requests=500 (worker recycling to prevent memory leaks); FPM status endpoint for Prometheus exporter</td>
+    <td>max_children=12, max_requests=500 (worker recycling to prevent memory leaks); FPM status endpoint for Prometheus exporter</td>
     <td><code>next_k3s_deploy</code> → ConfigMap <code>nextcloud-fpm-pool-config</code></td>
   </tr>
 </table>
@@ -1674,6 +1674,7 @@ openssl s_client -connect nextcloud.example.com:443 -status 2>/dev/null | \
     <td>
       <code>nginx-k3s-scanner</code>: scanners (20× 40x errors in 60 s);
       <code>nginx-k3s-bad-paths</code>: known exploit paths (/.env, /.git/, /phpinfo.php – 2 attempts, 24 h ban);
+      <code>nginx-k3s-grafana-login</code>: Grafana login brute-force (5 failed logins/HTTP&nbsp;401 in 600&nbsp;s);
       <code>recidive</code>: repeat offenders – banned 3× in 24 h → 30-day ban.
       All verify tasks run via <code>curl --resolve hostname:443:127.0.0.1</code> (source IP 127.0.0.1 ∈ ignoreip → no self-ban).
       Log path: <code>/var/log/pods/ingress-nginx_*/nginx-ingress/0.log</code>
@@ -1717,7 +1718,7 @@ openssl s_client -connect nextcloud.example.com:443 -status 2>/dev/null | \
   </tr>
   <tr>
     <td>Patches</td>
-    <td>dnf-automatic: security updates applied daily automatically</td>
+    <td>dnf-automatic: security updates applied daily automatically, followed by an automatic reboot at 03:30 if required</td>
     <td><code>common_dnf_automatic</code></td>
   </tr>
   <tr>
