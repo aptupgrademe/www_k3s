@@ -14,9 +14,16 @@
 #   recidive              – repeat offenders (banned 3×/day) → 30-day ban
 #
 # HTTP jails read from:
-#   /var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/0.log
+#   /var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/*.log
 # (containerd-prefixed nginx access log, real client IPs visible)
-# backend = polling because the pod UID in the path changes on pod restarts.
+# backend = polling because the pod UID in the path changes on pod restarts,
+# AND kubelet increments the log filename (0.log, 1.log, 2.log, ...) on every
+# container restart within the same pod - a fixed "0.log" goes stale the
+# first time the container restarts and crashes the whole fail2ban service
+# (one jail failing to find its log file aborts startup for all jails,
+# including sshd). The trailing *.log glob matches whichever generation is
+# current; polling re-reads old rotated files too, but each has its own
+# tracked position so that's a harmless no-op past their old data.
 # =============================================================================
 
 [DEFAULT]
@@ -55,7 +62,7 @@ maxretry = 3
 enabled  = true
 port     = 80,443
 filter   = nginx-k3s-wp-login
-logpath  = /var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/0.log
+logpath  = /var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/*.log
 backend  = polling
 maxretry = 10
 findtime = 600
@@ -72,7 +79,7 @@ findtime = 600
 enabled  = true
 port     = 80,443
 filter   = nginx-k3s-nc-login
-logpath  = /var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/0.log
+logpath  = /var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/*.log
 backend  = polling
 maxretry = 10
 findtime = 600
@@ -88,7 +95,7 @@ findtime = 600
 enabled  = true
 port     = 80,443
 filter   = nginx-k3s-scanner
-logpath  = /var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/0.log
+logpath  = /var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/*.log
 backend  = polling
 maxretry = 20
 findtime = 60
@@ -104,7 +111,7 @@ findtime = 60
 enabled  = true
 port     = 80,443
 filter   = nginx-k3s-bad-paths
-logpath  = /var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/0.log
+logpath  = /var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/*.log
 backend  = polling
 maxretry = 2
 findtime = 3600
