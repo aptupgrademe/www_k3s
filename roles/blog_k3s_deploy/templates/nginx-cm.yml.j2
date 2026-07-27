@@ -43,12 +43,25 @@ data:
         location = /readme.html         { deny all; }
         location = /license.txt         { deny all; }
         location ~ /\.                  { deny all; }
+        # Plugin/theme readme files (e.g. wp-content/plugins/*/readme.txt)
+        # leak exact component versions for CVE matching. The two core files
+        # above are already denied; this covers the per-plugin ones too.
+        location ~* /readme\.(txt|html)$ { deny all; }
+        # install.php reports "Already Installed" on a live site (harmless in
+        # itself) but there is no reason to expose the installer surface.
+        location = /wp-admin/install.php       { deny all; }
+        location = /wp-admin/setup-config.php  { deny all; }
         # .phar is in this list because "location ~ \.php$" below does NOT
         # match it: a phar in the document root is otherwise handed out as a
         # plain static download (verified live - wp-cli.phar was fetchable
         # at /wp-cli.phar, 7 MB, HTTP 200). WP-CLI has since been moved out
         # of the web root entirely; this stays as the backstop.
-        location ~* \.(bak|orig|swp|hta|sql|phar|phps)$ { deny all; }
+        #
+        # Also covers editor backup suffixes NOT in the original list: .save
+        # (nano, which IS installed on the host), .old/.tmp, and the trailing
+        # ~ that gedit/emacs leave. A stray wp-config.php.save in the web root
+        # would otherwise be served as plaintext, exposing the DB credentials.
+        location ~* (\.(bak|orig|save|old|tmp|swp|swo|hta|sql|phar|phps)|~)$ { deny all; }
         # Block username enumeration via ?author= parameter
         if ($arg_author != "") { return 403; }
 
