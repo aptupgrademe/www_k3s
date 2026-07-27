@@ -22,6 +22,22 @@ spec:
       containers:
       - name: collabora
         image: {{ nextcloud_image_collabora }}
+        # NOTE: deliberately left without capabilities: drop: [ALL] while
+        # every other container in this stack got one. Collabora is the most
+        # attractive hardening target here -- it parses untrusted documents,
+        # which is the whole reason collabora-netpol exists -- but CODE does
+        # its own chroot/namespace sandboxing per document, so it needs caps
+        # the other images do not (SYS_CHROOT and MKNOD at least). Guessing
+        # that set from documentation would risk breaking document editing in
+        # a way that only shows up when a user opens a file, so it wants a
+        # real test against this image tag first: run the pod with a
+        # candidate set in a throwaway namespace and confirm that
+        # /hosting/discovery answers AND that a document actually opens.
+        #
+        # seccompProfile: RuntimeDefault is left off for the same reason --
+        # that profile restricts exactly the clone/unshare variants used for
+        # namespace sandboxing, so it is not the safe freebie here that it is
+        # for the other containers.
         securityContext:
           allowPrivilegeEscalation: false
         env:

@@ -9,6 +9,23 @@
 # =============================================================================
 
 
+# Fail fast with an actionable message rather than a bare undefined-variable
+# error later on. Introduced when the Prometheus exporter account stopped
+# sharing the MariaDB root password, so vaults predating that change do not
+# have this key yet.
+- name: MariaDB | Check that the exporter DB password is present in the vault
+  ansible.builtin.assert:
+    that:
+      - nextcloud_db_exporter_pass is defined
+      - nextcloud_db_exporter_pass | length > 0
+    fail_msg: >-
+      nextcloud_db_exporter_pass is missing from this host's vault.yml. Add a
+      line like  nextcloud_db_exporter_pass: "<a fresh random password>"  (see
+      vault.yml.example) and re-encrypt with ansible-vault. It is the password
+      for the read-only 'prometheus' MariaDB account used by mysqld_exporter,
+      which no longer reuses the root password.
+
+
 # -----------------------------------------------------------------------------
 # Service
 # -----------------------------------------------------------------------------
@@ -173,7 +190,12 @@
   community.mysql.mysql_user:
     name: prometheus
     host: "127.0.0.1"
-    password: "{{ mysql_root_password }}"
+    # Deliberately NOT mysql_root_password. The grants below were already
+    # minimal, but reusing root's password meant /etc/mysqld_exporter.cnf
+    # (written by common_mysqld_exporter) effectively stored the root
+    # credentials: anyone who could read that file could log in as
+    # root@localhost and ignore these restrictions entirely.
+    password: "{{ nextcloud_db_exporter_pass }}"
     priv: "*.*:PROCESS,REPLICATION CLIENT,SELECT"
     state: present
     column_case_sensitive: false

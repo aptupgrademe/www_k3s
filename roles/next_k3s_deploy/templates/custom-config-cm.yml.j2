@@ -53,10 +53,13 @@ data:
       'memcache.locking'     => '\\OC\\Memcache\\Redis',
       'memcache.local'       => '\\OC\\Memcache\\APCu',
       'memcache.distributed' => '\\OC\\Memcache\\Redis',
-      'redis' => array(
-        'host' => 'redis',
-        'port' => 6379,
-      ),
+      // The 'redis' connection block deliberately does NOT live here: this
+      // object is a ConfigMap, and Redis now requires a password. It moved
+      // to redis.config.php, mounted from the nextcloud-secrets Secret.
+      // Nextcloud reads config.php first and then every other *.config.php
+      // in alphabetical order, so redis.config.php ("r") lands after this
+      // file ("c") and wins -- which is also why the block cannot simply
+      // stay here with the password omitted.
 
       // --- Reverse proxy ---
       // F5 nginx-ingress forwards requests from its pod IP (k3s_pod_cidr).

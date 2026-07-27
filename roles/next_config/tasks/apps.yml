@@ -80,6 +80,37 @@
   changed_when: "'already enabled' not in enable_richdocuments.stdout"
   failed_when: false
 
+# Bypassing occ app:install above also bypasses the app-signature check it
+# would normally perform: the tarball is fetched over plain get_url from a
+# URL resolved out of the app store API, with nothing verifying that what
+# arrived is what the developer signed. integrity:check-app puts that check
+# back using Nextcloud's own machinery and the certificate already shipped
+# with the app, so no new trust anchor is introduced.
+#
+# Reports problems rather than aborting the play: a mismatch here is worth
+# looking at immediately, but it should not leave a half-configured instance
+# behind, and Nextcloud also reports benign INVALID_HASH entries for apps
+# whose shipped signature lags a repackaged release.
+- name: Apps | Verify richdocuments file signatures
+  ansible.builtin.command: >
+    k3s kubectl exec deployment/nextcloud
+    --namespace nextcloud
+    --container nextcloud-fpm
+    --
+    runuser -u www-data -- php /var/www/html/occ integrity:check-app richdocuments
+  register: richdocuments_integrity
+  changed_when: false
+  failed_when: false
+
+- name: Apps | Warn if richdocuments failed its signature check
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: occ integrity:check-app richdocuments reported problems --
+      the downloaded tarball may not match what was signed. Output:
+      {{ richdocuments_integrity.stdout | default('') }}
+      {{ richdocuments_integrity.stderr | default('') }}
+  when: richdocuments_integrity.stdout | default('') | trim | length > 0
+
 
 # --- previewgenerator ---------------------------------------------------------
 # Pre-generates thumbnails for images, videos and documents in the background.

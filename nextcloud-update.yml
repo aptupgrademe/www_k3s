@@ -116,6 +116,36 @@
       when: app_update.stdout_lines | length > 0
 
     # -------------------------------------------------------------------------
+    # Second restart – this one is about PHP code, not container images
+    # -------------------------------------------------------------------------
+    # PHP runs with opcache.validate_timestamps=0 (nextcloud-php-config
+    # ConfigMap), so file mtimes are never re-checked and bytecode already in
+    # the shared OPcache segment stays live for the lifetime of the pod. The
+    # restart further up happens *before* occ writes anything: it exists to
+    # pick up the freshly pulled images. Everything `occ upgrade` and
+    # `occ app:update --all` then overwrite on the www volume would keep
+    # running as the old code until the next unrelated restart -- security
+    # fixes in apps included.
+    #
+    # Note this only affects *overwritten* files: a newly installed app is
+    # compiled fresh because it was never in the cache. It is specifically
+    # updates that silently do not take effect.
+    - name: Update | Restart Nextcloud so PHP-FPM picks up updated app/core code
+      ansible.builtin.command: >
+        k3s kubectl rollout restart deployment/nextcloud
+        --namespace nextcloud
+      when: occ_upgrade.changed or app_update.changed
+      changed_when: true
+
+    - name: Update | Wait for the second Nextcloud rollout
+      ansible.builtin.command: >
+        k3s kubectl rollout status deployment/nextcloud
+        --namespace nextcloud
+        --timeout=300s
+      when: occ_upgrade.changed or app_update.changed
+      changed_when: false
+
+    # -------------------------------------------------------------------------
     # Final status output
     # -------------------------------------------------------------------------
     - name: Update | Show Nextcloud version

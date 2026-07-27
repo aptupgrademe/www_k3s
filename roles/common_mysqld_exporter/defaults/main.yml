@@ -1,0 +1,9 @@
+---
+# Password for the read-only 'prometheus' MariaDB account that mysqld_exporter
+# authenticates with. It used to be mysql_root_password: the account's grants
+# were already minimal, but sharing root's password meant that anyone able to
+# read /etc/mysqld_exporter.cnf could simply log in as root@localhost instead.
+# Same pattern as blog_db_exporter_pass on the WordPress side.
+#
+# The account itself is created by next_mariadb.
+mysqld_exporter_db_password: "{{ nextcloud_db_exporter_pass }}"

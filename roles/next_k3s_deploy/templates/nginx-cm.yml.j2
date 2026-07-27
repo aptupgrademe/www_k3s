@@ -77,6 +77,16 @@ data:
         location ~ /\.           { deny all; }
         location ~* ^/(?:data|config|lib|3rdparty|templates|tests)/ { deny all; }
 
+        # Command-line entry points and dev leftovers. This is the companion
+        # rule to the directory blocks above in Nextcloud's own recommended
+        # nginx config, and it was missing here: /occ has no .php suffix, so
+        # "location ~ \.php(?:$|/)" below never matches it and try_files
+        # happily served the raw PHP source as a static download instead
+        # (verified live: HTTP 200, application/octet-stream). /console.php
+        # was reachable too. The other names only 404'd because those files
+        # no longer ship with Nextcloud 34 -- that is luck, not a rule.
+        location ~ ^/(?:\.|autotest|occ|issue|indie|db_|console) { deny all; }
+
         location = /robots.txt  { allow all; log_not_found off; access_log off; }
         location = /favicon.ico { log_not_found off; access_log off; }
 

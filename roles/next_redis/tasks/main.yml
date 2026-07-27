@@ -10,6 +10,19 @@
 # =============================================================================
 
 
+- name: Redis | Check that the Redis password is present in the vault
+  ansible.builtin.assert:
+    that:
+      - nextcloud_redis_pass is defined
+      - nextcloud_redis_pass | length > 0
+    fail_msg: >-
+      nextcloud_redis_pass is missing from this host's vault.yml. Add a line
+      like  nextcloud_redis_pass: "<a fresh random password>"  (see
+      vault.yml.example) and re-encrypt with ansible-vault. Redis now requires
+      authentication instead of relying solely on the nftables rule, and the
+      same value is handed to Nextcloud via the K8s Secret.
+
+
 # -----------------------------------------------------------------------------
 # Service
 # -----------------------------------------------------------------------------
@@ -39,6 +52,23 @@
     regexp: '^protected-mode\s+'
     line: 'protected-mode yes'
     backup: true
+  notify: Restart Redis
+
+# Defence in depth. The bind address above is the node's *public* IP (pods
+# reach Redis through the ExternalService -> Endpoints -> node IP path), so
+# until now the only thing standing between the internet and this Redis was
+# a single nftables rule. protected-mode does not help once a real bind
+# address is configured. One firewall rule silently failing is not a
+# hypothetical here -- fail2ban sat dead for two days on the blog host
+# without anyone noticing -- and an unauthenticated Redis holding Nextcloud's
+# file locks and session data is not something to leave on one layer.
+- name: Ensure Redis requires authentication
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: '^requirepass\s+'
+    line: 'requirepass {{ nextcloud_redis_pass }}'
+    backup: true
+  no_log: true
   notify: Restart Redis
 
 # Flush handlers immediately so Redis restarts with the new bind address

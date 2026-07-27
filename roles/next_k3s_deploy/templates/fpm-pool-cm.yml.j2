@@ -9,6 +9,28 @@ metadata:
 data:
   z-monitoring.conf: |
     [www]
+    ; --- Monitoring ---
     pm.status_path = /fpm-status
     slowlog = /proc/1/fd/2
     request_slowlog_timeout = 5s
+
+    ; --- Pool tuning ---
+    ; Without these the container silently inherits php-fpm's stock default of
+    ; pm.max_children = 5, which is the real concurrency ceiling of this
+    ; instance regardless of the 4Gi memory limit: desktop sync clients,
+    ; mobile apps and Collabora's WOPI callbacks all occupy workers, and the
+    ; 6th simultaneous PHP request simply queues.
+    ;
+    ; PHP_MEMORY_LIMIT is 3G, but that is a per-request ceiling for large
+    ; uploads, not typical usage -- real Nextcloud workers sit around
+    ; 60-120 MB. Sizing is therefore driven by the container limit, not by
+    ; that number. Override nextcloud_fpm_max_children per host if a machine
+    ; is unusually small or large (the 3.5 GB test host and the 8 GB
+    ; production hosts share this template).
+    pm = dynamic
+    pm.max_children      = {{ nextcloud_fpm_max_children | default(12) }}
+    pm.start_servers     = {{ nextcloud_fpm_start_servers | default(4) }}
+    pm.min_spare_servers = {{ nextcloud_fpm_min_spare | default(2) }}
+    pm.max_spare_servers = {{ nextcloud_fpm_max_spare | default(8) }}
+    ; Recycle workers periodically to bound per-worker memory growth.
+    pm.max_requests      = 500

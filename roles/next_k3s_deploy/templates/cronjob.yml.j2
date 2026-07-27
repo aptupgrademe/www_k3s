@@ -20,8 +20,17 @@ spec:
           containers:
           - name: cron
             image: {{ nextcloud_image_fpm }}
+            # SETUID/SETGID are load-bearing here: the command below runs
+            # runuser to drop from root to www-data, which fails outright
+            # without them. The remaining three match the fpm container so
+            # the same verified set covers both.
             securityContext:
               allowPrivilegeEscalation: false
+              capabilities:
+                drop: [ALL]
+                add: [CHOWN, SETGID, SETUID, DAC_OVERRIDE, FOWNER]
+              seccompProfile:
+                type: RuntimeDefault
             command:
             - runuser
             - -u
@@ -37,6 +46,12 @@ spec:
             - name: custom-config
               mountPath: /var/www/html/config/custom.config.php
               subPath: custom.config.php
+            # cron.php takes the same Redis file locks as the web workers, so
+            # it needs the credentials too -- without this it would fail to
+            # connect the moment Redis started requiring a password.
+            - name: redis-config
+              mountPath: /var/www/html/config/redis.config.php
+              subPath: redis-config-php
           volumes:
           - name: nextcloud-www
             hostPath:
@@ -49,3 +64,10 @@ spec:
           - name: custom-config
             configMap:
               name: nextcloud-custom-config
+          - name: redis-config
+            secret:
+              secretName: nextcloud-secrets
+              items:
+              - key: redis-config-php
+                path: redis-config-php
+              defaultMode: 0444

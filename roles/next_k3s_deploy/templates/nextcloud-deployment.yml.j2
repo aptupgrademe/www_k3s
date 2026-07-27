@@ -30,6 +30,13 @@ spec:
       initContainers:
       - name: init-dirs
         image: {{ nextcloud_image_busybox }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+            add: [CHOWN, FOWNER, DAC_OVERRIDE]
+          seccompProfile:
+            type: RuntimeDefault
         command:
         - sh
         - -c
@@ -51,8 +58,17 @@ spec:
       # -------------------------------------------------------------------
       - name: nextcloud-fpm
         image: {{ nextcloud_image_fpm }}
+        # CHOWN/SETUID/SETGID: the fpm master starts as root and forks workers
+        # as www-data. DAC_OVERRIDE/FOWNER: the image entrypoint unpacks
+        # Nextcloud into the volume and fixes modes on first start. Verified
+        # against this exact image tag before committing.
         securityContext:
           allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+            add: [CHOWN, SETGID, SETUID, DAC_OVERRIDE, FOWNER]
+          seccompProfile:
+            type: RuntimeDefault
         env:
         # Database
         - name: MYSQL_HOST
@@ -97,6 +113,11 @@ spec:
             secretKeyRef:
               name: nextcloud-secrets
               key: redis-port
+        - name: REDIS_HOST_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: nextcloud-secrets
+              key: redis-password
         # Nextcloud URLs and trusted domains
         - name: NEXTCLOUD_TRUSTED_DOMAINS
           value: "{{ nextcloud_hostname }}"
@@ -154,6 +175,9 @@ spec:
         - name: custom-config
           mountPath: /var/www/html/config/custom.config.php
           subPath: custom.config.php
+        - name: redis-config
+          mountPath: /var/www/html/config/redis.config.php
+          subPath: redis-config-php
         - name: fpm-pool-config
           mountPath: /usr/local/etc/php-fpm.d/z-monitoring.conf
           subPath: z-monitoring.conf
@@ -195,6 +219,14 @@ spec:
       # -------------------------------------------------------------------
       - name: php-fpm-exporter
         image: {{ nextcloud_image_fpm_exporter }}
+        # Had no securityContext at all, unlike its siblings. Static Go
+        # binary on a high port that never switches user: no capabilities.
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+          seccompProfile:
+            type: RuntimeDefault
         env:
         - name: PHP_FPM_SCRAPE_URI
           value: "tcp://127.0.0.1:9000/fpm-status"
@@ -217,8 +249,16 @@ spec:
       # -------------------------------------------------------------------
       - name: nginx
         image: {{ nextcloud_image_nginx }}
+        # NET_BIND_SERVICE: the master binds :80, and once ALL capabilities
+        # are dropped even uid 0 loses the implicit permission for ports
+        # <1024. CHOWN/SETUID/SETGID: workers are forked as the nginx user.
         securityContext:
           allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+            add: [CHOWN, SETGID, SETUID, NET_BIND_SERVICE]
+          seccompProfile:
+            type: RuntimeDefault
         ports:
         - containerPort: 80
           name: http
@@ -264,6 +304,16 @@ spec:
       - name: custom-config
         configMap:
           name: nextcloud-custom-config
+      - name: redis-config
+        secret:
+          secretName: nextcloud-secrets
+          items:
+          - key: redis-config-php
+            path: redis-config-php
+          # Secret volumes are owned by root:root, and PHP-FPM reads this as
+          # www-data (uid 33), so it has to be world-readable inside the
+          # container. Same pattern as the exporter credentials on the blog.
+          defaultMode: 0444
       - name: fpm-pool-config
         configMap:
           name: nextcloud-fpm-pool-config

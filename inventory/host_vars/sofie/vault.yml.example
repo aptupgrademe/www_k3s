@@ -14,6 +14,18 @@ mysql_root_password: "changeme"
 # --- Nextcloud database ---
 nextcloud_pass: "changeme"
 
+# Read-only account for the mysqld_exporter metrics sidecar. Separate from the
+# root password on purpose: the credentials land in /etc/mysqld_exporter.cnf,
+# and reusing root's password there meant that file effectively stored the
+# root login. The account itself is created automatically by the playbook.
+nextcloud_db_exporter_pass: "changeme"
+
+# --- Redis ---
+# Redis binds to the node's public IP so K3s pods can reach it, previously
+# protected by an nftables rule alone. It now also requires this password;
+# the same value is handed to Nextcloud through the K8s Secret.
+nextcloud_redis_pass: "changeme"
+
 # --- Nextcloud admin account ---
 nextcloud_admin_user: "admin"
 nextcloud_admin_pass: "changeme"

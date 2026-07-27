@@ -63,7 +63,7 @@
     content: |
       [client]
       user=prometheus
-      password={{ mysql_root_password }}
+      password={{ mysqld_exporter_db_password }}
       host=127.0.0.1
       port=3306
   no_log: true
