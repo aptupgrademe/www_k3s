@@ -39,6 +39,7 @@
   loop:
     - nginx-k3s-wp-login.conf
     - nginx-k3s-nc-login.conf
+    - nginx-k3s-grafana-login.conf
     - nginx-k3s-scanner.conf
     - nginx-k3s-bad-paths.conf
   notify: restart fail2ban

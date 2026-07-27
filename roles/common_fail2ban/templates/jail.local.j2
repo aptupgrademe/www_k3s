@@ -86,6 +86,28 @@ findtime = 600
 
 
 # -----------------------------------------------------------------------------
+# HTTP – Grafana login brute force
+# Grafana is proxied at /grafana/ and, unlike wp-login/nc-login, has NO
+# ingress rate-limit zone of its own and no application-level lockout - so
+# without this jail its login is the least-throttled auth surface on the box.
+# The filter matches only failed logins (HTTP 401), so a successful admin
+# login never counts toward the ban. maxretry is stricter than the WordPress/
+# Nextcloud jails (5 vs 10) because a real admin does not fail five logins in
+# ten minutes, and there is no legitimate password-manager multi-account case
+# here. Harmless no-op on hosts that do not proxy Grafana - the filter simply
+# never matches.
+# -----------------------------------------------------------------------------
+[nginx-k3s-grafana-login]
+enabled  = true
+port     = 80,443
+filter   = nginx-k3s-grafana-login
+logpath  = /var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/*.log
+backend  = polling
+maxretry = 5
+findtime = 600
+
+
+# -----------------------------------------------------------------------------
 # HTTP – vulnerability/directory scanner detection
 # 20 blocked requests (403/404) within 60 s = automated scanner → ban.
 # Threshold is intentionally generous to avoid false positives from

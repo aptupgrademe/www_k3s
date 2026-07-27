@@ -1,0 +1,14 @@
+# Managed by Ansible – do not edit manually
+# Detects brute-force POST attempts against Grafana's /grafana/login.
+# Log source: nginx-ingress (F5) access log, containerd-prefixed format:
+#   2026-06-19T14:24:11Z stdout F <client_ip> - - [nginx_time] "POST /grafana/login HTTP/2.0" 401 ...
+#
+# Unlike the wp-login / nc-login filters, this matches ONLY the 401 status:
+# Grafana returns a clean 401 on a failed login and 200/302 on success, so we
+# can count failures precisely instead of every POST. That means a legitimate
+# admin logging in successfully never contributes to the ban counter.
+
+[Definition]
+failregex = ^\S+\s+stdout\s+F\s+<HOST>\s+-\s+-\s+\[.+?\]\s+"POST /grafana/login\s+HTTP/\S+"\s+401\b
+
+ignoreregex =
