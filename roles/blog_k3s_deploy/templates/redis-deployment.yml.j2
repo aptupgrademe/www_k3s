@@ -24,8 +24,15 @@ spec:
       containers:
       - name: redis
         image: {{ blog_image_redis }}
+        # Entrypoint starts as root and re-execs as the redis user; the
+        # server itself listens on 6379, so no NET_BIND_SERVICE needed.
         securityContext:
           allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+            add: [SETGID, SETUID]
+          seccompProfile:
+            type: RuntimeDefault
         # Disable all persistence – RAM-only cache, restarts start fresh.
         # maxmemory is set well below the 128Mi container limit (mem_fragmentation_ratio
         # observed at 2.73 live, i.e. actual RSS usage is well above Redis' own

@@ -6,8 +6,10 @@
 #
 # Prerequisites:
 #   - blog_k3s_deploy has deployed the WordPress pod and it is ready
-#   - The init container (init-dirs) has downloaded WP-CLI to
-#     /var/www/html/wp-cli.phar in the HostPath volume
+#   - The init container (init-dirs) has downloaded and checksum-verified
+#     WP-CLI into the wp-cli emptyDir, mounted read-only in the fpm
+#     container at /usr/local/lib/wp-cli/wp-cli.phar (deliberately outside
+#     the document root, see blog_k3s_deploy/templates/wordpress-deployment.yml.j2)
 #   - wp-config.php was auto-created by the wordpress:fpm entrypoint
 #     (WORDPRESS_DB_* env vars trigger auto-configuration on first start)
 # =============================================================================
@@ -40,7 +42,7 @@
     k3s kubectl exec deployment/wordpress
     --namespace wordpress
     --container wordpress-fpm --
-    php /var/www/html/wp-cli.phar core is-installed
+    php /usr/local/lib/wp-cli/wp-cli.phar core is-installed
     --path=/var/www/html
     --allow-root
   register: wp_installed
@@ -52,7 +54,7 @@
     k3s kubectl exec deployment/wordpress
     --namespace wordpress
     --container wordpress-fpm --
-    php /var/www/html/wp-cli.phar core install
+    php /usr/local/lib/wp-cli/wp-cli.phar core install
     --path=/var/www/html
     --url={{ blog_url }}
     --title={{ blog_title | quote }}
@@ -137,7 +139,7 @@
     k3s kubectl exec deployment/wordpress
     --namespace wordpress
     --container wordpress-fpm --
-    php /var/www/html/wp-cli.phar plugin install {{ item }} --activate --force
+    php /usr/local/lib/wp-cli/wp-cli.phar plugin install {{ item }} --activate --force
     --path=/var/www/html
     --allow-root
   loop: "{{ blog_wordpress_plugins | default([]) }}"
@@ -153,7 +155,7 @@
     k3s kubectl exec deployment/wordpress
     --namespace wordpress
     --container wordpress-fpm --
-    php /var/www/html/wp-cli.phar plugin install redis-cache --activate
+    php /usr/local/lib/wp-cli/wp-cli.phar plugin install redis-cache --activate
     --path=/var/www/html
     --allow-root
   register: wp_redis_install
@@ -166,7 +168,7 @@
     k3s kubectl exec deployment/wordpress
     --namespace wordpress
     --container wordpress-fpm --
-    php /var/www/html/wp-cli.phar redis enable
+    php /usr/local/lib/wp-cli/wp-cli.phar redis enable
     --path=/var/www/html
     --allow-root
   register: wp_redis_enable
@@ -204,7 +206,7 @@
       - wordpress-fpm
       - --
       - php
-      - /var/www/html/wp-cli.phar
+      - /usr/local/lib/wp-cli/wp-cli.phar
       - eval
       - |
         $css = '.custom-logo {
@@ -281,7 +283,7 @@
       - wordpress-fpm
       - --
       - php
-      - /var/www/html/wp-cli.phar
+      - /usr/local/lib/wp-cli/wp-cli.phar
       - eval
       - |
         // Check if menu already exists
@@ -330,7 +332,7 @@
     k3s kubectl exec deployment/wordpress
     --namespace wordpress
     --container wordpress-fpm --
-    php /var/www/html/wp-cli.phar config set DISABLE_WP_CRON true --raw
+    php /usr/local/lib/wp-cli/wp-cli.phar config set DISABLE_WP_CRON true --raw
     --path=/var/www/html
     --allow-root
   changed_when: false
@@ -347,7 +349,7 @@
     k3s kubectl exec deployment/wordpress
     --namespace wordpress
     --container wordpress-fpm --
-    php /var/www/html/wp-cli.phar core update
+    php /usr/local/lib/wp-cli/wp-cli.phar core update
     --path=/var/www/html
     --allow-root
   register: wp_core_update
@@ -358,7 +360,7 @@
     k3s kubectl exec deployment/wordpress
     --namespace wordpress
     --container wordpress-fpm --
-    php /var/www/html/wp-cli.phar plugin update --all
+    php /usr/local/lib/wp-cli/wp-cli.phar plugin update --all
     --path=/var/www/html
     --allow-root
   register: wp_plugin_update
@@ -379,4 +381,33 @@
     --namespace wordpress
     --container wordpress-fpm --
     chown -R www-data:www-data /var/www/html/wp-content
+  changed_when: false
+
+
+# -----------------------------------------------------------------------------
+# Restart the pod when core or plugins actually changed
+# -----------------------------------------------------------------------------
+# PHP runs with opcache.validate_timestamps=0 (see the php-config ConfigMap in
+# blog_k3s_deploy): file mtimes are never re-checked, so bytecode already in
+# the shared OPcache segment stays live for the lifetime of the pod. The two
+# update tasks above write new .php files to the volume, but PHP-FPM keeps
+# executing the old code — including for security releases, which is exactly
+# the failure mode where it hurts. Recycling workers via pm.max_requests does
+# not help: the OPcache segment is shared across the pool, not per worker.
+#
+# Only fires when an update really happened, so an unchanged run stays a no-op
+# and does not cause needless downtime.
+- name: WordPress | Restart pod so PHP-FPM picks up updated code
+  ansible.builtin.command: >
+    k3s kubectl rollout restart deployment/wordpress
+    --namespace wordpress
+  when: wp_core_update.changed or wp_plugin_update.changed
+  changed_when: true
+
+- name: WordPress | Wait for the restarted pod to become ready
+  ansible.builtin.command: >
+    k3s kubectl rollout status deployment/wordpress
+    --namespace wordpress
+    --timeout=300s
+  when: wp_core_update.changed or wp_plugin_update.changed
   changed_when: false

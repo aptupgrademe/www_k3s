@@ -94,6 +94,21 @@ blog_image_nginx:          "nginx:1.31-alpine"
 # Check: https://hub.docker.com/_/redis/tags  (filter: *-alpine)
 blog_image_redis:          "redis:7-alpine"
 
+# -----------------------------------------------------------------------------
+# WP-CLI – pinned version + checksum (supply-chain protection)
+# -----------------------------------------------------------------------------
+# The init container downloads this phar and the blog_wordpress role then
+# executes it with --allow-root, so an altered binary would mean arbitrary
+# code execution as root. busybox wget does NOT validate TLS certificates
+# ("TLS certificate validation not implemented"), which makes the SHA-512
+# check the actual integrity control here, not a nice-to-have.
+#
+# To upgrade, take both values from the release page (the .sha512 asset sits
+# next to the .phar):
+#   https://github.com/wp-cli/wp-cli/releases
+blog_wp_cli_version: "2.12.0"
+blog_wp_cli_sha512:  "be928f6b8ca1e8dfb9d2f4b75a13aa4aee0896f8a9a0a1c45cd5d2c98605e6172e6d014dda2e27f88c98befc16c040cbb2bd1bfa121510ea5cdf5f6a30fe8832"
+
 # =============================================================================
 # Monitoring exporters – host + sidecar images
 # Check for new versions:

@@ -4,8 +4,9 @@
 #   nginx          – Nginx sidecar (port 80), serves static files + proxies PHP
 #
 # The wordpress:fpm image auto-creates wp-config.php on first start when
-# WORDPRESS_DB_* env vars are set.  WP-CLI is downloaded by the init container
-# to /var/www/html/wp-cli.phar and used by the blog_wordpress Ansible role
+# WORDPRESS_DB_* env vars are set.  WP-CLI is downloaded and checksum-verified
+# by the init container into /usr/local/lib/wp-cli/wp-cli.phar (an emptyDir,
+# outside the document root) and used by the blog_wordpress Ansible role
 # (kubectl exec) for the initial installation and plugin setup.
 ---
 apiVersion: apps/v1
@@ -31,25 +32,50 @@ spec:
       # -------------------------------------------------------------------
       # Init container: fix HostPath directory ownership and download WP-CLI
       # The wordpress:fpm image runs as www-data (uid 33).
-      # WP-CLI is written to the shared volume so kubectl exec can use it.
+      #
+      # WP-CLI deliberately does NOT go into /var/www/html: everything under
+      # the document root is reachable over HTTP, and nginx's deny list only
+      # covers .php (not .phar), so a phar dropped there is simply served as
+      # a 7 MB download to anyone who asks. It lives in its own emptyDir
+      # instead, shared with the fpm container but outside the web root.
+      #
+      # The download is pinned to a version + SHA-512 (group_vars/all.yml):
+      # busybox wget does not verify TLS certificates, and the blog_wordpress
+      # role runs this phar with --allow-root, so an unverified binary would
+      # be arbitrary root-level code execution. A hash mismatch aborts the
+      # init container and the pod never starts.
       # -------------------------------------------------------------------
       initContainers:
       - name: init-dirs
         image: {{ blog_image_busybox }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+            add: [CHOWN, FOWNER, DAC_OVERRIDE]
+          seccompProfile:
+            type: RuntimeDefault
         command:
         - sh
         - -c
         - |
+          set -e
           chown -R 33:33 /var/www/html
           chmod 0755 /var/www/html
-          echo "Downloading WP-CLI..."
-          wget -q -O /var/www/html/wp-cli.phar \
-            https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
-          chmod +x /var/www/html/wp-cli.phar
+          echo "Downloading WP-CLI {{ blog_wp_cli_version }}..."
+          wget -q -O /wp-cli/wp-cli.phar \
+            https://github.com/wp-cli/wp-cli/releases/download/v{{ blog_wp_cli_version }}/wp-cli-{{ blog_wp_cli_version }}.phar
+          echo "{{ blog_wp_cli_sha512 }}  /wp-cli/wp-cli.phar" | sha512sum -c -
+          chmod 0755 /wp-cli/wp-cli.phar
+          # Remove any copy left in the web root by an earlier revision of
+          # this template, where it was publicly downloadable.
+          rm -f /var/www/html/wp-cli.phar
           echo "Init complete."
         volumeMounts:
         - name: wordpress-www
           mountPath: /var/www/html
+        - name: wp-cli
+          mountPath: /wp-cli
 
       containers:
       # -------------------------------------------------------------------
@@ -59,8 +85,18 @@ spec:
       # -------------------------------------------------------------------
       - name: wordpress-fpm
         image: {{ blog_image_wordpress }}
+        # CHOWN/SETUID/SETGID: the fpm master starts as root and forks
+        # workers as www-data. DAC_OVERRIDE/FOWNER: the image entrypoint
+        # untars WordPress into the volume and sets modes on first start —
+        # verified that dropping these two makes the container fail with
+        # "tar: Cannot change mode ... Operation not permitted".
         securityContext:
           allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+            add: [CHOWN, SETGID, SETUID, DAC_OVERRIDE, FOWNER]
+          seccompProfile:
+            type: RuntimeDefault
         env:
         # Database
         - name: WORDPRESS_DB_HOST
@@ -100,6 +136,12 @@ spec:
             define('WP_REDIS_MAXTTL', 86400);
             define('WP_CACHE', true);
             define('WPCACHEHOME', '/var/www/html/wp-content/plugins/wp-super-cache/');
+            // Disable the built-in plugin/theme file editor. Without this,
+            // any compromise of an administrator account is a one-click
+            // path to executing arbitrary PHP - no vulnerability required.
+            // DISALLOW_FILE_MODS is deliberately NOT set: it would also
+            // block the plugin auto-updates this site relies on.
+            define('DISALLOW_FILE_EDIT', true);
         ports:
         - containerPort: 9000
           name: fpm
@@ -114,6 +156,9 @@ spec:
           subPath: z-monitoring.conf
         - name: tmp
           mountPath: /tmp
+        - name: wp-cli
+          mountPath: /usr/local/lib/wp-cli
+          readOnly: true
         resources:
           requests:
             memory: "256Mi"
@@ -121,7 +166,14 @@ spec:
           limits:
             # Node has 4 cores; give FPM room to run pm.max_children workers
             # truly in parallel instead of throttling them to <1 core.
-            memory: "768Mi"
+            #
+            # Memory sized against the pool: pm.max_children=12 at the ~55-70 MB
+            # per-worker RSS typical for this plugin set is ~800 MB, plus the
+            # 128 MB shared OPcache segment and the master process. At the
+            # previous 768Mi the pool could not actually reach max_children
+            # under load without risking an OOM kill, so the limit followed
+            # the pool rather than the other way round (node has 7.6 GB).
+            memory: "1Gi"
             cpu: "2000m"
         readinessProbe:
           tcpSocket:
@@ -143,8 +195,14 @@ spec:
       # -------------------------------------------------------------------
       - name: php-fpm-exporter
         image: {{ blog_image_fpm_exporter }}
+        # Static Go binary, listens on a high port, never switches user:
+        # needs no capabilities at all.
         securityContext:
           allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+          seccompProfile:
+            type: RuntimeDefault
         env:
         - name: PHP_FPM_SCRAPE_URI
           value: "tcp://127.0.0.1:9000/fpm-status"
@@ -167,8 +225,16 @@ spec:
       # -------------------------------------------------------------------
       - name: nginx
         image: {{ blog_image_nginx }}
+        # NET_BIND_SERVICE: the master binds :80, and once ALL capabilities
+        # are dropped even uid 0 loses the implicit permission for ports
+        # <1024. CHOWN/SETUID/SETGID: workers are forked as the nginx user.
         securityContext:
           allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+            add: [CHOWN, SETGID, SETUID, NET_BIND_SERVICE]
+          seccompProfile:
+            type: RuntimeDefault
         ports:
         - containerPort: 80
           name: http
@@ -216,6 +282,11 @@ spec:
         emptyDir:
           medium: Memory
           sizeLimit: 64Mi
+      # WP-CLI lives here rather than in the document root, so it is not
+      # reachable over HTTP. Re-downloaded and re-verified on every pod start.
+      - name: wp-cli
+        emptyDir:
+          sizeLimit: 32Mi
 ---
 apiVersion: v1
 kind: Service

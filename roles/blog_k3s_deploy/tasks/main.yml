@@ -7,6 +7,22 @@
 #          Only nftables and SSH remain on the host.
 # =============================================================================
 
+# Fail fast with an actionable message instead of a bare "undefined variable"
+# halfway through the deployment. This variable was introduced when the
+# mysqld_exporter sidecar stopped authenticating as MariaDB root, so existing
+# vaults predating that change do not have it yet.
+- name: blog_k3s_deploy | Check that the exporter DB password is present in the vault
+  ansible.builtin.assert:
+    that:
+      - blog_db_exporter_pass is defined
+      - blog_db_exporter_pass | length > 0
+    fail_msg: >-
+      blog_db_exporter_pass is missing from this host's vault.yml. Add a line
+      like  blog_db_exporter_pass: "<a fresh random password>"  (see
+      vault.yml.example) and re-encrypt with ansible-vault. It is the
+      least-privilege MariaDB account used by the mysqld_exporter sidecar,
+      which no longer connects as root.
+
 - name: blog_k3s_deploy | HostPath directories
   ansible.builtin.import_tasks: dirs.yml
 

@@ -29,6 +29,13 @@ spec:
       initContainers:
       - name: init-dirs
         image: {{ blog_image_busybox }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+            add: [CHOWN, FOWNER, DAC_OVERRIDE]
+          seccompProfile:
+            type: RuntimeDefault
         command:
         - sh
         - -c
@@ -42,8 +49,16 @@ spec:
       containers:
       - name: mariadb
         image: {{ blog_image_mariadb }}
+        # The entrypoint starts as root and drops to the mysql user
+        # (SETUID/SETGID), and initialises/repairs the datadir on the
+        # HostPath volume (CHOWN/DAC_OVERRIDE/FOWNER).
         securityContext:
           allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+            add: [CHOWN, SETGID, SETUID, DAC_OVERRIDE, FOWNER]
+          seccompProfile:
+            type: RuntimeDefault
         args:
         - --slow-query-log=1
         - --slow-query-log-file=/var/lib/mysql/slow.log
@@ -123,8 +138,14 @@ spec:
       # -------------------------------------------------------------------
       - name: mysqld-exporter
         image: {{ blog_image_mysqld_exporter }}
+        # Already runs as nobody (65534) and is a static Go binary on a
+        # high port: no capabilities needed at all.
         securityContext:
           allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+          seccompProfile:
+            type: RuntimeDefault
         args:
         - --config.my-cnf=/etc/mysqld_exporter.cnf
         - --web.listen-address=:9104

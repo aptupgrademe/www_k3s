@@ -14,6 +14,12 @@ mysql_root_password: "changeme"
 # --- WordPress database ---
 blog_db_pass: "changeme"
 
+# Read-only account for the mysqld_exporter metrics sidecar. Kept separate
+# from the root password on purpose: the exporter container can read its own
+# credentials file, and it only needs PROCESS/REPLICATION CLIENT plus SELECT
+# on performance_schema. The user is created automatically by the playbook.
+blog_db_exporter_pass: "changeme"
+
 # --- WordPress admin account ---
 blog_admin_user: "admin"
 blog_admin_pass: "changeme"

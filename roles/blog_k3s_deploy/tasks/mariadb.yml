@@ -27,3 +27,48 @@
     --namespace wordpress
     --timeout=180s
   changed_when: false
+
+
+# -----------------------------------------------------------------------------
+# Least-privilege database user for mysqld_exporter
+# -----------------------------------------------------------------------------
+# The exporter sidecar previously authenticated as root, which put the full
+# MariaDB root credentials into a container that only ever needs to read
+# counters. These grants cover everything the default collectors use:
+#   PROCESS            -> SHOW PROCESSLIST, InnoDB engine status
+#   REPLICATION CLIENT -> SHOW SLAVE/MASTER STATUS
+#   SELECT on performance_schema -> the perf_schema collectors
+# information_schema needs no explicit grant. Deliberately no SELECT on the
+# WordPress schema, so the exporter cannot read post or user tables.
+#
+# The password is passed to mariadb inside the container; the root password
+# comes from the container's own environment rather than the Ansible command
+# line. Both are shell-quoted, and no_log keeps them out of the Ansible log.
+# CREATE OR REPLACE makes this idempotent and also rotates the password if
+# blog_db_exporter_pass changed in the vault.
+- name: Create least-privilege mysqld_exporter database user
+  ansible.builtin.command:
+    argv:
+      - k3s
+      - kubectl
+      - exec
+      - deployment/mariadb
+      - --namespace=wordpress
+      - --container=mariadb
+      - --
+      - sh
+      - -c
+      - >-
+        mariadb -u root -p"$MARIADB_ROOT_PASSWORD" -e "
+        CREATE OR REPLACE USER 'exporter'@'localhost'
+          IDENTIFIED BY '{{ blog_db_exporter_pass }}';
+        CREATE OR REPLACE USER 'exporter'@'127.0.0.1'
+          IDENTIFIED BY '{{ blog_db_exporter_pass }}';
+        GRANT PROCESS, REPLICATION CLIENT ON *.* TO 'exporter'@'localhost';
+        GRANT PROCESS, REPLICATION CLIENT ON *.* TO 'exporter'@'127.0.0.1';
+        GRANT SELECT ON performance_schema.* TO 'exporter'@'localhost';
+        GRANT SELECT ON performance_schema.* TO 'exporter'@'127.0.0.1';
+        FLUSH PRIVILEGES;"
+  register: exporter_user
+  changed_when: exporter_user.rc == 0
+  no_log: true

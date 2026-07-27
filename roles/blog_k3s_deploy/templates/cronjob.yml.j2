@@ -23,6 +23,15 @@ spec:
           containers:
           - name: wp-cron
             image: {{ blog_image_wordpress }}
+            # command: replaces the image entrypoint, so none of the
+            # extract/chown startup work runs here, and the volume is
+            # mounted read-only – plain PHP needs no capabilities.
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: [ALL]
+              seccompProfile:
+                type: RuntimeDefault
             command:
             - php
             - /var/www/html/wp-cron.php
