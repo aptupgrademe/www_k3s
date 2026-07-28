@@ -74,7 +74,19 @@ data:
         location ^~ /templates/  { deny all; }
         location ^~ /data/       { deny all; }
         location ^~ /.git/       { deny all; }
-        location ~ /\.           { deny all; }
+        # Hidden files anywhere in the tree -- with one carve-out: chunked
+        # uploads are finalised with
+        #   MOVE /remote.php/dav/uploads/<user>/<upload-id>/.file
+        # and a bare "location ~ /\." swallowed that request. Regex locations
+        # win in definition order, so it matched before "location ~ \.php(?:$|/)"
+        # further down and the assembly step never reached PHP: every chunked
+        # upload (web UI, desktop and mobile sync clients alike) uploaded all
+        # its chunks with 201 and then died on the final MOVE with 403
+        # "access forbidden by rule". Small files are a single direct PUT and
+        # were never affected, which is why this only showed up on big ones.
+        # The lookahead excludes exactly ".file" as a full path segment;
+        # /data/.ocdata, /.htaccess, /apps/*/.git/ etc. stay denied.
+        location ~ /\.(?!file(?:$|/)) { deny all; }
         location ~* ^/(?:data|config|lib|3rdparty|templates|tests)/ { deny all; }
 
         # Command-line entry points and dev leftovers. This is the companion
