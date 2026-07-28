@@ -1,0 +1,43 @@
+# Managed by Ansible (common_monit) - do not edit manually.
+# monitrc must be mode 0600 or monit refuses to start.
+
+# --- Daemon: check every {{ monit_check_interval }}s, after a {{ monit_start_delay }}s grace period ---
+set daemon {{ monit_check_interval }}
+    with start delay {{ monit_start_delay }}
+
+set log /var/log/monit.log
+set idfile  /var/lib/monit/id
+set statefile /var/lib/monit/state
+
+# --- Mail relay (same relay/credentials as msmtp; implicit SSL on 465) ---
+# Monit 6 has no STARTTLS keyword; `using ssl` = implicit SSL, standard port
+# 465. Verified with Strato (AUTH PLAIN LOGIN over the SSL channel).
+set mailserver {{ monit_smtp_host }} port {{ monit_smtp_port }}
+    username "{{ monit_smtp_user }}" password "{{ monit_smtp_password }}"
+    using ssl
+
+# Strato requires the envelope sender to be the authenticated user.
+set mail-format {
+  from:    {{ monit_smtp_user }}
+  reply-to: {{ monit_smtp_user }}
+  subject: [monit] $SERVICE: $EVENT
+  message: Monit on $HOST reported:
+
+           $EVENT: $SERVICE
+           at $DATE
+           Action: $ACTION
+
+           $DESCRIPTION
+
+           -- Monit watchdog
+}
+
+# All state changes go here by default (fail, recover, restart, ...).
+set alert {{ monit_mail }}
+
+# --- Local status interface (needed for the `monit` CLI) ---
+set httpd port 2812 and use address localhost
+    allow localhost
+
+# --- Per-check definitions ---
+include /etc/monit.d/*.conf

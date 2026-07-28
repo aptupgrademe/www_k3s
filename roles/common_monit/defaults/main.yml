@@ -1,0 +1,47 @@
+---
+# =============================================================================
+# Role: common_monit  (defaults)
+# Monit watchdog: e-mails on service/resource state changes and auto-restarts
+# fail2ban. Motivated by fail2ban sitting dead for two days unnoticed.
+# =============================================================================
+
+# Where alerts go (same address as rkhunter/ClamAV). From the host vault.
+monit_mail: "{{ email }}"
+
+# --- Daemon timing ---
+monit_check_interval: 120        # seconds between check cycles
+monit_start_delay: 60            # grace period after monit (re)starts
+
+# --- Resource thresholds ---
+monit_disk_pct_max: 90           # alert when / is this % full
+monit_mem_pct_max: 90            # alert when memory usage exceeds this %
+monit_loadavg_max: 8             # alert when 5-min load average exceeds this
+
+# --- Services checked via `systemctl is-active` (alert on state change) ---
+# Only those that actually exist on the host are templated in (see tasks), so
+# the same role is safe on both blog and nextcloud hosts. fail2ban is handled
+# separately with auto-restart and is NOT in this list.
+# (nftables is intentionally NOT here - the firewall is checked by
+#  monit-check-firewall.sh, which verifies the ruleset is actually
+#  default-drop, a stronger signal than the oneshot unit being "active".)
+monit_candidate_services:
+  - sshd
+  - k3s
+  - node_exporter
+  - prometheus
+  - grafana-server
+  - mysqld_exporter
+
+# --- Mail relay for Monit's own SMTP ---
+# Reuses the same relay/credentials as msmtp (from the host vault: mail_smtphost
+# etc.). NOTE the port is 465, NOT mail_smtpport (587): Monit's `using ssl` does
+# IMPLICIT SSL, whose standard port is 465. msmtp uses STARTTLS on 587; Monit 6
+# has no STARTTLS keyword, so we use implicit SSL on 465 (verified working with
+# Strato: server offers AUTH PLAIN LOGIN over the SSL channel). Override
+# monit_smtp_port if your relay only offers STARTTLS and no 465.
+# Strato requires the envelope sender to be the authenticated user, so the
+# alert "from" is mail_smtpname.
+monit_smtp_host: "{{ mail_smtphost }}"
+monit_smtp_port: 465
+monit_smtp_user: "{{ mail_smtpname }}"
+monit_smtp_password: "{{ mail_smtppassword }}"

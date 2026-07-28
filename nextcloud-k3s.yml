@@ -96,6 +96,7 @@
     - { role: next_clamav,           tags: [next_clamav] }           # ClamAV: nightly antivirus scan of Nextcloud user data
     - { role: common_auditd,         tags: [common_auditd] }         # Linux Audit Daemon with security-relevant rules
     - { role: common_logrotate,      tags: [common_logrotate] }      # Log rotation for Grafana, Prometheus, fail2ban, rkhunter
+    - { role: common_monit,          tags: [common_monit] }          # Watchdog: emails on service/resource failures, auto-restarts fail2ban
 
     # occ config waits for pod readiness → by now Nextcloud pods should be Running.
     - { role: next_config,           tags: [next_config] }           # Post-install: occ config via kubectl exec

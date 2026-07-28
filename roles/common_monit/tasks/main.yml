@@ -1,0 +1,104 @@
+---
+# =============================================================================
+# Role: common_monit
+# Purpose: Install Monit as a watchdog that e-mails on service/resource state
+#          changes and auto-restarts fail2ban. Silent while healthy, so any
+#          mail actually means something. Motivated by fail2ban sitting dead
+#          for two days unnoticed.
+# =============================================================================
+
+- name: Monit | Fail fast if the mail relay vars are missing from the vault
+  ansible.builtin.assert:
+    that:
+      - mail_smtphost is defined and mail_smtphost | length > 0
+      - mail_smtpname is defined and mail_smtppassword is defined
+    fail_msg: >-
+      Monit reuses the msmtp relay for its alerts but mail_smtphost/mail_smtpname/
+      mail_smtppassword are not in this host's vault.yml. They are the same
+      values common_msmtp already uses - Monit just needs them for its own SMTP.
+
+- name: Monit | Install package (EPEL)
+  ansible.builtin.dnf:
+    name: monit
+    state: present
+
+- name: Monit | Ensure state directory exists (for idfile/statefile)
+  ansible.builtin.file:
+    path: /var/lib/monit
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Monit | Detect which candidate services exist on this host
+  ansible.builtin.command: "systemctl cat {{ item }}.service"
+  register: monit_unit_check
+  changed_when: false
+  failed_when: false
+  loop: "{{ monit_candidate_services }}"
+
+# Only monitor services that actually exist here, so the same role is safe on
+# both blog and nextcloud hosts (e.g. mysqld_exporter runs on nextcloud only).
+- name: Monit | Build the list of present services
+  ansible.builtin.set_fact:
+    monit_present_services: >-
+      {{ monit_candidate_services
+         | zip(monit_unit_check.results)
+         | selectattr('1.rc', 'equalto', 0)
+         | map(attribute='0') | list }}
+    monit_hostname: "{{ ansible_fqdn | default(inventory_hostname) }}"
+
+- name: Monit | Deploy check-program helper scripts
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/usr/local/sbin/{{ item }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - monit-check-service.sh
+    - monit-check-firewall.sh
+    - monit-check-pods.sh
+
+- name: Monit | Deploy main config (/etc/monitrc, mode 0600 required)
+  ansible.builtin.template:
+    src: monitrc.j2
+    dest: /etc/monitrc
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true          # contains the SMTP relay password
+  notify: restart monit
+
+- name: Monit | Ensure /etc/monit.d exists
+  ansible.builtin.file:
+    path: /etc/monit.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Monit | Deploy check definitions
+  ansible.builtin.template:
+    src: checks.conf.j2
+    dest: /etc/monit.d/checks.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart monit
+
+- name: Monit | Validate configuration syntax
+  ansible.builtin.command: monit -t
+  register: monit_validate
+  changed_when: false
+
+- name: Monit | Show validation result
+  ansible.builtin.debug:
+    msg: "{{ monit_validate.stdout_lines }}"
+
+- name: Monit | Enable and start
+  ansible.builtin.systemd:
+    name: monit
+    enabled: true
+    state: started
+    daemon_reload: true

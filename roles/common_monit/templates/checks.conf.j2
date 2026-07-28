@@ -1,0 +1,38 @@
+# Managed by Ansible (common_monit) - do not edit manually.
+# Per-check definitions, included by /etc/monitrc. All state changes are
+# e-mailed automatically via the global `set alert` in monitrc.
+
+# --- Host resources ---
+check system {{ monit_hostname }}
+    if loadavg (5min) > {{ monit_loadavg_max }} for 3 cycles then alert
+    if memory usage > {{ monit_mem_pct_max }}% for 3 cycles then alert
+
+check filesystem rootfs with path /
+    if space usage > {{ monit_disk_pct_max }}% then alert
+    if inode usage > {{ monit_disk_pct_max }}% then alert
+
+# --- fail2ban: auto-restart, and give up + alert if it will not stay up ---
+# (This is the case that went unnoticed for two days: a config error made
+#  fail2ban exit on start. Monit restarts it; if it keeps dying it stops
+#  trying and sends a timeout alert instead of silently flapping.)
+check process fail2ban with pidfile /run/fail2ban/fail2ban.pid
+    start program = "/usr/bin/systemctl start fail2ban" with timeout 90 seconds
+    stop  program = "/usr/bin/systemctl stop fail2ban"
+    if does not exist then restart
+    if 3 restarts within 5 cycles then timeout
+
+# --- Other critical services: alert on state change (no auto-restart) ---
+{% for svc in monit_present_services %}
+check program svc_{{ svc | replace('-', '_') }} with path "/usr/local/sbin/monit-check-service.sh {{ svc }}"
+    if status != 0 then alert
+{% endfor %}
+
+# --- Firewall actually enforcing (input chain default-drop) ---
+check program firewall with path "/usr/local/sbin/monit-check-firewall.sh"
+    if status != 0 then alert
+{% if 'k3s' in monit_present_services %}
+
+# --- K3s workloads in a bad state ---
+check program k3s_pods with path "/usr/local/sbin/monit-check-pods.sh"
+    if status != 0 then alert
+{% endif %}
