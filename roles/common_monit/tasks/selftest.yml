@@ -1,0 +1,64 @@
+---
+# =============================================================================
+# Optional Monit smoke-test.  DISRUPTIVE: it briefly stops node_exporter to
+# make Monit fire a real alert (and a real e-mail), then restarts it. Opt-in
+# so a normal playbook run never spams the alert inbox:
+#
+#     ansible-playbook blog.yml --limit <host> -e monit_selftest=true
+#
+# Included from the *_verify roles, gated on monit_selftest.
+# =============================================================================
+
+# Monit delays its first cycle for monit_start_delay seconds after (re)start,
+# during which `monit validate` is a no-op. Wait until the daemon actually
+# responds before poking it, so the test is not a false negative.
+- name: Monit selftest | Wait until the Monit daemon is responsive
+  ansible.builtin.command: monit status
+  register: _mt_ready
+  changed_when: false
+  failed_when: false
+  retries: 15
+  delay: 8
+  until: _mt_ready.rc == 0
+
+- name: Monit selftest | Stop node_exporter to trigger a real alert
+  ansible.builtin.systemd:
+    name: node_exporter
+    state: stopped
+
+- name: Monit selftest | Force Monit to evaluate immediately
+  ansible.builtin.command: monit validate
+  changed_when: false
+  failed_when: false
+
+- name: Monit selftest | Give Monit a moment to detect and mail
+  ansible.builtin.pause:
+    seconds: 8
+
+- name: Monit selftest | Read Monit's view of node_exporter
+  ansible.builtin.command: monit status svc_node_exporter
+  register: _mt_status
+  changed_when: false
+  failed_when: false
+
+# Always restore the service, even if the assertion below fails.
+- name: Monit selftest | Restart node_exporter (restore)
+  ansible.builtin.systemd:
+    name: node_exporter
+    state: started
+
+- name: Monit selftest | Re-evaluate so Monit records + mails the recovery
+  ansible.builtin.command: monit validate
+  changed_when: false
+  failed_when: false
+
+- name: Monit selftest | Assert Monit detected the induced failure
+  ansible.builtin.assert:
+    that:
+      - "'failed' in _mt_status.stdout | lower"
+    success_msg: >-
+      Monit detected node_exporter down and fired an alert - check the inbox
+      for a 'Status failed: svc_node_exporter' mail (plus a recovery mail).
+    fail_msg: >-
+      Monit did NOT report node_exporter as failed while it was stopped - the
+      watchdog may not be working. monit status output: {{ _mt_status.stdout }}

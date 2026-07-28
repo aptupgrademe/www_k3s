@@ -392,3 +392,14 @@
       {{ _r ~ _b }}Critical checks failed – see report above for details.{{ _z }}
     success_msg: >-
       {{ _g ~ _b }}All critical checks passed.{{ _z }}
+
+
+# -----------------------------------------------------------------------------
+# Optional Monit watchdog smoke-test (disruptive: sends real alert e-mails).
+# Off by default; enable per run with  -e monit_selftest=true
+# -----------------------------------------------------------------------------
+- name: Verify | Monit watchdog self-test (opt-in)
+  ansible.builtin.include_role:
+    name: common_monit
+    tasks_from: selftest
+  when: monit_selftest | default(false) | bool

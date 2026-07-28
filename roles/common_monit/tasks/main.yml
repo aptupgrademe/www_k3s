@@ -102,3 +102,9 @@
     enabled: true
     state: started
     daemon_reload: true
+
+- name: Monit | Confirm the daemon is active after configuring
+  ansible.builtin.command: systemctl is-active monit
+  register: monit_active
+  changed_when: false
+  failed_when: monit_active.stdout != "active"

@@ -1734,6 +1734,11 @@ openssl s_client -connect nextcloud.example.com:443 -status 2>/dev/null | \
     <td><code>common_dnf_automatic</code></td>
   </tr>
   <tr>
+    <td>Watchdog</td>
+    <td>Monit prüft alle 2 Min.: Dienste (fail2ban mit Auto-Neustart, sshd, k3s, Exporter, Grafana), Firewall (nftables default-drop), K3s-Pods, Disk/Load/RAM; mailt nur bei Statuswechsel (still solange gesund). Mailversand über den msmtp-Relay, aber Port 465/impliziertes SSL (Monit 6 kennt kein STARTTLS)</td>
+    <td><code>common_monit</code></td>
+  </tr>
+  <tr>
     <td>systemd-Härtung</td>
     <td>Drop-in Overrides für sshd (7.8), node_exporter (4.4), prometheus (4.4); rpcbind/gssproxy/sssd deaktiviert (Port 111 geschlossen)</td>
     <td><code>common_ssh</code>, <code>common_node_exporter</code>, <code>common_prometheus</code>, <code>next_packages</code></td>
