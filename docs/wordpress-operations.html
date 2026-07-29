@@ -502,8 +502,13 @@ ls -la /srv/wordpress-db</code></pre>
   </tr>
   <tr>
     <td><code>217.154.101.78</code></td>
-    <td>Public host IP</td>
-    <td>DNS, MariaDB service endpoint</td>
+    <td>Public host IP (IPv4)</td>
+    <td>DNS (A), MariaDB service endpoint</td>
+  </tr>
+  <tr>
+    <td><code>2001:ba0:27b:2a00::1</code></td>
+    <td>Public host IP (IPv6)</td>
+    <td>DNS (AAAA)</td>
   </tr>
 </table>
 
@@ -518,14 +523,21 @@ ls -la /srv/wordpress-db</code></pre>
   <tr>
     <td><code>www.apt-upgrade.me</code></td>
     <td>A</td>
-    <td>Public IP of the server (<code>217.154.101.78</code>)</td>
+    <td>Public IPv4 of the server (<code>217.154.101.78</code>)</td>
     <td>WordPress blog, Let's Encrypt TLS</td>
+  </tr>
+  <tr>
+    <td><code>www.apt-upgrade.me</code></td>
+    <td>AAAA</td>
+    <td>Public IPv6 of the server (<code>2001:ba0:27b:2a00::1</code>)</td>
+    <td>WordPress blog over IPv6</td>
   </tr>
 </table>
 <div class="callout callout-info">
-  <strong>IPv6 (optional)</strong>
-  If the server has a public IPv6 address, an additional AAAA record can
-  be added. The firewall rules (<code>/etc/nftables.conf</code>) are already configured.
+  <strong>IPv6</strong>
+  The server has a public IPv6 address (<code>2001:ba0:27b:2a00::1</code>); the AAAA
+  record is set accordingly. The firewall rules (<code>/etc/nftables.conf</code>,
+  <code>table inet</code> covers both IPv4 and IPv6) are already configured.
 </div>
 
 <h3>TLS and Proxy Chain</h3>
