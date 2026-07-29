@@ -789,13 +789,44 @@ define('WP_SITEURL', 'https://www.apt-upgrade.me');</code></pre>
 
 <h3>Plugins (managed via Ansible)</h3>
 <p>
-  Plugins are defined as a list in <code>inventory/host_vars/www.apt-upgrade.me/vars.yml</code>
-  and automatically installed and activated by the <code>blog_wordpress</code> playbook:
+  Some of the plugins are defined as a list in
+  <code>inventory/host_vars/www.apt-upgrade.me/vars.yml</code> and automatically
+  installed and activated by the <code>blog_wordpress</code> playbook:
 </p>
 <pre><code>blog_wordpress_plugins:
   - all-in-one-wp-migration       # Import/export for backups
   - classic-editor                # Classic editor instead of Gutenberg
   - limit-login-attempts-reloaded # Additional brute-force protection</code></pre>
+<p>
+  In addition, the <code>blog_wordpress</code> role installs and activates the
+  <strong>Redis Object Cache</strong> plugin (<code>redis-cache</code>) via a
+  dedicated task and turns it on with <code>wp redis enable</code> &mdash; so it
+  is not in the list above but is still Ansible-managed.
+</p>
+
+<h3>Additional, manually installed plugins</h3>
+<p>
+  Further plugins are installed through the WordPress admin and are
+  <strong>not</strong> defined in Ansible. They live on the HostPath volume
+  (<code>/srv/wordpress-www</code>) and survive pod restarts, but a
+  <code>blog_wordpress</code> run neither installs nor removes them &mdash; only
+  <code>wp plugin update --all</code> keeps them current. Current state:
+</p>
+<table>
+  <tr><th>Plugin</th><th>Purpose</th></tr>
+  <tr><td><code>compressx</code></td><td>Image compression / next-gen formats (WebP/AVIF)</td></tr>
+  <tr><td><code>autoptimize</code></td><td>Aggregate &amp; minify CSS/JS</td></tr>
+  <tr><td><code>wp-super-cache</code></td><td>Page cache (static HTML delivery)</td></tr>
+  <tr><td><code>wordpress-seo</code> (Yoast)</td><td>SEO, meta tags, XML sitemap, robots.txt</td></tr>
+  <tr><td><code>easy-table-of-contents</code></td><td>Automatic table of contents in posts</td></tr>
+  <tr><td><code>akismet</code>, <code>hello</code></td><td>ship with WordPress, inactive</td></tr>
+</table>
+<div class="callout callout-info">
+  <strong>Note</strong>
+  Manually installed plugins do not appear in <code>blog_wordpress_plugins</code>.
+  To make them reproducible (e.g. for a from-scratch rebuild), add them there and
+  the playbook will install them automatically.
+</div>
 
 <h3>Query the Database Directly</h3>
 <pre><code># In the MariaDB pod (no root password needed, socket auth):

@@ -789,7 +789,7 @@ define('WP_SITEURL', 'https://www.apt-upgrade.me');</code></pre>
 
 <h3>Plugins (via Ansible verwaltet)</h3>
 <p>
-  Plugins werden in <code>inventory/host_vars/www.apt-upgrade.me/vars.yml</code>
+  Ein Teil der Plugins wird in <code>inventory/host_vars/www.apt-upgrade.me/vars.yml</code>
   als Liste definiert und vom <code>blog_wordpress</code>-Playbook automatisch
   installiert und aktiviert:
 </p>
@@ -797,6 +797,36 @@ define('WP_SITEURL', 'https://www.apt-upgrade.me');</code></pre>
   - all-in-one-wp-migration       # Import/Export für Backups
   - classic-editor                # Klassischer Editor statt Gutenberg
   - limit-login-attempts-reloaded # Zusätzlicher Brute-Force-Schutz</code></pre>
+<p>
+  Zusätzlich installiert und aktiviert die <code>blog_wordpress</code>-Rolle das
+  <strong>Redis Object Cache</strong>-Plugin (<code>redis-cache</code>) über einen
+  eigenen Task und schaltet es per <code>wp redis enable</code> scharf – es steht
+  daher nicht in obiger Liste, wird aber ebenfalls von Ansible verwaltet.
+</p>
+
+<h3>Zusätzliche, manuell installierte Plugins</h3>
+<p>
+  Über das WordPress-Admin sind weitere Plugins installiert, die <strong>nicht</strong>
+  in Ansible definiert sind. Sie liegen auf dem HostPath-Volume
+  (<code>/srv/wordpress-www</code>) und überstehen Pod-Neustarts, werden aber bei
+  einem <code>blog_wordpress</code>-Lauf weder installiert noch entfernt – nur
+  <code>wp plugin update --all</code> hält sie aktuell. Aktueller Stand:
+</p>
+<table>
+  <tr><th>Plugin</th><th>Zweck</th></tr>
+  <tr><td><code>compressx</code></td><td>Bildkomprimierung / Next-Gen-Formate (WebP/AVIF)</td></tr>
+  <tr><td><code>autoptimize</code></td><td>CSS/JS zusammenfassen &amp; minifizieren</td></tr>
+  <tr><td><code>wp-super-cache</code></td><td>Seiten-Cache (statische HTML-Auslieferung)</td></tr>
+  <tr><td><code>wordpress-seo</code> (Yoast)</td><td>SEO, Meta-Tags, XML-Sitemap, robots.txt</td></tr>
+  <tr><td><code>easy-table-of-contents</code></td><td>Automatisches Inhaltsverzeichnis in Beiträgen</td></tr>
+  <tr><td><code>akismet</code>, <code>hello</code></td><td>mit WordPress ausgeliefert, inaktiv</td></tr>
+</table>
+<div class="callout callout-info">
+  <strong>Merke</strong>
+  Manuell installierte Plugins tauchen in <code>blog_wordpress_plugins</code> nicht auf.
+  Wer sie reproduzierbar haben möchte (z.&nbsp;B. für einen Neuaufbau von Grund auf),
+  trägt sie dort nach – dann installiert das Playbook sie automatisch mit.
+</div>
 
 <h3>Datenbank direkt abfragen</h3>
 <pre><code># Im MariaDB-Pod (kein Root-Passwort nötig, da socket auth):
