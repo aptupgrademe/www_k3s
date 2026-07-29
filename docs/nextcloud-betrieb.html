@@ -1689,7 +1689,7 @@ openssl s_client -connect nextcloud.example.com:443 -status 2>/dev/null | \
       <code>nginx-k3s-grafana-login</code>: Grafana-Login-Brute-Force (5 fehlgeschlagene Logins/HTTP&nbsp;401 in 600&nbsp;s);
       <code>recidive</code>: Wiederholungstäter – 3× gebannt in 24 h → 30-Tage-Ban.
       Alle Verify-Tasks laufen per <code>curl --resolve hostname:443:127.0.0.1</code> (Quell-IP 127.0.0.1 ∈ ignoreip → kein Selbst-Ban).
-      Logpfad: <code>/var/log/pods/ingress-nginx_*/nginx-ingress/0.log</code>
+      Logpfad: <code>/var/log/pods/ingress-nginx_*/nginx-ingress/*.log</code>
     </td>
     <td><code>common_fail2ban</code></td>
   </tr>
@@ -1757,6 +1757,39 @@ openssl s_client -connect nextcloud.example.com:443 -status 2>/dev/null | \
     <td>Secrets</td>
     <td>Ansible Vault, K8s Secrets (Opaque), no_log auf sensible Tasks</td>
     <td>alle Rollen</td>
+  </tr>
+</table>
+
+<h3>Container- &amp; App-Härtung</h3>
+<p>
+  Zusätzlich zu Firewall/Fail2Ban/TLS ist jeder Container und die App selbst gehärtet – nach dem Prinzip „selbst wenn ein Angreifer irgendwo hereinkommt, soll er möglichst wenig anrichten können". Alles davon liegt offen im Ansible-Code; die Tabelle erklärt vor allem, <em>was</em> es jeweils verhindert.
+</p>
+<table>
+  <tr><th>Maßnahme</th><th>Was es verhindert</th><th>Umsetzung</th></tr>
+  <tr>
+    <td>Alle Linux-Capabilities entzogen + seccomp (RuntimeDefault)</td>
+    <td>Kompromittierte Container können keine privilegierten Kernel-Operationen ausführen. <strong>Ausnahme Collabora</strong>: bewusst ohne seccomp/Capability-Drop, weil es fremde Dokumente in einer eigenen chroot/Namespace-Sandbox öffnet und dafür genau diese Syscalls braucht – dafür ist Collabora per NetworkPolicy strikt isoliert.</td>
+    <td>alle Deployments – <code>securityContext</code></td>
+  </tr>
+  <tr>
+    <td>OPcache-Neustart <em>nach</em> occ-Update</td>
+    <td><code>opcache.validate_timestamps=0</code> cached Bytecode. Das Update-Playbook startet den Pod jetzt <em>nach</em> <code>occ upgrade</code>/<code>app:update</code> neu (vorher lief der Restart davor → App-Updates verpufften).</td>
+    <td><code>nextcloud-update.yml</code></td>
+  </tr>
+  <tr>
+    <td>nginx-Sperre für <code>/occ</code> &amp; CLI-Endpunkte</td>
+    <td><code>/occ</code> hat keine <code>.php</code>-Endung und wurde daher als Klartext-Quellcode ausgeliefert (HTTP 200). Jetzt 403 – wie die übrigen sensiblen Pfade.</td>
+    <td><code>next_k3s_deploy</code> (nginx-ConfigMap)</td>
+  </tr>
+  <tr>
+    <td>Redis mit Passwort (<code>requirepass</code>)</td>
+    <td>Redis lauscht auf der öffentlichen Host-IP (Pods erreichen es darüber). Bisher schützte nur die nftables-Regel – jetzt zusätzlich ein Passwort, damit der Ausfall einer einzigen Schicht nicht sofort unauthentifizierten Zugriff auf Sessions/File-Locks öffnet.</td>
+    <td><code>next_redis</code>, K8s-Secret</td>
+  </tr>
+  <tr>
+    <td>Metrics-Exporter ohne DB-Root</td>
+    <td>Der mysqld_exporter (Host) nutzt den minimal berechtigten <code>prometheus</code>-DB-Benutzer statt des Root-Passworts – die Credentials in <code>/etc/mysqld_exporter.cnf</code> geben so keinen Root-Zugang mehr.</td>
+    <td><code>next_mariadb</code>, <code>common_mysqld_exporter</code></td>
   </tr>
 </table>
 

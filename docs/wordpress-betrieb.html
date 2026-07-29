@@ -1654,7 +1654,7 @@ k3s kubectl exec deployment/mariadb -n wordpress -- \
       <code>nginx-k3s-grafana-login</code>: Grafana-Login-Brute-Force (5 fehlgeschlagene Logins/HTTP&nbsp;401 in 600&nbsp;s);
       <code>recidive</code>: Wiederholungstäter – 3× gebannt in 24 h → 30-Tage-Ban.
       Alle Verify-Tasks laufen per <code>curl --resolve hostname:443:127.0.0.1</code> (Quell-IP 127.0.0.1 ∈ ignoreip → kein Selbst-Ban).
-      Logpfad: <code>/var/log/pods/ingress-nginx_*/nginx-ingress/0.log</code>
+      Logpfad: <code>/var/log/pods/ingress-nginx_*/nginx-ingress/*.log</code>
     </td>
     <td><code>common_fail2ban</code></td>
   </tr>
@@ -1737,6 +1737,44 @@ k3s kubectl exec deployment/mariadb -n wordpress -- \
     <td>Secrets</td>
     <td>Ansible Vault, K8s Secrets (Opaque), no_log auf sensible Tasks</td>
     <td>alle Rollen</td>
+  </tr>
+</table>
+
+<h3>Container- &amp; App-Härtung</h3>
+<p>
+  Zusätzlich zu Firewall/Fail2Ban/TLS ist jeder Container und die App selbst gehärtet – nach dem Prinzip „selbst wenn ein Angreifer irgendwo hereinkommt, soll er möglichst wenig anrichten können". Alles davon liegt offen im Ansible-Code; die Tabelle erklärt vor allem, <em>was</em> es jeweils verhindert.
+</p>
+<table>
+  <tr><th>Maßnahme</th><th>Was es verhindert</th><th>Umsetzung</th></tr>
+  <tr>
+    <td>Alle Linux-Capabilities entzogen + seccomp (RuntimeDefault)</td>
+    <td>Ein kompromittierter Container-Prozess kann keine privilegierten Kernel-Operationen mehr ausführen (kein Mount, kein Raw-Socket, kein Modul-Laden). Jeder Container erhält nur die wenigen Capabilities, die er wirklich braucht.</td>
+    <td>alle Deployments – <code>securityContext</code></td>
+  </tr>
+  <tr>
+    <td>OPcache-Neustart nach Updates</td>
+    <td><code>opcache.validate_timestamps=0</code> hält kompilierten PHP-Bytecode im Speicher – ohne Neustart liefe nach einem Sicherheitsupdate <em>weiter der alte, verwundbare Code</em>. Das Playbook startet den Pod nach Core-/Plugin-Updates neu.</td>
+    <td><code>blog_wordpress</code></td>
+  </tr>
+  <tr>
+    <td>WP-CLI außerhalb des Webroots + SHA-512-Prüfsumme</td>
+    <td>Die <code>wp-cli.phar</code> liegt nicht mehr im öffentlich erreichbaren Verzeichnis (war als 7-MB-Download abrufbar) und wird beim Laden per Prüfsumme verifiziert – schützt vor Supply-Chain-Manipulation.</td>
+    <td><code>blog_k3s_deploy</code>, <code>group_vars/all.yml</code></td>
+  </tr>
+  <tr>
+    <td><code>DISALLOW_FILE_EDIT</code></td>
+    <td>Deaktiviert den Theme-/Plugin-Editor im wp-admin. Ein übernommener Admin-Account kann so nicht mit einem Klick beliebiges PHP hinterlegen (Webshell) – ganz ohne Sicherheitslücke.</td>
+    <td><code>WORDPRESS_CONFIG_EXTRA</code></td>
+  </tr>
+  <tr>
+    <td>nginx-Sperren gegen Info-Leak &amp; ausführbare Dateien</td>
+    <td>Plugin-<code>readme.txt</code> (Versions-Leak für CVE-Abgleich), Editor-Backup-Endungen (<code>.save</code>, <code>~</code> – sonst käme eine <code>wp-config.php.save</code> im Klartext raus), <code>.phar</code>/<code>.phps</code> und der Installer (<code>install.php</code>) → alle 403.</td>
+    <td><code>blog_k3s_deploy</code> (nginx-ConfigMap)</td>
+  </tr>
+  <tr>
+    <td>Metrics-Sidecar ohne DB-Root</td>
+    <td>Der mysqld_exporter nutzt einen eigenen, minimal berechtigten DB-Benutzer (nur Zähler lesen) statt des Root-Passworts. Ein kompromittierter Exporter kommt so nicht an die WordPress-Daten.</td>
+    <td><code>blog_k3s_deploy</code></td>
   </tr>
 </table>
 
