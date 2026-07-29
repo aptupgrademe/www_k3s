@@ -1695,7 +1695,7 @@ openssl s_client -connect nextcloud.example.com:443 -status 2>/dev/null | \
   </tr>
   <tr>
     <td>HTTP – TLS</td>
-    <td>TLS 1.2/1.3; OCSP Stapling mit Resolver (1.1.1.1/8.8.8.8); <code>ssl_session_tickets off</code> (Forward Secrecy erzwungen); <code>ssl-prefer-server-ciphers: false</code></td>
+    <td>TLS 1.2/1.3; OCSP Stapling mit Resolver (1.1.1.1/8.8.8.8); <code>ssl_session_tickets off</code> (Forward Secrecy erzwungen); <code>ssl-prefer-server-ciphers: false</code>; ECDSA-P-256-Leaf-Zertifikat (statt RSA 2048 &ndash; g&uuml;nstigerer Handshake bei gleicher Sicherheit)</td>
     <td><code>common_k3s</code> → nginx-ingress Helm-Values</td>
   </tr>
   <tr>
@@ -1727,6 +1727,11 @@ openssl s_client -connect nextcloud.example.com:443 -status 2>/dev/null | \
     <td>Rootkits</td>
     <td>rkhunter täglicher Scan um 03:15; <code>WEB_CMD=curl -L</code> (SourceForge-Redirect-Fix); <code>ALLOW_SSH_ROOT_USER=without-password</code>; <code>DISABLE_TESTS=system_configs_ssh</code> (rkhunter 1.4.6 Bug: warnt bei Root-SSH trotz korrekter Konfiguration)</td>
     <td><code>common_rkhunter</code></td>
+  </tr>
+  <tr>
+    <td>Virenscan</td>
+    <td>ClamAV: nächtlicher Scan der Nextcloud-Nutzerdaten um 02:30 Uhr; Signatur-Updates via freshclam; Mail nur bei Fund (still bei sauberem Scan)</td>
+    <td><code>next_clamav</code></td>
   </tr>
   <tr>
     <td>Patches</td>

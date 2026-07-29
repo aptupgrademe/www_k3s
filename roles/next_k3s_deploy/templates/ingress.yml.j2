@@ -18,6 +18,12 @@ metadata:
   namespace: nextcloud
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # ECDSA P-256 leaf cert instead of the RSA-2048 default: cheaper TLS
+    # handshakes at equal/better security. Affects only the server cert, not
+    # the ACME account key. rotation-policy=Always = fresh key each renewal.
+    cert-manager.io/private-key-algorithm: "ECDSA"
+    cert-manager.io/private-key-size: "256"
+    cert-manager.io/private-key-rotation-policy: "Always"
     nginx.org/mergeable-ingress-type: "master"
     nginx.org/ssl-redirect: "false"
     # HTTPS redirect with /.well-known/ exception for ACME HTTP-01 challenges.
@@ -115,6 +121,12 @@ metadata:
   namespace: nextcloud
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # ECDSA P-256 leaf cert instead of the RSA-2048 default: cheaper TLS
+    # handshakes at equal/better security. Affects only the server cert, not
+    # the ACME account key. rotation-policy=Always = fresh key each renewal.
+    cert-manager.io/private-key-algorithm: "ECDSA"
+    cert-manager.io/private-key-size: "256"
+    cert-manager.io/private-key-rotation-policy: "Always"
     nginx.org/mergeable-ingress-type: "master"
     nginx.org/ssl-redirect: "false"
     nginx.org/server-snippets: |

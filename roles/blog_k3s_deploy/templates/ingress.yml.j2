@@ -18,6 +18,14 @@ metadata:
   namespace: wordpress
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # Request an ECDSA P-256 leaf certificate instead of the cert-manager
+    # default (RSA 2048). ECDSA signatures are much cheaper for the server to
+    # compute during the TLS handshake, at equal or better security. Only
+    # affects the server cert; the ACME account key on the ClusterIssuer is
+    # unrelated. rotation-policy=Always gives a fresh key on every renewal.
+    cert-manager.io/private-key-algorithm: "ECDSA"
+    cert-manager.io/private-key-size: "256"
+    cert-manager.io/private-key-rotation-policy: "Always"
     nginx.org/mergeable-ingress-type: "master"
     nginx.org/ssl-redirect: "false"
     # HTTPS redirect with /.well-known/ exception for ACME HTTP-01 challenges,
