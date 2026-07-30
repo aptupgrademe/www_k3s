@@ -131,7 +131,7 @@ def parse_args():
     # touches more pages in an evening than a month of real readers. Pass your
     # home prefix here (repeatable) to keep it out of the numbers.
     p.add_argument("--exclude", action="append", default=[], metavar="CIDR",
-                   help="prefix to exclude entirely, e.g. --exclude 91.5.24.0/24")
+                   help="prefix to exclude entirely, e.g. --exclude 203.0.113.0/24")
     return p.parse_args()
 
 
@@ -244,9 +244,9 @@ def main():
     for ip in browsers:
         rec = {
             "masked": mask(ip),
-            "country": (geo(args.mmdb, ip, "country", "names", "de")
-                        or geo(args.mmdb, ip, "country", "names", "en")
-                        or "unbekannt"),
+            "country": (geo(args.mmdb, ip, "country", "names", "en")
+                        or geo(args.mmdb, ip, "country", "names", "de")
+                        or "unknown"),
             "iso": geo(args.mmdb, ip, "country", "iso_code") or "??",
             "pages": html[ip],
             "assets": assets[ip],
@@ -273,40 +273,40 @@ def main():
     bar = "=" * 78
 
     print(bar)
-    print(f"www.apt-upgrade.me - Besucherstatistik")
-    print(f"Zeitraum : {first_ts:%d.%m.%Y %H:%M} - {last_ts:%d.%m.%Y %H:%M}  ({span:.2f} Tage)")
+    print("www.apt-upgrade.me - visitor statistics")
+    print(f"Period   : {first_ts:%Y-%m-%d %H:%M} - {last_ts:%Y-%m-%d %H:%M}  ({span:.2f} days)")
     print(f"Requests : {len(rows)}")
     print(bar)
-    print(f"IPs mit Browser-Verhalten (HTML + >={args.min_assets} Assets) : {len(browsers):5d}")
-    print(f"  davon Cloud/Rechenzentrum/Scraper                : {len(machines):5d}")
-    print(f"  regulaere Besucher                               : {len(visitors):5d}")
+    print(f"IPs with browser behaviour (HTML + >={args.min_assets} assets) : {len(browsers):5d}")
+    print(f"  of those cloud/datacenter/scraper                  : {len(machines):5d}")
+    print(f"  regular visitors                                   : {len(visitors):5d}")
     print()
-    print(f"  pro Tag   : {len(visitors) / span:6.1f}")
-    print(f"  pro Woche : {len(visitors) / span * 7:6.0f}")
+    print(f"  per day  : {len(visitors) / span:6.1f}")
+    print(f"  per week : {len(visitors) / span * 7:6.0f}")
     print(bar)
 
-    print("\nLAENDERVERTEILUNG")
+    print("\nCOUNTRY DISTRIBUTION")
     print("-" * 60)
     per_country = collections.Counter(v["country"] for v in visitors)
     pv_country = collections.Counter()
     for v in visitors:
         pv_country[v["country"]] += v["pages"]
-    print(f"{'Land':<28} {'Besucher':>9} {'Anteil':>9} {'Seiten':>8}")
+    print(f"{'Country':<28} {'Visitors':>9} {'Share':>9} {'Pages':>8}")
     print("-" * 60)
     for country, n in per_country.most_common():
         print(f"{country[:28]:<28} {n:>9} {n / total * 100:>8.1f}% {pv_country[country]:>8}")
     print("-" * 60)
-    print(f"{'GESAMT':<28} {total:>9} {100.0:>8.1f}% {sum(pv_country.values()):>8}")
+    print(f"{'TOTAL':<28} {total:>9} {100.0:>8.1f}% {sum(pv_country.values()):>8}")
 
-    print(f"\nEINZELNE BESUCHER (IP maskiert, Top {args.top})")
+    print(f"\nINDIVIDUAL VISITORS (IP masked, top {args.top})")
     print("-" * 78)
-    print(f"{'Maskierte IP':<22} {'Land':<22} {'ISO':<4} {'Seiten':>6} {'zuerst':<13}")
+    print(f"{'Masked IP':<22} {'Country':<22} {'ISO':<4} {'Pages':>6} {'first seen':<13}")
     print("-" * 78)
     for v in sorted(visitors, key=lambda x: -x["pages"])[:args.top]:
         print(f"{v['masked']:<22} {v['country'][:22]:<22} {v['iso']:<4} "
-              f"{v['pages']:>6} {v['first']:%d.%m. %H:%M}")
+              f"{v['pages']:>6} {v['first']:%m-%d %H:%M}")
 
-    print("\nMEISTGELESENE SEITEN")
+    print("\nMOST-READ PAGES")
     print("-" * 60)
     keep = {v["masked"] for v in visitors}
     read = collections.Counter()
@@ -318,13 +318,13 @@ def main():
         print(f"  {n:4d}  {path[:52]}")
 
     if machines:
-        print(f"\nAUSGEFILTERT: {len(machines)} Cloud-/Scraper-IPs")
+        print(f"\nFILTERED OUT: {len(machines)} cloud/scraper IPs")
         print("-" * 60)
         for country, n in collections.Counter(m["country"] for m in machines).most_common(8):
             print(f"  {n:4d}  {country}")
         for m in machines:
             if "why" in m:
-                print(f"  Ausreisser {m['masked']} ({m['country']}): {m['why']}")
+                print(f"  outlier {m['masked']} ({m['country']}): {m['why']}")
 
 
 if __name__ == "__main__":
