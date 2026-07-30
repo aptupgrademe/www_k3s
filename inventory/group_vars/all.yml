@@ -82,14 +82,18 @@ prometheus_retention:  "30d"
 #   Nginx:      https://hub.docker.com/_/nginx/tags      (filter: *-alpine)
 # =============================================================================
 nextcloud_image_fpm:       "nextcloud:34-fpm"
-nextcloud_image_nginx:     "nginx:1.31-alpine"
+# nginx stable branch (even minor). Was 1.31 (mainline) – moved to the stable
+# 1.30.x line for a production deployment. 1.30.4 also carries the fixes for
+# CVE-2026-42533 (map+regex buffer overflow), CVE-2026-60005 (slice-module
+# memory disclosure) and a use-after-free. Shared by blog + nextcloud.
+nextcloud_image_nginx:     "nginx:1.30-alpine"
 nextcloud_image_collabora: "collabora/code:26.04.1.4.1"
 nextcloud_image_busybox:   "busybox:1"
 blog_image_busybox:        "busybox:1"
 
 blog_image_wordpress:      "wordpress:7.0.2-php8.3-fpm"
 blog_image_mariadb:        "mariadb:10.11"
-blog_image_nginx:          "nginx:1.31-alpine"
+blog_image_nginx:          "nginx:1.30-alpine"   # stable branch (see nextcloud_image_nginx note)
 # Redis: object cache for WordPress (pure in-memory, no persistence)
 # Check: https://hub.docker.com/_/redis/tags  (filter: *-alpine)
 blog_image_redis:          "redis:7-alpine"
