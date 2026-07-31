@@ -21,3 +21,9 @@ inventory/hosts.yml
 # Internal fix/audit notes – never published to a remote.
 docs/*-fixes-*.md
 docs/*-audit*.md
+
+# PGP PRIVATE key + revocation cert for the blog impressum key.
+# NEVER commit these – not to GitHub, not even to the internal repo.
+# Only publickey.asc (the public half) is tracked and served at /publickey.asc.
+roles/blog_k3s_deploy/files/privatekey.asc
+roles/blog_k3s_deploy/files/*.rev
