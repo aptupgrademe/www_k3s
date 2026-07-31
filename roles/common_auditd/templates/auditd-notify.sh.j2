@@ -1,0 +1,62 @@
+#!/bin/bash
+# Managed by Ansible (common_auditd) – do not edit manually.
+# =============================================================================
+# Slim audit-event notifier.
+#
+# auditd only *logs*; it never alerts. This script turns the handful of
+# high-signal audit keys – the ones that must never change during normal
+# operation – into an actual email, using the existing msmtp relay. It runs
+# from cron every few minutes and uses a per-key ausearch checkpoint so each
+# event is reported exactly once.
+#
+# Deliberately narrow: only keys that do NOT fire during routine admin/Ansible
+# work are watched here, so every mail is meaningful (near-zero false
+# positives). Noisy keys (sudo_exec, modules, sshd_config, cron, …) stay purely
+# forensic – query them on demand with:  ausearch -k <key>
+# =============================================================================
+set -uo pipefail
+
+# High-signal keys only. k3s_manifests is the important one: k3s auto-deploys
+# anything written into its manifests dir, so a change there = potential
+# cluster backdoor, and this repo never writes it (it uses `kubectl apply`).
+KEYS="k3s_manifests k3s_token k3s_tls identity"
+
+STATE_DIR="/var/lib/auditd-notify"
+MAILTO="{{ email }}"
+HOST="$(hostname -f 2>/dev/null || hostname)"
+MAIL_BIN="/usr/bin/mail"
+
+mkdir -p "$STATE_DIR"
+
+report=""
+for key in $KEYS; do
+    ckpt="$STATE_DIR/${key}.chk"
+
+    if [ ! -f "$ckpt" ]; then
+        # First run for this key: establish the checkpoint at the current end
+        # of the log WITHOUT alerting on pre-existing history.
+        ausearch -k "$key" --checkpoint "$ckpt" >/dev/null 2>&1 || true
+        continue
+    fi
+
+    # Only events recorded since the last checkpoint, human-readable.
+    new="$(ausearch -k "$key" --checkpoint "$ckpt" --start checkpoint -i 2>/dev/null)" || true
+    if [ -n "$new" ]; then
+        report="${report}
+
+################## key: ${key} ##################
+${new}"
+    fi
+done
+
+if [ -n "$report" ]; then
+    {
+        echo "auditd detected changes to security-critical files that should"
+        echo "essentially never change during normal operation, on ${HOST}."
+        echo
+        echo "If this was your own admin action or an Ansible run, ignore it."
+        echo "Otherwise investigate immediately – e.g. a write to the k3s"
+        echo "manifests directory can silently deploy a workload into the cluster."
+        echo "${report}"
+    } | "$MAIL_BIN" -s "[${HOST}] AUDIT ALERT: critical audit key changed" "$MAILTO"
+fi

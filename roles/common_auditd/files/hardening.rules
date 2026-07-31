@@ -41,6 +41,17 @@
 -w /etc/audit/          -p wa -k audit_config
 -w /etc/audit/rules.d/  -p wa -k audit_config
 
+# --- K3s / Kubernetes control-plane (this host's crown jewels) ---
+# These are more sensitive than most classic files: k3s.yaml is the cluster-admin
+# kubeconfig, the manifests dir auto-deploys anything dropped into it (a prime
+# backdoor/persistence vector), and token/tls are the cluster's identity.
+# Watched for write+attribute (-p wa) only; a read watch on k3s.yaml would be
+# far too noisy (k3s/kubectl read it constantly).
+-w /etc/rancher/k3s/                       -p wa -k k3s_config
+-w /var/lib/rancher/k3s/server/manifests/  -p wa -k k3s_manifests
+-w /var/lib/rancher/k3s/server/token       -p wa -k k3s_token
+-w /var/lib/rancher/k3s/server/tls/        -p wa -k k3s_tls
+
 # --- Make the configuration immutable (requires reboot to change rules) ---
 # Uncomment to lock audit configuration after applying:
 # -e 2

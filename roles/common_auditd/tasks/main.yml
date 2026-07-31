@@ -38,3 +38,26 @@
     name: auditd
     enabled: true
     state: started
+
+
+# -----------------------------------------------------------------------------
+# Slim audit-event notifier
+# auditd only logs; this turns the high-signal keys (k3s_manifests, k3s_token,
+# k3s_tls, identity – the ones that must never change in normal operation) into
+# an email via the existing msmtp relay. Checkpoint-based, so each event is
+# reported once. Noisy keys stay purely forensic (ausearch on demand).
+# -----------------------------------------------------------------------------
+- name: auditd | Deploy audit-event notifier script
+  ansible.builtin.template:
+    src: auditd-notify.sh.j2
+    dest: /usr/local/sbin/auditd-notify.sh
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: auditd | Schedule the audit-event notifier (every 10 minutes)
+  ansible.builtin.cron:
+    name: "auditd critical-key notifier"
+    minute: "*/10"
+    user: root
+    job: "/usr/local/sbin/auditd-notify.sh"
