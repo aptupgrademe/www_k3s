@@ -1839,6 +1839,16 @@ openssl s_client -connect nextcloud.example.com:443 -status 2>/dev/null | \
         OUTPUT: neue Verbindungen in den Pod-CIDR (Kubelet-Liveness/Readiness-Probes).
         Ohne diese Regeln crashen cert-manager, coredns und metrics-server.</td>
   </tr>
+  <tr>
+    <td>NodePort-Absicherung (PREROUTING)</td>
+    <td>Eine <code>prerouting</code>-Chain (Priority <code>raw</code>, <em>vor</em> der kube-proxy-DNAT)
+        verwirft Zugriffe auf den NodePort-Range (30000–32767) auf den öffentlichen IPv4/IPv6-Adressen.
+        Grund: kube-proxy DNAT'et NodePorts für jede lokale Ziel-Adresse (auch die öffentliche IP) und
+        leitet sie danach in die FORWARD-Chain – sie umgehen damit die INPUT-Regeln. Ohne diese Chain
+        wären die Prometheus-Exporter (<code>:30104</code>/<code>:30253</code>) aus dem Internet
+        erreichbar. Prometheus scrapt sie ausschließlich über <code>127.0.0.1</code> – localhost bleibt
+        unberührt.</td>
+  </tr>
 </table>
 <pre><code># Geblockte Pakete live verfolgen
 journalctl -k -f --grep "nftables DROP"

@@ -816,7 +816,7 @@ define('WP_SITEURL', 'https://www.apt-upgrade.me');</code></pre>
   <tr><th>Plugin</th><th>Zweck</th></tr>
   <tr><td><code>compressx</code></td><td>Bildkomprimierung / Next-Gen-Formate (WebP/AVIF)</td></tr>
   <tr><td><code>autoptimize</code></td><td>CSS/JS zusammenfassen &amp; minifizieren</td></tr>
-  <tr><td><code>wp-super-cache</code></td><td>Seiten-Cache (statische HTML-Auslieferung)</td></tr>
+  <tr><td><code>wp-super-cache</code></td><td>Seiten-Cache – nginx liefert die vorgerenderte HTML direkt aus und überspringt PHP-FPM bei Cache-Hits</td></tr>
   <tr><td><code>wordpress-seo</code> (Yoast)</td><td>SEO, Meta-Tags, XML-Sitemap, robots.txt</td></tr>
   <tr><td><code>easy-table-of-contents</code></td><td>Automatisches Inhaltsverzeichnis in Beiträgen</td></tr>
   <tr><td><code>akismet</code>, <code>hello</code></td><td>mit WordPress ausgeliefert, inaktiv</td></tr>
@@ -1823,6 +1823,16 @@ k3s kubectl exec deployment/mariadb -n wordpress -- \
     <td>INPUT: Pods → Port 6443 (K3s-API) und 10250 (kubelet/metrics-server);
         OUTPUT: neue Verbindungen in den Pod-CIDR (Kubelet-Liveness/Readiness-Probes).
         Ohne diese Regeln crashen cert-manager, coredns und metrics-server.</td>
+  </tr>
+  <tr>
+    <td>NodePort-Absicherung (PREROUTING)</td>
+    <td>Eine <code>prerouting</code>-Chain (Priority <code>raw</code>, <em>vor</em> der kube-proxy-DNAT)
+        verwirft Zugriffe auf den NodePort-Range (30000–32767) auf den öffentlichen IPv4/IPv6-Adressen.
+        Grund: kube-proxy DNAT'et NodePorts für jede lokale Ziel-Adresse (auch die öffentliche IP) und
+        leitet sie danach in die FORWARD-Chain – sie umgehen damit die INPUT-Regeln. Ohne diese Chain
+        wären die Prometheus-Exporter (<code>:30104</code>/<code>:30253</code>) aus dem Internet
+        erreichbar. Prometheus scrapt sie ausschließlich über <code>127.0.0.1</code> – localhost bleibt
+        unberührt.</td>
   </tr>
 </table>
 <pre><code># Geblockte Pakete live verfolgen
