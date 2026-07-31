@@ -26,6 +26,10 @@ data:
         # Gzip compression (HTML, CSS, JS, JSON, XML, fonts)
         # -------------------------------------------------------
         gzip              on;
+        # Serve the .gz that wp-super-cache already wrote next to each cached
+        # page instead of recompressing on the fly (falls back to on-the-fly
+        # gzip when no precompressed file exists).
+        gzip_static       on;
         gzip_vary         on;
         gzip_proxied      any;
         gzip_comp_level   6;
@@ -66,10 +70,36 @@ data:
         if ($arg_author != "") { return 403; }
 
         # -------------------------------------------------------
-        # WordPress pretty permalinks
+        # WP-Super-Cache: serve pre-rendered pages straight from nginx
         # -------------------------------------------------------
+        # The plugin runs in PHP mode (wp_cache_mod_rewrite=0), so without this
+        # block every anonymous hit still boots a PHP-FPM worker only to echo a
+        # static file. Here nginx serves the cached HTML itself and falls
+        # through to WordPress only when there is no cache file — which keeps
+        # PHP-FPM free during bot/scanner storms (the bulk of this site's
+        # traffic). Cache files are named index-https.html because the pod tells
+        # PHP the request is HTTPS (fastcgi_param HTTPS on, above).
+        #
+        # $cache_uri mirrors the plugin's own bypass rules: any request that
+        # must reach live PHP is rewritten to the non-existent path segment
+        # "null cache" (a space can't occur in a slug/dir), so try_files skips
+        # the cache and goes to index.php. These `if`s run on every request —
+        # keep the list short.
+        set $cache_uri $request_uri;
+        if ($request_method = POST)  { set $cache_uri 'null cache'; }
+        if ($query_string != "")     { set $cache_uri 'null cache'; }
+        if ($request_uri ~* "/wp-admin/|/wp-json/|/feed/|/sitemap.*\.xml") { set $cache_uri 'null cache'; }
+        # Logged-in users, recent commenters and password-protected posts must
+        # never be handed another visitor's cached copy.
+        if ($http_cookie ~* "comment_author|wordpress_[a-f0-9]+|wp-postpass|wordpress_logged_in") { set $cache_uri 'null cache'; }
+
         location / {
-            try_files $uri $uri/ /index.php?$args;
+            # Pre-rendered supercache file first (HTTPS variant, then plain),
+            # then the real file, then hand off to WordPress. Doubled slashes
+            # from joining "/" + $request_uri collapse harmlessly on Linux.
+            try_files /wp-content/cache/supercache/{{ blog_hostname }}/$cache_uri/index-https.html
+                      /wp-content/cache/supercache/{{ blog_hostname }}/$cache_uri/index.html
+                      $uri $uri/ /index.php?$args;
         }
 
         # -------------------------------------------------------
