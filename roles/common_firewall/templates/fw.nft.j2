@@ -140,6 +140,27 @@ table inet filter {
   }
 
   # ===========================================================================
+  # PREROUTING – close the NodePort back door (runs before kube-proxy DNAT)
+  # ---------------------------------------------------------------------------
+  # kube-proxy DNATs the NodePort range (30000-32767) for ANY dst-type LOCAL
+  # address, including {{ server_ipv4 }}. That DNAT'd traffic is rewritten to a
+  # pod IP and then lands in the FORWARD chain (NOT input), where the
+  # "ip daddr {{ k3s_pod_cidr }} accept" rule waves it straight through — so
+  # every NodePort was in fact reachable from the internet, bypassing the input
+  # chain entirely (verified: the mysqld/php-fpm exporters on :30104/:30253
+  # answered from outside). Prometheus scrapes them via 127.0.0.1 only, so the
+  # public IPs have no business exposing NodePorts at all. Drop it here at raw
+  # priority (-300), before the DNAT at dstnat (-100). Matches on the public
+  # destination IP only: loopback (127.0.0.1, Prometheus) and pod/ClusterIP
+  # destinations are untouched, and this also protects any future NodePort.
+  # ===========================================================================
+  chain prerouting {
+    type filter hook prerouting priority -300; policy accept;
+    ip  daddr {{ server_ipv4 }} tcp dport 30000-32767 drop
+    ip6 daddr {{ server_ipv6 }} tcp dport 30000-32767 drop
+  }
+
+  # ===========================================================================
   # FORWARD – K3s inter-pod and pod-to-service traffic
   # K3s manages its own KUBE-* chains in iptables (separate subsystem);
   # the nftables FORWARD chain only needs to pass pod CIDR traffic.
