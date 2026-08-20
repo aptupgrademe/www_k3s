@@ -72,6 +72,7 @@
     - { role: common_ssh,            tags: [common_ssh] }            # SSH hardening (port, key-only auth)
     - { role: common_firewall,       tags: [common_firewall] }       # nftables IPv4/IPv6 rules (incl. K3s pod CIDR exceptions)
     - { role: common_sysctl,         tags: [common_sysctl] }         # Kernel tuning: TCP BBR, connection timeouts, backlog
+    - { role: common_cis_hardening,  tags: [common_cis_hardening] }  # CIS AlmaLinux 9 Benchmark: AIDE, kernel modules, cron/sudo, mount options
     - { role: next_mariadb,          tags: [next_mariadb] }          # MariaDB setup + Nextcloud database and user
     # Must run BEFORE next_k3s_deploy: Redis requires a password now, and the
     # Nextcloud pods are handed that password the moment they start. Started

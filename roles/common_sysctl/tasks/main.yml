@@ -37,6 +37,15 @@
     mode: "0644"
   notify: apply sysctl
 
+- name: Sysctl | Deploy CIS network hardening
+  ansible.builtin.template:
+    src: 98-cis-hardening.conf.j2
+    dest: /etc/sysctl.d/98-cis-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: apply sysctl
+
 # Run via systemd-run (transient unit under PID 1) rather than directly in
 # the SSH session: sshd's hardening drop-in (common_ssh, ProtectKernelTunables=yes)
 # masks /proc/sys read-only inside the SSH session's private mount namespace,

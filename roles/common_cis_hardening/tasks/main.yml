@@ -1,0 +1,248 @@
+---
+# =============================================================================
+# Role: common_cis_hardening
+# Purpose: CIS AlmaLinux 9 Benchmark (Level 1 - Server) findings that are safe
+#          to apply without risking the k3s cluster or locking out admin
+#          access. Shared by both the blog and nextcloud playbooks.
+#
+# Deliberately NOT covered by this role - see the OpenSCAP audit notes
+# (2026-08-20) for the reasoning behind each:
+#   - PAM/authselect/pwquality/faillock/pwhistory: authselect reported "No
+#     existing configuration detected" on the blog host, i.e. PAM has never
+#     been brought under authselect's management here. Enabling it now
+#     rewrites /etc/pam.d/system-auth and password-auth structurally - a
+#     mistake here risks locking out ALL local/su/sudo auth with no rescue
+#     console verified available. SSH itself is already key-only
+#     (PasswordAuthentication no), so the practical benefit is small next to
+#     the catastrophic-lockout risk. Left for a deliberate, separately
+#     scheduled change with console access confirmed first.
+#   - GRUB2 bootloader password: real risk of complicating/locking out the
+#     hosting provider's rescue console workflow, for a control (physical
+#     console access) that mostly doesn't apply to a remote VPS.
+#   - Custom crypto policy module for CIS (update-crypto-policies): changes
+#     system-wide TLS/SSH cipher acceptance; could break compatibility with
+#     something (old TLS client hitting the blog, Ansible's own SSH) without
+#     dedicated testing first.
+#   - systemd-journal-remote package: installing a log-forwarding daemon
+#     nothing is configured to use doesn't add security, just attack surface.
+#   - net.ipv4.ip_forward / conf.all.forwarding, rp_filter: see
+#     common_sysctl/templates/98-cis-hardening.conf.j2 - required by k3s.
+# =============================================================================
+
+- name: CIS | Install AIDE (file integrity monitoring)
+  ansible.builtin.dnf:
+    name: aide
+    state: present
+
+- name: CIS | Check whether the AIDE database already exists
+  ansible.builtin.stat:
+    path: /var/lib/aide/aide.db.gz
+  register: aide_db
+
+# Building the initial database walks the whole filesystem - can take a
+# couple of minutes on first run. systemd-run escapes the SSH session's
+# private mount namespace (same reasoning as common_sysctl's sysctl tasks).
+- name: CIS | Build the initial AIDE database (first run only)
+  ansible.builtin.command: systemd-run --wait --pipe --quiet -- aide --init
+  when: not aide_db.stat.exists
+  changed_when: true
+
+- name: CIS | Activate the initial AIDE database
+  ansible.builtin.command: mv /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz
+  when: not aide_db.stat.exists
+  changed_when: true
+
+- name: CIS | Schedule daily AIDE integrity check
+  ansible.builtin.cron:
+    name: "AIDE integrity check"
+    special_time: daily
+    job: "/usr/sbin/aide --check | /usr/bin/mail -s 'AIDE Integrity Check - $(hostname)' root"
+    user: root
+
+# -----------------------------------------------------------------------------
+# Kernel modules: blacklist legacy/unused filesystem drivers
+# -----------------------------------------------------------------------------
+- name: CIS | Blacklist unused legacy filesystem kernel modules
+  ansible.builtin.copy:
+    dest: /etc/modprobe.d/cis-blacklist.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (common_cis_hardening) - legacy/rarely-used
+      # filesystem and storage drivers with no legitimate use on this host.
+      install cramfs /bin/false
+      install freevxfs /bin/false
+      install hfs /bin/false
+      install hfsplus /bin/false
+      install jffs2 /bin/false
+      install usb-storage /bin/false
+      blacklist cramfs
+      blacklist freevxfs
+      blacklist hfs
+      blacklist hfsplus
+      blacklist jffs2
+      blacklist usb-storage
+
+# -----------------------------------------------------------------------------
+# journald: persistent storage + compression
+# -----------------------------------------------------------------------------
+- name: CIS | Configure journald (persistent storage, compressed)
+  ansible.builtin.lineinfile:
+    path: /etc/systemd/journald.conf
+    regexp: "^#?{{ item.key }}="
+    line: "{{ item.key }}={{ item.value }}"
+  loop:
+    - { key: "Storage", value: "persistent" }
+    - { key: "Compress", value: "yes" }
+    # Cap disk usage - persistent storage with no cap risks filling the disk.
+    - { key: "SystemMaxUse", value: "500M" }
+  notify: restart journald
+
+# -----------------------------------------------------------------------------
+# Core dumps: disable (may contain secrets from process memory - DB
+# passwords, session tokens - and aren't used for debugging this stack)
+# -----------------------------------------------------------------------------
+- name: CIS | Disable core dumps via limits.d
+  ansible.builtin.copy:
+    dest: /etc/security/limits.d/99-cis-coredump.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      * hard core 0
+
+- name: CIS | Disable core dumps via systemd-coredump
+  ansible.builtin.copy:
+    dest: /etc/systemd/coredump.conf.d/99-cis-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Coredump]
+      Storage=none
+      ProcessSizeMax=0
+
+- name: CIS | Ensure /etc/systemd/coredump.conf.d exists
+  ansible.builtin.file:
+    path: /etc/systemd/coredump.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: CIS | Disable suid_dumpable sysctl
+  ansible.posix.sysctl:
+    name: fs.suid_dumpable
+    value: "0"
+    sysctl_set: true
+    state: present
+    reload: true
+
+# -----------------------------------------------------------------------------
+# cron/at: tighten permissions, restrict to root (only user on this host)
+# -----------------------------------------------------------------------------
+- name: CIS | Set restrictive permissions on cron directories/files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    mode: "0700"
+    owner: root
+    group: root
+  loop:
+    - /etc/cron.d
+    - /etc/cron.daily
+    - /etc/cron.hourly
+    - /etc/cron.weekly
+    - /etc/cron.monthly
+
+- name: CIS | Set restrictive permissions on /etc/crontab
+  ansible.builtin.file:
+    path: /etc/crontab
+    mode: "0600"
+    owner: root
+    group: root
+
+- name: CIS | Ensure /etc/cron.allow and /etc/at.allow exist (root only)
+  ansible.builtin.copy:
+    dest: "{{ item }}"
+    content: "root\n"
+    owner: root
+    group: root
+    mode: "0600"
+    force: false  # don't overwrite if already present with different content
+  loop:
+    - /etc/cron.allow
+    - /etc/at.allow
+
+- name: CIS | Remove /etc/cron.deny and /etc/at.deny if present
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/cron.deny
+    - /etc/at.deny
+
+# -----------------------------------------------------------------------------
+# sudo hardening - safe here because Ansible connects as root directly
+# (become: false in ansible.cfg) and never goes through sudo itself.
+# -----------------------------------------------------------------------------
+- name: CIS | Harden sudo (pty, logfile, re-authentication)
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/99-cis-hardening
+    owner: root
+    group: root
+    mode: "0440"
+    validate: "visudo -cf %s"
+    content: |
+      Defaults use_pty
+      Defaults logfile="/var/log/sudo.log"
+      Defaults timestamp_timeout=0
+
+# -----------------------------------------------------------------------------
+# Unused services/packages
+# -----------------------------------------------------------------------------
+- name: CIS | Disable Bluetooth service
+  ansible.builtin.systemd:
+    name: bluetooth.service
+    enabled: false
+    masked: true
+    state: stopped
+  failed_when: false  # unit may not exist on all kernels/images
+
+- name: CIS | Remove rsync package (unused on this host, verified 2026-08-20)
+  ansible.builtin.dnf:
+    name: rsync
+    state: absent
+
+# -----------------------------------------------------------------------------
+# Mount hardening: nodev/nosuid/noexec on /tmp, /var/tmp, /dev/shm
+# -----------------------------------------------------------------------------
+# /tmp and /var/tmp are on the root filesystem here (no separate partition),
+# so this uses a bind-remount via fstab rather than repartitioning.
+# noexec on /tmp: the only thing in this repo that executes a file from /tmp
+# is common_k3s's installer bootstrap, and that's already invoked via `sh
+# /tmp/k3s-install.sh` (see common_k3s/tasks/install_k3s.yml) rather than
+# executed directly, so it is unaffected by noexec.
+- name: CIS | Add hardened mount options for /tmp
+  ansible.posix.mount:
+    path: /tmp
+    src: /tmp
+    fstype: none
+    opts: bind,nodev,nosuid,noexec
+    state: mounted
+
+- name: CIS | Add hardened mount options for /var/tmp
+  ansible.posix.mount:
+    path: /var/tmp
+    src: /var/tmp
+    fstype: none
+    opts: bind,nodev,nosuid,noexec
+    state: mounted
+
+- name: CIS | Add hardened mount options for /dev/shm
+  ansible.posix.mount:
+    path: /dev/shm
+    src: tmpfs
+    fstype: tmpfs
+    opts: nodev,nosuid,noexec
+    state: mounted

@@ -203,8 +203,11 @@
   when: not k3s_binary.stat.exists
   timeout: 60
 
+# Invoked as `sh /tmp/k3s-install.sh`, not executed directly: common_cis_hardening
+# mounts /tmp with noexec (CIS), which blocks direct execution but not reading
+# the script as an sh argument.
 - name: K3s | Run K3s installer (skip binary download, flags from config.yaml)
-  ansible.builtin.shell: INSTALL_K3S_SKIP_DOWNLOAD=true /tmp/k3s-install.sh
+  ansible.builtin.shell: INSTALL_K3S_SKIP_DOWNLOAD=true sh /tmp/k3s-install.sh
   args:
     creates: /etc/systemd/system/k3s.service
   when: not k3s_binary.stat.exists

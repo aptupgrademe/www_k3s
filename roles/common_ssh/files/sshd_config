@@ -131,9 +131,24 @@ Subsystem	sftp	/usr/libexec/openssh/sftp-server
 # Root login via SSH key is permitted (single-admin VPS).
 # 'prohibit-password' = keys only; passwords are additionally blocked by
 # PasswordAuthentication no. Satisfies rkhunter ALLOW_SSH_ROOT_USER=without-password.
+# CIS AlmaLinux 9 Benchmark's sshd_disable_root_login wants "PermitRootLogin no"
+# (root login blocked entirely, even by key) - deliberately not applied: there
+# is no separate sudo-capable admin user, and Ansible connects as root directly
+# (ansible.cfg: become: false). Blocking root SSH login would lock out the only
+# admin access path to this host. Revisit if a dedicated admin user is ever
+# introduced.
 PermitRootLogin without-password
 AllowUsers root
 PasswordAuthentication no
+
+# CIS AlmaLinux 9 Benchmark: OpenSSH already defaults to these values (verified
+# live via `sshd -T` before adding them), but CIS's compliance check looks for
+# the literal directive in the config, not the resolved default - explicit
+# beats implicit for auditability anyway (a future OpenSSH default change
+# wouldn't silently alter this host's posture).
+HostbasedAuthentication no
+IgnoreRhosts yes
+PermitUserEnvironment no
 
 # Reduce brute-force exposure: only 2 auth attempts per connection, 2 sessions max.
 MaxAuthTries 2

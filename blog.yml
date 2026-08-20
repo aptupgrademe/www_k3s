@@ -83,6 +83,7 @@
     - { role: common_ssh,           tags: [common_ssh] }            # SSH hardening (port, key-only auth)
     - { role: common_firewall,      tags: [common_firewall] }       # nftables IPv4/IPv6 rules
     - { role: common_sysctl,        tags: [common_sysctl] }         # Kernel tuning: TCP BBR, connection timeouts, backlog
+    - { role: common_cis_hardening, tags: [common_cis_hardening] }  # CIS AlmaLinux 9 Benchmark: AIDE, kernel modules, cron/sudo, mount options
     - { role: blog_selinux,         tags: [blog_selinux] }          # SELinux enforcing + container_file_t for HostPath  ← before deploy!
     - { role: common_k3s,           tags: [common_k3s] }            # K3s + Helm + cert-manager + nginx-ingress (F5)
     - { role: common_calico,        tags: [common_calico] }         # Calico policy-only mode: NetworkPolicy enforcement (Flannel alone ignores it)

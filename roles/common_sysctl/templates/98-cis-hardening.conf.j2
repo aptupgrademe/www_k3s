@@ -1,0 +1,60 @@
+# Managed by Ansible – do not edit manually
+# =============================================================================
+# CIS AlmaLinux 9 Benchmark Level 1 (Server) – network kernel hardening
+# =============================================================================
+# Deliberately NOT included here, unlike a stock CIS profile:
+#   - net.ipv4.ip_forward / net.ipv4.conf.all.forwarding: K3s/Flannel/Calico
+#     require IP forwarding to route pod-to-pod and pod-to-internet traffic.
+#     Disabling this would break the entire cluster network.
+#   - net.ipv4.conf.all.rp_filter / net.ipv4.conf.default.rp_filter: verified
+#     live (2026-08-20) that all.rp_filter is already 0 on this host despite
+#     the distro default of 1 for default.rp_filter - something in the k3s/
+#     Calico stack already manages this for CNI compatibility (strict reverse
+#     path filtering is a well-known cause of dropped pod traffic on
+#     Kubernetes nodes). Left alone rather than overridden.
+
+# --- ICMP redirects: don't accept or send them ---
+# A legitimate router would use routing protocols, not ICMP redirects, to
+# tell this host about better routes - accepting them lets an on-path
+# attacker silently repoint traffic.
+net.ipv4.conf.all.accept_redirects = 0
+net.ipv4.conf.default.accept_redirects = 0
+net.ipv4.conf.all.secure_redirects = 0
+net.ipv4.conf.default.secure_redirects = 0
+net.ipv4.conf.all.send_redirects = 0
+net.ipv4.conf.default.send_redirects = 0
+net.ipv6.conf.all.accept_redirects = 0
+net.ipv6.conf.default.accept_redirects = 0
+
+# --- Source-routed packets: refuse them ---
+# Source routing lets the sender dictate the path back to itself - a classic
+# spoofing/bypass vector, no legitimate use on a standard server.
+net.ipv4.conf.all.accept_source_route = 0
+net.ipv4.conf.default.accept_source_route = 0
+net.ipv6.conf.all.accept_source_route = 0
+net.ipv6.conf.default.accept_source_route = 0
+
+# --- Router advertisements on IPv6: don't auto-configure from them ---
+# This host's IPv6 address is static (see host_vars), not RA-assigned.
+net.ipv6.conf.all.accept_ra = 0
+net.ipv6.conf.default.accept_ra = 0
+
+# --- Log packets with impossible ("martian") source addresses ---
+net.ipv4.conf.all.log_martians = 1
+net.ipv4.conf.default.log_martians = 1
+
+# --- Ignore ICMP broadcast echo requests (smurf attack mitigation) ---
+net.ipv4.icmp_echo_ignore_broadcasts = 1
+
+# --- Ignore bogus ICMP error responses ---
+net.ipv4.icmp_ignore_bogus_error_responses = 1
+
+# --- TCP SYN cookies: survive a SYN-flood without dropping the backlog ---
+net.ipv4.tcp_syncookies = 1
+
+# --- ptrace: only a process's own descendants may ptrace it ---
+# Limits what a compromised process can inspect/inject into via ptrace.
+kernel.yama.ptrace_scope = 1
+
+# --- ASLR: full randomization of the virtual address space ---
+kernel.randomize_va_space = 2

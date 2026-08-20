@@ -96,6 +96,24 @@
     mode: "0644"
   notify: Validate sshd config
 
+# CIS 1.8.x: /etc/issue and /etc/issue.net (local console + some SSH clients'
+# pre-auth banner) default to "\S Kernel \r on an \m" - a free OS/kernel
+# version disclosure to anyone who gets to the login prompt. sshd's own
+# Banner directive already points at sshd_banner above (the real deterrent
+# text), so this is purely closing the separate OS-fingerprinting leak, not
+# a functional change to SSH access.
+- name: Replace /etc/issue and /etc/issue.net (remove OS/kernel version disclosure)
+  ansible.builtin.copy:
+    dest: "{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      Authorized access only. All activity may be monitored and reported.
+  loop:
+    - /etc/issue
+    - /etc/issue.net
+
 
 # -----------------------------------------------------------------------------
 # STEP 6: Restore SELinux file contexts for /etc/ssh
