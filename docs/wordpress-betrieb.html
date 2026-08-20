@@ -1970,7 +1970,11 @@ k3s kubectl exec deployment/mariadb -n wordpress -- \
     <td>Datei-Integritätsüberwachung – täglicher Cron-Check gegen eine
         Baseline aus ~51.000 gefingerprinteten Dateien. Erkennt Manipulation,
         die rkhunter/ClamAV nicht abdecken (z.B. ein verändertes
-        <code>/etc/passwd</code> oder eine ausgetauschte Systembinary)</td>
+        <code>/etc/passwd</code> oder eine ausgetauschte Systembinary).
+        Still bei sauberem Lauf, mailt <code>aide_mail</code> (default:
+        gemeinsame <code>email</code>-Vault-Variable) nur bei tatsächlichem
+        Fund – siehe Hinweis unten, die erste Version mailte an ein bloßes
+        <code>root</code> und kam nie an</td>
     <td><code>common_cis_hardening</code></td>
   </tr>
   <tr>
@@ -2080,6 +2084,21 @@ k3s kubectl exec deployment/mariadb -n wordpress -- \
   SSH-Session gelöst wurde – seine DBus-Session scheint an die
   PAM-Login-Session gebunden zu sein, lange Jobs sollten also nicht so
   "fire-and-forget" über SSH laufen.
+</div>
+<div class="callout callout-warn">
+  <strong>msmtp macht keine lokale Alias-Auflösung</strong>
+  Der AIDE-Cron-Job mailte ursprünglich an ein bloßes <code>root</code>
+  (ohne <code>@Domain</code>). Jede andere funktionierende Benachrichtigung
+  in dieser Codebase (rkhunter, die <code>needs-restarting</code>-Reboot-Check-Jobs)
+  adressiert explizit eine E-Mail-Adresse, aus gutem Grund: msmtp ist ein
+  reiner SMTP-Client ohne lokale <code>/etc/aliases</code>-Auflösung, ein
+  bloßer Username wird also 1:1 an den Relay weitergereicht. Live bestätigt –
+  der Relay hat es angenommen (<code>smtpstatus=250</code>, als "queued"
+  geloggt), aber es kam nie in einem echten Postfach an. Gefixt auf
+  <code>aide_mail</code> (default: gemeinsame <code>email</code>-Vault-Variable,
+  gleiches Muster wie <code>rkhunter_mail</code>). Bei jeder neuen
+  Cron-Benachrichtigung hier explizit adressieren – nicht auf
+  <code>root</code>/<code>MAILTO=root</code> allein verlassen, um euch zu erreichen.
 </div>
 
 <h3>Container- &amp; App-Härtung</h3>

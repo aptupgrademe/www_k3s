@@ -1949,7 +1949,11 @@ k3s kubectl exec deployment/mariadb -n wordpress -- \
     <td>AIDE</td>
     <td>File integrity monitoring – daily cron check against a baseline
         built from ~51,000 fingerprinted files. Catches tampering rkhunter/ClamAV
-        don't (e.g. an edited <code>/etc/passwd</code> or a swapped system binary)</td>
+        don't (e.g. an edited <code>/etc/passwd</code> or a swapped system binary).
+        Silent on a clean run, e-mails <code>aide_mail</code> (defaults to the
+        shared <code>email</code> vault var) only when the exit code signals an
+        actual difference – see the callout below, the first version mailed
+        a bare <code>root</code> recipient that silently never arrived</td>
     <td><code>common_cis_hardening</code></td>
   </tr>
   <tr>
@@ -2054,6 +2058,21 @@ k3s kubectl exec deployment/mariadb -n wordpress -- \
   disconnected" once backgrounded/detached from its SSH session – its DBus
   session appears tied to the PAM login session, so long jobs shouldn't be
   fire-and-forgot over SSH this way.
+</div>
+<div class="callout callout-warn">
+  <strong>msmtp doesn't do local alias expansion</strong>
+  The AIDE cron job originally mailed a bare <code>root</code> recipient
+  (no <code>@domain</code>). Every other working notification in this
+  codebase (rkhunter, the <code>needs-restarting</code> reboot-check jobs)
+  addresses an explicit e-mail address, and there's a reason: msmtp is a
+  plain SMTP client with no local <code>/etc/aliases</code> expansion, so a
+  bare username is handed to the upstream relay literally. Confirmed live –
+  the relay accepted it (<code>smtpstatus=250</code>, logged as "queued"),
+  but it never reached an actual inbox. Fixed to use <code>aide_mail</code>
+  (defaults to the shared <code>email</code> vault variable, same pattern as
+  <code>rkhunter_mail</code>). If you ever add a new cron notification here,
+  address it explicitly – don't rely on <code>root</code>/<code>MAILTO=root</code>
+  alone to reach you.
 </div>
 
 <h3>Container &amp; App Hardening</h3>
