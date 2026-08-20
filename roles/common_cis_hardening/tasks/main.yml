@@ -58,11 +58,17 @@
 # confirmed live 2026-08-20 (accepted with smtpstatus=250 by the relay, but
 # unlike every other notification in this codebase, never reached an inbox).
 # Same explicit-address pattern as rkhunter_mail in common_rkhunter.
+#
+# Silent on a clean run, mails only when AIDE actually finds a difference
+# (non-zero exit) - same "OUT=$(...); [ $? -ne 0 ] && mail ..." shape already
+# used by the needs-restarting reboot-check cron jobs elsewhere on this host.
 - name: CIS | Schedule daily AIDE integrity check
   ansible.builtin.cron:
     name: "AIDE integrity check"
     special_time: daily
-    job: "/usr/sbin/aide --check | /usr/bin/mail -s 'AIDE Integrity Check - $(hostname)' {{ aide_mail }}"
+    job: >-
+      OUT=$(/usr/sbin/aide --check 2>&1);
+      [ $? -ne 0 ] && echo "$OUT" | /usr/bin/mail -s "[$(hostname -f)] AIDE found file integrity changes" {{ aide_mail }}
     user: root
 
 # -----------------------------------------------------------------------------
