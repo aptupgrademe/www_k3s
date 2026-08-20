@@ -13,8 +13,12 @@
 # routine version bump in group_vars/all.yml never needs a matching change
 # here — this blocks a *different* image being substituted, not a version
 # of an already-approved one. Scoped to the wordpress namespace via
-# namespaceSelector so it can't ever interfere with kube-system/cert-manager/
-# ingress-nginx.
+# namespaceSelector, which does NOT mean "can't interfere with cert-manager":
+# cert-manager's HTTP-01 ACME solver pod is created IN the wordpress
+# namespace (wherever the Certificate/Challenge resources live, not wherever
+# cert-manager itself runs) — found live 2026-08-20 when adding the
+# apt-upgrade.me apex-domain Ingress: the solver pod was denied outright,
+# blocking certificate issuance entirely, until its image was added below.
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
@@ -38,7 +42,8 @@ spec:
        'prom/mysqld-exporter', 'hipages/php-fpm_exporter',
        'docker.io/library/busybox', 'docker.io/library/wordpress',
        'docker.io/library/mariadb', 'docker.io/library/nginx', 'docker.io/library/redis',
-       'docker.io/prom/mysqld-exporter', 'docker.io/hipages/php-fpm_exporter']
+       'docker.io/prom/mysqld-exporter', 'docker.io/hipages/php-fpm_exporter',
+       'quay.io/jetstack/cert-manager-acmesolver']
   validations:
   - expression: >
       object.spec.containers.all(c, c.image.split(':')[0] in variables.allowedRepos)

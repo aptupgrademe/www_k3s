@@ -112,3 +112,66 @@ spec:
             name: wordpress
             port:
               number: 80
+
+# ============================================================
+# Bare/apex domain (e.g. apt-upgrade.me, no "www.") – 301 redirect to
+# https://{{ blog_hostname }}. Own master (own hostname, own TLS cert - not
+# merged with the wordpress Ingress above), so cert-manager's ACME solver for
+# THIS host still needs the same minion treatment.
+#
+# Found 2026-08-20: the apex domain's DNS had stale/wrong records pointing
+# at Strato's generic "domain reserved" parking page instead of this
+# cluster, so nobody could reach the blog via the bare domain at all - fixed
+# at the registrar, this Ingress is the server-side half of that fix so
+# search engines/backlinks pointed at the apex land on the real site
+# instead of a 404 (no Ingress rule existed for it) or a TLS handshake
+# failure (no cert covered it).
+# ============================================================
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: apt-upgrade-me-apex-redirect
+  namespace: wordpress
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    cert-manager.io/private-key-algorithm: "ECDSA"
+    cert-manager.io/private-key-size: "256"
+    cert-manager.io/private-key-rotation-policy: "Always"
+    nginx.org/mergeable-ingress-type: "master"
+    nginx.org/ssl-redirect: "false"
+    # /.well-known/ exception, but unlike the main WordPress master Ingress
+    # (which only needs to force HTTPS - everything else is the real
+    # destination), THIS Ingress redirects everything including HTTPS
+    # traffic, so the exception has to skip the redirect outright, not just
+    # the "force https" branch. Got this wrong on the first attempt: an
+    # unconditional trailing `return 301` after the well-known exception
+    # still fired for the exempted path, so cert-manager's HTTP-01 challenge
+    # request got redirected to https://{{ blog_hostname }}/.well-known/...
+    # instead of being answered here - which 404s there (no such path on
+    # the main site) and cert-manager reported "wrong status code 404,
+    # expected 200", blocking certificate issuance entirely (verified live
+    # 2026-08-20).
+    nginx.org/server-snippets: |
+      set $redirect_to_www 1;
+      if ($request_uri ~ "^/.well-known/") { set $redirect_to_www 0; }
+      if ($redirect_to_www = 1)            { return 301 https://{{ blog_hostname }}$request_uri; }
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - {{ blog_hostname | regex_replace('^www\.', '') }}
+    secretName: apt-upgrade-me-apex-tls
+  rules:
+  - host: {{ blog_hostname | regex_replace('^www\.', '') }}
+    # No http.paths - required for F5 nginx-ingress master Ingress, same as
+    # the wordpress master above. Got this wrong on the first attempt too:
+    # added a dummy "/" path here assuming K8s required at least one, which
+    # instead made F5 reject the whole Ingress outright ("Too many: 1: must
+    # have at most 0 items", verified live in the controller's event log) -
+    # meaning NO server block for this host was ever generated, and every
+    # request (including the ACME challenge) fell through to nginx's global
+    # default 404, regardless of the server-snippet or the minion below.
+    # None needed anyway: the server-snippet's `return 301` fires before any
+    # location matching, so there's no real destination behind this host
+    # except cert-manager's own ACME solver minion (auto-injected below).
