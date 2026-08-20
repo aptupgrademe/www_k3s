@@ -52,11 +52,17 @@
   when: not aide_db.stat.exists
   changed_when: true
 
+# mail -s ... root would NOT reach an inbox: msmtp is a plain SMTP client
+# with no local alias expansion, so a bare "root" recipient (no @domain) is
+# handed to the relay literally and never actually delivered anywhere -
+# confirmed live 2026-08-20 (accepted with smtpstatus=250 by the relay, but
+# unlike every other notification in this codebase, never reached an inbox).
+# Same explicit-address pattern as rkhunter_mail in common_rkhunter.
 - name: CIS | Schedule daily AIDE integrity check
   ansible.builtin.cron:
     name: "AIDE integrity check"
     special_time: daily
-    job: "/usr/sbin/aide --check | /usr/bin/mail -s 'AIDE Integrity Check - $(hostname)' root"
+    job: "/usr/sbin/aide --check | /usr/bin/mail -s 'AIDE Integrity Check - $(hostname)' {{ aide_mail }}"
     user: root
 
 # -----------------------------------------------------------------------------
