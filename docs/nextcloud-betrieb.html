@@ -1790,6 +1790,18 @@ openssl s_client -connect nextcloud.example.com:443 -status 2>/dev/null | \
   nextcloud-/Cron-Pod selbst einschränkt, diesen Befund erneut prüfen (siehe
   WP-Cron-Abschnitt im WordPress-Betriebshandbuch).
 </div>
+<div class="callout callout-info">
+  <strong>OS-Level-CIS-Härtung ebenfalls geteilt, ebenfalls noch nicht angewendet (2026-08-20)</strong>
+  <code>common_cis_hardening</code> (AIDE, Kernel-Modul-Blacklist,
+  Mount-Härtung, journald-/Coredump-/Cron-/Sudo-Härtung) und die
+  CIS-Netzwerk-Sysctls in <code>common_sysctl</code> wurden auch in
+  <code>nextcloud-k3s.yml</code>s Rollenliste aufgenommen, neben denen des
+  Blogs – sind Host-Level, nicht app-spezifisch. Gleicher Vorbehalt wie oben:
+  bisher nur auf dem Blog-Host tatsächlich ausgeführt und verifiziert. Volle
+  OpenSCAP-Ergebnisse und die Begründung für bewusst Ausgelassenes
+  (PAM/authselect, GRUB2-Passwort, Custom-Crypto-Policy) siehe
+  Sicherheits-Abschnitt im WordPress-Betriebshandbuch.
+</div>
 
 <h3>Container- &amp; App-Härtung</h3>
 <p>

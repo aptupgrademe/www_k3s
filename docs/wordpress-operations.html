@@ -1934,6 +1934,128 @@ k3s kubectl exec deployment/mariadb -n wordpress -- \
   </ul>
 </div>
 
+<h3>OS-Level Hardening (OpenSCAP / CIS AlmaLinux 9 Benchmark)</h3>
+<p>
+  kube-bench only covers the Kubernetes layer. The underlying AlmaLinux 9
+  host was separately audited on 2026-08-20 with <code>oscap xccdf eval</code>
+  against the <strong>CIS AlmaLinux OS 9 Benchmark, Level 1 – Server</strong>
+  profile (<code>scap-security-guide</code> package,
+  <code>ssg-almalinux9-ds.xml</code>). Applied via the new
+  <code>common_cis_hardening</code> role, shared by both playbooks.
+</p>
+<table>
+  <tr><th>Measure</th><th>Detail</th><th>Implementation</th></tr>
+  <tr>
+    <td>AIDE</td>
+    <td>File integrity monitoring – daily cron check against a baseline
+        built from ~51,000 fingerprinted files. Catches tampering rkhunter/ClamAV
+        don't (e.g. an edited <code>/etc/passwd</code> or a swapped system binary)</td>
+    <td><code>common_cis_hardening</code></td>
+  </tr>
+  <tr>
+    <td>Kernel module blacklist</td>
+    <td><code>cramfs</code>, <code>freevxfs</code>, <code>hfs</code>,
+        <code>hfsplus</code>, <code>jffs2</code>, <code>usb-storage</code> –
+        legacy filesystem drivers with no legitimate use on this host</td>
+    <td><code>common_cis_hardening</code></td>
+  </tr>
+  <tr>
+    <td>Network kernel hardening</td>
+    <td>ICMP redirects/source routing refused, martian packet logging, TCP
+        SYN cookies, <code>ptrace_scope</code> restricted to descendants,
+        full ASLR. Deliberately excludes
+        <code>ip_forward</code>/<code>rp_filter</code> – required as-is by
+        k3s/Calico, see the callout below</td>
+    <td><code>common_sysctl</code></td>
+  </tr>
+  <tr>
+    <td>Mount hardening</td>
+    <td><code>/tmp</code>, <code>/var/tmp</code>, <code>/dev/shm</code>
+        bind-remounted with <code>nodev,nosuid,noexec</code></td>
+    <td><code>common_cis_hardening</code></td>
+  </tr>
+  <tr>
+    <td>journald / core dumps</td>
+    <td>Persistent, compressed journald storage (capped 500MB); core dumps
+        disabled everywhere (limits.d, systemd-coredump,
+        <code>fs.suid_dumpable</code>) – a core dump can contain plaintext
+        secrets from process memory</td>
+    <td><code>common_cis_hardening</code></td>
+  </tr>
+  <tr>
+    <td>cron/at, sudo</td>
+    <td>Tightened cron directory/file permissions + explicit allow-lists;
+        sudo logs to its own file, requires a pty, re-authenticates every time</td>
+    <td><code>common_cis_hardening</code></td>
+  </tr>
+  <tr>
+    <td>Reduced surface</td>
+    <td>Bluetooth service masked, <code>rsync</code> package removed
+        (verified unused first – no Ansible <code>synchronize</code> module
+        usage, no cron/script references)</td>
+    <td><code>common_cis_hardening</code></td>
+  </tr>
+  <tr>
+    <td>SSH: explicit directives + banner</td>
+    <td><code>HostbasedAuthentication</code>/<code>IgnoreRhosts</code>/<code>PermitUserEnvironment</code>
+        added explicitly (OpenSSH already defaulted to the secure value –
+        CIS checks the literal config, not the resolved default);
+        <code>/etc/issue</code> and <code>/etc/issue.net</code> no longer leak
+        the kernel version to a local console login</td>
+    <td><code>common_ssh</code></td>
+  </tr>
+</table>
+
+<div class="callout callout-info">
+  <strong>OpenSCAP result – 2026-08-20</strong>
+  <code>208 PASS / 56 FAIL / 27 N/A / 2 ERROR</code> (started at
+  151/113/27/2). Notable findings, verified live rather than assumed:
+  <ul>
+    <li><strong><code>net.ipv4.ip_forward</code> and <code>rp_filter</code>
+        left untouched</strong> – CIS wants forwarding off and strict
+        reverse-path filtering on; k3s/Flannel/Calico need forwarding on to
+        route pod traffic at all, and this host's <code>rp_filter</code> was
+        already <code>0</code> instead of the distro default <code>1</code>
+        (strict rp_filter is a documented way to make a Kubernetes node drop
+        legitimate pod traffic). Verified live with a real pod→MariaDB→Redis
+        round trip via a CronJob after the rest of the sysctl batch was applied.</li>
+    <li><strong>PAM/authselect/pwquality/faillock deliberately not
+        touched</strong> – <code>authselect current</code> reported "No
+        existing configuration detected" on this host, meaning PAM was never
+        brought under authselect's management. Enabling it now would
+        structurally rewrite <code>/etc/pam.d/system-auth</code> and
+        <code>password-auth</code> – a mistake risks locking out all local/su/sudo
+        auth with no confirmed rescue console. SSH is already key-only, so the
+        benefit doesn't outweigh a potential full lockout. Needs its own tested
+        maintenance window.</li>
+    <li><strong><code>PermitRootLogin</code> stays
+        <code>without-password</code></strong>, not CIS's <code>no</code> –
+        no separate admin user exists; Ansible connects as root directly.</li>
+    <li><strong>GRUB2 password, custom system-wide crypto policy,
+        systemd-journal-remote</strong> – all skipped: console-lockout risk on
+        a rescue-console-dependent VPS, untested TLS/SSH cipher compatibility
+        risk, and installing an unused log-forwarding daemon respectively.</li>
+  </ul>
+</div>
+<div class="callout callout-warn">
+  <strong>SSH-session sandboxing can produce false diagnostics</strong>
+  <code>common_ssh</code>'s <code>ProtectKernelModules=yes</code>/<code>ProtectKernelTunables=yes</code>
+  make <code>/usr/lib/modules</code> and <code>/proc/sys</code> look empty or
+  read-only <em>from inside an interactive SSH session</em> – not reality.
+  Bit twice by this during the OpenSCAP work: AIDE's first two integrity
+  checks falsely reported ~9,279 "removed" files under an old kernel's module
+  directory (checked directly in an SSH session instead of via
+  <code>systemd-run</code>, like the rest of this codebase already does for
+  exactly this reason). Any SSH-session check that reports something bizarre
+  about kernel modules or <code>/proc/sys</code> should be re-run via
+  <code>systemd-run --wait --pipe --quiet -- &lt;command&gt;</code> before
+  it's trusted. Separately: a long-running command (the full OpenSCAP scan)
+  wrapped in <code>systemd-run</code> reliably failed with "Remote peer
+  disconnected" once backgrounded/detached from its SSH session – its DBus
+  session appears tied to the PAM login session, so long jobs shouldn't be
+  fire-and-forgot over SSH this way.
+</div>
+
 <h3>Container &amp; App Hardening</h3>
 <p>
   On top of firewall/Fail2Ban/TLS, every container and the app itself is hardened &ndash; on the principle "even if an attacker gets in somewhere, they should be able to do as little as possible". All of it is public in the Ansible code; the table focuses on <em>what</em> each measure prevents.

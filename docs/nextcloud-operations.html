@@ -1777,6 +1777,18 @@ openssl s_client -connect nextcloud.example.com:443 -status 2>/dev/null | \
   own egress is ever added, revisit that finding (see the WordPress ops
   guide's WP-Cron section) before assuming the CronJob is safe.
 </div>
+<div class="callout callout-info">
+  <strong>OS-level CIS hardening also shared, also not yet applied (2026-08-20)</strong>
+  <code>common_cis_hardening</code> (AIDE, kernel module blacklist, mount
+  hardening, journald/coredump/cron/sudo hardening) and the CIS network
+  sysctls in <code>common_sysctl</code> were added to
+  <code>nextcloud-k3s.yml</code>'s role list alongside the blog's, since
+  they're host-level, not app-specific. Same caveat as above: only actually
+  run and verified on the blog host so far. See the WordPress ops guide's
+  Security section for the full OpenSCAP results and the reasoning behind
+  what was deliberately left out (PAM/authselect, GRUB2 password, custom
+  crypto policy).
+</div>
 
 <h3>Container &amp; App Hardening</h3>
 <p>
