@@ -58,3 +58,13 @@ kernel.yama.ptrace_scope = 1
 
 # --- ASLR: full randomization of the virtual address space ---
 kernel.randomize_va_space = 2
+
+# --- Core dumps: disable suid_dumpable (see common_cis_hardening) ---
+# A core dump from a setuid/privileged process can leak secrets straight out
+# of process memory (DB passwords, session tokens). Set here rather than via
+# ansible.posix.sysctl in common_cis_hardening - that module writes directly
+# to /proc/sys, which fails with "permission denied" over SSH because of
+# common_ssh's ProtectKernelTunables=yes sandboxing (same reason every other
+# sysctl change in this repo goes through `systemd-run -- sysctl --system`
+# instead of a direct write).
+fs.suid_dumpable = 0

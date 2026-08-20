@@ -143,13 +143,11 @@
     group: root
     mode: "0755"
 
-- name: CIS | Disable suid_dumpable sysctl
-  ansible.posix.sysctl:
-    name: fs.suid_dumpable
-    value: "0"
-    sysctl_set: true
-    state: present
-    reload: true
+# fs.suid_dumpable = 0 is set via common_sysctl/templates/98-cis-hardening.conf.j2
+# instead of ansible.posix.sysctl here - that module writes directly to
+# /proc/sys and fails with "permission denied" under common_ssh's
+# ProtectKernelTunables=yes SSH-session sandboxing (confirmed live
+# 2026-08-20 via a real playbook run). See that template's comment.
 
 # -----------------------------------------------------------------------------
 # cron/at: tighten permissions, restrict to root (only user on this host)
