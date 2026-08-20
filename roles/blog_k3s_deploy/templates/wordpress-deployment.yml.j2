@@ -29,6 +29,8 @@ spec:
       labels:
         app: wordpress
     spec:
+      # WordPress/nginx/exporters never talk to the Kubernetes API — no SA token needed.
+      automountServiceAccountToken: false
       # -------------------------------------------------------------------
       # Init container: fix HostPath directory ownership and download WP-CLI
       # The wordpress:fpm image runs as www-data (uid 33).
@@ -114,11 +116,13 @@ spec:
             secretKeyRef:
               name: wordpress-secrets
               key: db-user
-        - name: WORDPRESS_DB_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: wordpress-secrets
-              key: db-password
+        # CIS 5.4.1: file, not a plain env var - env vars are visible via
+        # /proc/<pid>/environ, `kubectl describe`, crash dumps, and error
+        # handlers that dump the environment. wp-config-docker.php's
+        # getenv_docker() checks the _FILE variant first (docker-library
+        # convention), so this needs no wp-config changes.
+        - name: WORDPRESS_DB_PASSWORD_FILE
+          value: /etc/secrets/db-password
         # Force WordPress to use the correct public URL regardless of auto-detection.
         # Without this the container may derive a wrong siteurl from SCRIPT_FILENAME.
         - name: WORDPRESS_CONFIG_EXTRA
@@ -158,6 +162,9 @@ spec:
           mountPath: /tmp
         - name: wp-cli
           mountPath: /usr/local/lib/wp-cli
+          readOnly: true
+        - name: db-credentials
+          mountPath: /etc/secrets
           readOnly: true
         resources:
           requests:
@@ -276,6 +283,17 @@ spec:
       - name: fpm-pool-config
         configMap:
           name: wordpress-fpm-pool-config
+      # CIS 5.4.1: DB password delivered as a file, not a plain env var.
+      # Secret volumes are owned by root:root, and PHP-FPM reads this as
+      # www-data (uid 33), so it has to be world-readable inside the
+      # container. Same pattern as the exporter credentials below.
+      - name: db-credentials
+        secret:
+          secretName: wordpress-secrets
+          items:
+          - key: db-password
+            path: db-password
+          defaultMode: 0444
       # RAM-backed tmpfs for PHP-FPM temp files (uploads, wp-cron tmp, etc.).
       # Content is lost on pod restart – acceptable for transient files.
       - name: tmp

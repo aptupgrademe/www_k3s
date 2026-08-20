@@ -1,0 +1,28 @@
+---
+# =============================================================================
+# CIS 5.1.5: disable SA token automount on every namespace's "default"
+# ServiceAccount. K3s itself exempts kube-system (coredns, metrics-server,
+# local-path-provisioner etc. need it) - kube-bench's own check does the
+# same. Covers namespaces that exist by the end of this role (default,
+# kube-public, kube-node-lease, cert-manager, ingress-nginx); the wordpress/
+# nextcloud namespaces get the identical patch in their own
+# namespace_secrets.yml, since they don't exist yet at this point in a
+# fresh install.
+# =============================================================================
+
+- name: K3s | Find non-kube-system default ServiceAccounts (CIS 5.1.5)
+  ansible.builtin.shell: >
+    k3s kubectl get serviceaccounts --all-namespaces --field-selector metadata.name=default
+    -o jsonpath='{range .items[?(@.metadata.namespace!="kube-system")]}{.metadata.namespace}{"\n"}{end}'
+  register: k3s_default_sa_namespaces
+  changed_when: false
+
+- name: K3s | Disable SA token automount on every non-kube-system default ServiceAccount (CIS 5.1.5)
+  ansible.builtin.command: >
+    k3s kubectl patch serviceaccount default -n {{ item }}
+    --patch "{\"automountServiceAccountToken\": false}"
+  loop: "{{ k3s_default_sa_namespaces.stdout_lines }}"
+  register: sa_patch_all
+  changed_when: "'patched' in sa_patch_all.stdout"
+  loop_control:
+    label: "{{ item }}"

@@ -1743,10 +1743,40 @@ openssl s_client -connect nextcloud.example.com:443 -status 2>/dev/null | \
   </tr>
   <tr>
     <td>Secrets</td>
-    <td>Ansible Vault, K8s secrets (Opaque), no_log on sensitive tasks</td>
+    <td>Ansible Vault, K8s secrets (Opaque), no_log on sensitive tasks;
+        MYSQL_PASSWORD/NEXTCLOUD_ADMIN_PASSWORD/SMTP_PASSWORD now delivered
+        as mounted files (<code>_FILE</code> convention) instead of plain
+        env vars – same pattern as the blog, mirrored here 2026-08-20</td>
     <td>all roles</td>
   </tr>
+  <tr>
+    <td>Image allowlist</td>
+    <td><code>ValidatingAdmissionPolicy</code> in the <code>nextcloud</code>
+        namespace, same mechanism as the blog's</td>
+    <td><code>next_k3s_deploy</code></td>
+  </tr>
+  <tr>
+    <td>ServiceAccount hardening</td>
+    <td><code>automountServiceAccountToken: false</code> on nextcloud/collabora/cron
+        pod templates + the namespace's default SA</td>
+    <td><code>next_k3s_deploy</code></td>
+  </tr>
 </table>
+<div class="callout callout-info">
+  <strong>Not yet deployed (2026-08-20)</strong>
+  The three items above were added to the Ansible code as part of the
+  2026-08-20 CIS/kube-bench hardening pass on the blog cluster and mirrored
+  here for consistency, but <strong>not applied live</strong> – the
+  Nextcloud production hosts (<code>cvjm</code>, <code>sofie</code>) aren't
+  active yet. They take effect on the first real
+  <code>ansible-playbook nextcloud-k3s.yml</code> run. Unlike the blog,
+  Nextcloud has no NetworkPolicy of its own (only <code>collabora-netpol</code>
+  exists, unchanged) – MariaDB/Redis run as host services here, not pods, so
+  the wordpress-side "Calico startup race" finding doesn't apply currently.
+  If a <code>nextcloud-netpol</code> restricting the nextcloud/cron pods'
+  own egress is ever added, revisit that finding (see the WordPress ops
+  guide's WP-Cron section) before assuming the CronJob is safe.
+</div>
 
 <h3>Container &amp; App Hardening</h3>
 <p>

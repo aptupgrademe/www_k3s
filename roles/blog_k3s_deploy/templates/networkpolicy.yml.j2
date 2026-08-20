@@ -1,0 +1,156 @@
+# NetworkPolicies for the WordPress stack – managed by Ansible (blog_k3s_deploy)
+# Enforced by Calico Felix (installed via common_calico) – Flannel alone
+# silently ignores standard NetworkPolicy objects (same as verified on the
+# Nextcloud host: a deny-all policy had zero effect before Calico was added).
+#
+# Threat model: wordpress-fpm is the component that parses untrusted input
+# (HTTP requests, plugin/theme code, file uploads) — by far the most likely
+# RCE vector in this stack, and unlike Collabora on the Nextcloud side it
+# legitimately needs to reach both MariaDB and Redis. So the goal here isn't
+# "isolate one risky pod from the DB" (that's the Nextcloud/Collabora case),
+# it's the two things that both matter for a general-purpose app tier:
+#   1. MariaDB/Redis should only ever be reachable from the WordPress pods,
+#      not from every other pod that might ever land in this cluster.
+#   2. WordPress's own blast radius should be capped to what it actually
+#      needs, not "anything in the pod network".
+#
+# Known limitation: WordPress core, its plugins, and the WP-CLI init
+# container all need outbound HTTPS to CDN-backed, non-enumerable IP ranges
+# (wordpress.org, github.com/objects.githubusercontent.com, ...). Standard
+# NetworkPolicy is IP/CIDR-only — it cannot match by domain name, and this
+# cluster runs Calico in policy-only OSS mode (no FQDN-aware network sets,
+# that's an Enterprise feature). So egress port 443 to the internet is left
+# open below; what this restricts is lateral movement *inside* the cluster
+# (kube-system, cert-manager, ingress-nginx admin ports, any future pod),
+# which is still a real reduction in blast radius, just not a full
+# C2/exfiltration lock-down.
+#
+# The exporter ingress rules (9104/9253) use the pod CIDR rather than a
+# single IP: host-side Prometheus scrapes these via NodePort, and the exact
+# SNAT source address kube-proxy applies for that path could not be pinned
+# down live on this host (tcpdump packet capture failed here — unrelated
+# tooling issue, not investigated further since the pod-CIDR-scoped rule is
+# safe either way and the NodePort range itself is already firewalled from
+# the internet at the host level, see common_firewall).
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wordpress-netpol
+  namespace: wordpress
+spec:
+  podSelector:
+    matchLabels:
+      app: wordpress
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # F5 nginx-ingress runs hostNetwork – traffic arrives carrying the host's
+  # own IP as source, not a pod IP.
+  - from:
+    - ipBlock:
+        cidr: {{ blog_ipv4 }}/32
+    ports:
+    - protocol: TCP
+      port: 80
+  # php-fpm-exporter (9253), scraped by host-side Prometheus via NodePort.
+  - from:
+    - ipBlock:
+        cidr: {{ k3s_pod_cidr }}
+    ports:
+    - protocol: TCP
+      port: 9253
+  egress:
+  # DNS
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  # MariaDB
+  - to:
+    - podSelector:
+        matchLabels:
+          app: mariadb
+    ports:
+    - protocol: TCP
+      port: 3306
+  # Redis (object cache)
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  # Core/plugin/theme updates (wordpress.org) and the WP-CLI init container's
+  # GitHub download – see "Known limitation" above, cannot be scoped tighter
+  # than "the open internet on 443" with this cluster's NetworkPolicy engine.
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+    ports:
+    - protocol: TCP
+      port: 443
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mariadb-netpol
+  namespace: wordpress
+spec:
+  podSelector:
+    matchLabels:
+      app: mariadb
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # WordPress (Deployment + wordpress-cron pods, both labelled app: wordpress)
+  - from:
+    - podSelector:
+        matchLabels:
+          app: wordpress
+    ports:
+    - protocol: TCP
+      port: 3306
+  # mysqld-exporter (9104), scraped by host-side Prometheus via NodePort.
+  - from:
+    - ipBlock:
+        cidr: {{ k3s_pod_cidr }}
+    ports:
+    - protocol: TCP
+      port: 9104
+  # Standalone DB, no replication/external calls configured – no egress needed.
+  egress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-netpol
+  namespace: wordpress
+spec:
+  podSelector:
+    matchLabels:
+      app: redis
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: wordpress
+    ports:
+    - protocol: TCP
+      port: 6379
+  # Pure in-memory cache, no persistence/replication/external calls – no egress needed.
+  egress: []

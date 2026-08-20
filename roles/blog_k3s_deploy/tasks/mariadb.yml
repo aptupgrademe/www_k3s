@@ -42,10 +42,11 @@
 # WordPress schema, so the exporter cannot read post or user tables.
 #
 # The password is passed to mariadb inside the container; the root password
-# comes from the container's own environment rather than the Ansible command
-# line. Both are shell-quoted, and no_log keeps them out of the Ansible log.
-# CREATE OR REPLACE makes this idempotent and also rotates the password if
-# blog_db_exporter_pass changed in the vault.
+# is read from the mounted secret file (CIS 5.4.1 - see mariadb-deployment.yml.j2,
+# MARIADB_ROOT_PASSWORD_FILE - there's no plain MARIADB_ROOT_PASSWORD env var
+# in the pod any more). Both are shell-quoted, and no_log keeps them out of
+# the Ansible log. CREATE OR REPLACE makes this idempotent and also rotates
+# the password if blog_db_exporter_pass changed in the vault.
 - name: Create least-privilege mysqld_exporter database user
   ansible.builtin.command:
     argv:
@@ -59,7 +60,7 @@
       - sh
       - -c
       - >-
-        mariadb -u root -p"$MARIADB_ROOT_PASSWORD" -e "
+        mariadb -u root -p"$(cat /etc/secrets/db-root-password)" -e "
         CREATE OR REPLACE USER 'exporter'@'localhost'
           IDENTIFIED BY '{{ blog_db_exporter_pass }}';
         CREATE OR REPLACE USER 'exporter'@'127.0.0.1'

@@ -23,6 +23,8 @@ spec:
       labels:
         app: nextcloud
     spec:
+      # Nextcloud/nginx/exporter never talk to the Kubernetes API — no SA token needed.
+      automountServiceAccountToken: false
       # -------------------------------------------------------------------
       # Init container: fix HostPath directory ownership for www-data (uid 33)
       # Only chowns the top-level directories (not recursive) so it's fast.
@@ -86,22 +88,23 @@ spec:
             secretKeyRef:
               name: nextcloud-secrets
               key: mysql-user
-        - name: MYSQL_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: nextcloud-secrets
-              key: mysql-password
+        # CIS 5.4.1: files, not plain env vars — env vars are visible via
+        # /proc/<pid>/environ, `kubectl describe`, crash dumps, and error
+        # handlers that dump the environment. The official nextcloud image
+        # shares docker-library's file_env() convention with mariadb/mysql
+        # (same upstream pattern, verified live for those two on the blog
+        # host — not independently re-verified against this exact image
+        # since no Nextcloud host is live yet; check on first real deploy).
+        - name: MYSQL_PASSWORD_FILE
+          value: /etc/secrets/mysql-password
         # Nextcloud admin (only used during initial install)
         - name: NEXTCLOUD_ADMIN_USER
           valueFrom:
             secretKeyRef:
               name: nextcloud-secrets
               key: admin-user
-        - name: NEXTCLOUD_ADMIN_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: nextcloud-secrets
-              key: admin-password
+        - name: NEXTCLOUD_ADMIN_PASSWORD_FILE
+          value: /etc/secrets/admin-password
         # Redis
         - name: REDIS_HOST
           valueFrom:
@@ -143,11 +146,8 @@ spec:
             secretKeyRef:
               name: nextcloud-secrets
               key: smtp-name
-        - name: SMTP_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: nextcloud-secrets
-              key: smtp-password
+        - name: SMTP_PASSWORD_FILE
+          value: /etc/secrets/smtp-password
         - name: SMTP_AUTHTYPE
           value: "LOGIN"
         - name: MAIL_FROM_ADDRESS
@@ -184,6 +184,9 @@ spec:
         - name: php-config
           mountPath: /usr/local/etc/php/conf.d/opcache.ini
           subPath: opcache.ini
+        - name: db-credentials
+          mountPath: /etc/secrets
+          readOnly: true
         - name: tmp
           mountPath: /tmp
         resources:
@@ -313,6 +316,18 @@ spec:
           # Secret volumes are owned by root:root, and PHP-FPM reads this as
           # www-data (uid 33), so it has to be world-readable inside the
           # container. Same pattern as the exporter credentials on the blog.
+          defaultMode: 0444
+      # CIS 5.4.1: DB/admin/SMTP passwords delivered as files, not plain env vars.
+      - name: db-credentials
+        secret:
+          secretName: nextcloud-secrets
+          items:
+          - key: mysql-password
+            path: mysql-password
+          - key: admin-password
+            path: admin-password
+          - key: smtp-password
+            path: smtp-password
           defaultMode: 0444
       - name: fpm-pool-config
         configMap:

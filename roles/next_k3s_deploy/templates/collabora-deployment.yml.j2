@@ -19,6 +19,8 @@ spec:
       labels:
         app: collabora
     spec:
+      # Collabora never talks to the Kubernetes API — no SA token needed.
+      automountServiceAccountToken: false
       containers:
       - name: collabora
         image: {{ nextcloud_image_collabora }}

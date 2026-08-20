@@ -85,6 +85,7 @@
     - { role: common_sysctl,        tags: [common_sysctl] }         # Kernel tuning: TCP BBR, connection timeouts, backlog
     - { role: blog_selinux,         tags: [blog_selinux] }          # SELinux enforcing + container_file_t for HostPath  ← before deploy!
     - { role: common_k3s,           tags: [common_k3s] }            # K3s + Helm + cert-manager + nginx-ingress (F5)
+    - { role: common_calico,        tags: [common_calico] }         # Calico policy-only mode: NetworkPolicy enforcement (Flannel alone ignores it)
     - { role: blog_k3s_deploy,      tags: [blog_k3s_deploy] }       # WordPress K8s manifests applied (pods start in background)
 
     # These roles run while K8s pods initialise – saves 2-3 min wall-clock time.

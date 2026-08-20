@@ -49,3 +49,9 @@
 
 - name: blog_k3s_deploy | Exporter NodePort Services
   ansible.builtin.import_tasks: exporters.yml
+
+- name: blog_k3s_deploy | NetworkPolicy (requires common_calico)
+  ansible.builtin.import_tasks: networkpolicy.yml
+
+- name: blog_k3s_deploy | Image registry allowlist (ValidatingAdmissionPolicy)
+  ansible.builtin.import_tasks: image_policy.yml

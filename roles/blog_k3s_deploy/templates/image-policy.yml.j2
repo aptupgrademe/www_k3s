@@ -1,0 +1,55 @@
+# Image registry allowlist for the wordpress namespace – managed by Ansible
+# (blog_k3s_deploy).
+#
+# CIS 5.5.1 asks for "Image Provenance using ImagePolicyWebhook" — that
+# mechanism needs an externally hosted webhook backend implementing the
+# ImageReview API, which doesn't exist in this stack and isn't worth
+# building from scratch for a homelab. ValidatingAdmissionPolicy (GA since
+# Kubernetes 1.30, built into the apiserver, no extra infrastructure) is a
+# more modern way to reach the same control objective: reject any pod whose
+# image isn't one of the ones this repo actually deploys.
+#
+# Every image reference is matched by repository name only (not tag), so a
+# routine version bump in group_vars/all.yml never needs a matching change
+# here — this blocks a *different* image being substituted, not a version
+# of an already-approved one. Scoped to the wordpress namespace via
+# namespaceSelector so it can't ever interfere with kube-system/cert-manager/
+# ingress-nginx.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: wordpress-image-registry
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups: [""]
+      apiVersions: ["v1"]
+      operations: ["CREATE", "UPDATE"]
+      resources: ["pods"]
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: wordpress
+  variables:
+  - name: allowedRepos
+    expression: >
+      ['busybox', 'wordpress', 'mariadb', 'nginx', 'redis',
+       'prom/mysqld-exporter', 'hipages/php-fpm_exporter',
+       'docker.io/library/busybox', 'docker.io/library/wordpress',
+       'docker.io/library/mariadb', 'docker.io/library/nginx', 'docker.io/library/redis',
+       'docker.io/prom/mysqld-exporter', 'docker.io/hipages/php-fpm_exporter']
+  validations:
+  - expression: >
+      object.spec.containers.all(c, c.image.split(':')[0] in variables.allowedRepos)
+      && (!has(object.spec.initContainers) ||
+          object.spec.initContainers.all(c, c.image.split(':')[0] in variables.allowedRepos))
+    message: "Image is not on the wordpress namespace's approved-repository allowlist (see image-policy.yml.j2)"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: wordpress-image-registry-binding
+spec:
+  policyName: wordpress-image-registry
+  validationActions: ["Deny"]

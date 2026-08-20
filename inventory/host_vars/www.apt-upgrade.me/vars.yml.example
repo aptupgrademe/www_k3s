@@ -40,6 +40,19 @@ blog_wordpress_plugins:
   - classic-editor
   - limit-login-attempts-reloaded
 
+# Bundled plugins this site does not use. Deactivating leaves the PHP on disk
+# and reachable over HTTP, so the role deletes these outright.
+blog_wordpress_remove_plugins:
+  - akismet
+  - hello
+
+# --- Themes ---
+# Every INACTIVE theme not listed here is deleted on each run. The active
+# theme is never touched. Keep one core default as the fallback WordPress
+# switches to if the active theme fatals.
+blog_wordpress_keep_themes:
+  - twentytwentyfive
+
 # --- Paths ---
 blog_k3s_www_dir: /srv/wordpress-www
 blog_k3s_db_dir:  /srv/wordpress-db

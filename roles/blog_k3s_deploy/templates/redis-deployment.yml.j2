@@ -21,6 +21,8 @@ spec:
       labels:
         app: redis
     spec:
+      # Redis never talks to the Kubernetes API — no SA token needed in the pod.
+      automountServiceAccountToken: false
       containers:
       - name: redis
         image: {{ blog_image_redis }}

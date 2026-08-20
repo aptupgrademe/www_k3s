@@ -134,57 +134,77 @@
 # -----------------------------------------------------------------------------
 # Plugins
 # -----------------------------------------------------------------------------
-- name: WordPress | Install and activate plugins
-  ansible.builtin.command: >
-    k3s kubectl exec deployment/wordpress
-    --namespace wordpress
-    --container wordpress-fpm --
-    php /usr/local/lib/wp-cli/wp-cli.phar plugin install {{ item }} --activate --force
-    --path=/var/www/html
-    --allow-root
-  loop: "{{ blog_wordpress_plugins | default([]) }}"
-  register: wp_plugin_result
-  changed_when: >
-    'Installing' in wp_plugin_result.stdout or
-    'Activating' in wp_plugin_result.stdout
+# The install tasks and the ownership fix are one block/always unit on purpose.
+# WP-CLI runs with --allow-root and therefore writes every plugin file as
+# root:root; PHP-FPM runs as www-data (uid 33) and cannot write into a
+# root-owned plugin directory afterwards. If an install fails halfway, the
+# files it already unpacked stay root-owned, and without the `always` the play
+# would abort before the chown ever runs – leaving the site with plugins it
+# cannot write to. That is not hypothetical: on 2026-08-16 a wordpress.org
+# download timed out (cURL error 28 after 10 s) on the compressx item, the play
+# stopped there, and all-in-one-wp-migration was left unable to create its
+# storage/ directory until the chown was run by hand.
+- name: WordPress | Install plugins and fix ownership
+  block:
+    # `until` retries per loop item, so one flaky download no longer takes the
+    # whole run with it. wp-cli's HTTP timeout is a hard-coded 10 s and cannot
+    # be raised from the command line, so retrying is the only lever here.
+    - name: WordPress | Install and activate plugins
+      ansible.builtin.command: >
+        k3s kubectl exec deployment/wordpress
+        --namespace wordpress
+        --container wordpress-fpm --
+        php /usr/local/lib/wp-cli/wp-cli.phar plugin install {{ item }} --activate --force
+        --path=/var/www/html
+        --allow-root
+      loop: "{{ blog_wordpress_plugins | default([]) }}"
+      register: wp_plugin_result
+      until: wp_plugin_result.rc == 0
+      retries: 3
+      delay: 10
+      changed_when: >
+        'Installing' in wp_plugin_result.stdout or
+        'Activating' in wp_plugin_result.stdout
 
-# Redis Object Cache plugin – installed and enabled separately because
-# wp redis enable places the object-cache.php drop-in (separate WP-CLI command).
-- name: WordPress | Install and activate Redis Object Cache plugin
-  ansible.builtin.command: >
-    k3s kubectl exec deployment/wordpress
-    --namespace wordpress
-    --container wordpress-fpm --
-    php /usr/local/lib/wp-cli/wp-cli.phar plugin install redis-cache --activate
-    --path=/var/www/html
-    --allow-root
-  register: wp_redis_install
-  changed_when: >
-    'Installing' in wp_redis_install.stdout or
-    'Activating' in wp_redis_install.stdout
+    # Redis Object Cache plugin – installed and enabled separately because
+    # wp redis enable places the object-cache.php drop-in (separate WP-CLI command).
+    - name: WordPress | Install and activate Redis Object Cache plugin
+      ansible.builtin.command: >
+        k3s kubectl exec deployment/wordpress
+        --namespace wordpress
+        --container wordpress-fpm --
+        php /usr/local/lib/wp-cli/wp-cli.phar plugin install redis-cache --activate
+        --path=/var/www/html
+        --allow-root
+      register: wp_redis_install
+      until: wp_redis_install.rc == 0
+      retries: 3
+      delay: 10
+      changed_when: >
+        'Installing' in wp_redis_install.stdout or
+        'Activating' in wp_redis_install.stdout
 
-- name: WordPress | Enable Redis object-cache drop-in
-  ansible.builtin.command: >
-    k3s kubectl exec deployment/wordpress
-    --namespace wordpress
-    --container wordpress-fpm --
-    php /usr/local/lib/wp-cli/wp-cli.phar redis enable
-    --path=/var/www/html
-    --allow-root
-  register: wp_redis_enable
-  changed_when: "'Success' in wp_redis_enable.stdout"
-  failed_when: false
+    - name: WordPress | Enable Redis object-cache drop-in
+      ansible.builtin.command: >
+        k3s kubectl exec deployment/wordpress
+        --namespace wordpress
+        --container wordpress-fpm --
+        php /usr/local/lib/wp-cli/wp-cli.phar redis enable
+        --path=/var/www/html
+        --allow-root
+      register: wp_redis_enable
+      changed_when: "'Success' in wp_redis_enable.stdout"
+      failed_when: false
 
-
-# WP-CLI runs as root, so plugin files are created as root:root.
-# Fix ownership so PHP-FPM (www-data, uid 33) can write to wp-content.
-- name: WordPress | Fix wp-content ownership after plugin installation
-  ansible.builtin.command: >
-    k3s kubectl exec deployment/wordpress
-    --namespace wordpress
-    --container wordpress-fpm --
-    chown -R www-data:www-data /var/www/html/wp-content
-  changed_when: false
+  always:
+    # Runs even when an install above failed – see the block comment.
+    - name: WordPress | Fix wp-content ownership after plugin installation
+      ansible.builtin.command: >
+        k3s kubectl exec deployment/wordpress
+        --namespace wordpress
+        --container wordpress-fpm --
+        chown -R www-data:www-data /var/www/html/wp-content
+      changed_when: false
 
 
 # -----------------------------------------------------------------------------
@@ -339,53 +359,137 @@
 
 
 # -----------------------------------------------------------------------------
-# Updates (Core + Plugins)
+# Updates (Core + Plugins + Themes)
 # Safe to run on every playbook execution – WP-CLI reports "Success: WordPress
 # is at the latest version" when nothing needs updating, so these tasks are
 # effectively idempotent from an application perspective.
 # -----------------------------------------------------------------------------
-- name: WordPress | Update core
-  ansible.builtin.command: >
-    k3s kubectl exec deployment/wordpress
-    --namespace wordpress
-    --container wordpress-fpm --
-    php /usr/local/lib/wp-cli/wp-cli.phar core update
-    --path=/var/www/html
-    --allow-root
-  register: wp_core_update
-  changed_when: "'Success: WordPress updated' in wp_core_update.stdout"
+- name: WordPress | Update core, plugins and themes
+  block:
+    - name: WordPress | Update core
+      ansible.builtin.command: >
+        k3s kubectl exec deployment/wordpress
+        --namespace wordpress
+        --container wordpress-fpm --
+        php /usr/local/lib/wp-cli/wp-cli.phar core update
+        --path=/var/www/html
+        --allow-root
+      register: wp_core_update
+      changed_when: "'Success: WordPress updated' in wp_core_update.stdout"
 
-- name: WordPress | Update all plugins
-  ansible.builtin.command: >
-    k3s kubectl exec deployment/wordpress
-    --namespace wordpress
-    --container wordpress-fpm --
-    php /usr/local/lib/wp-cli/wp-cli.phar plugin update --all
-    --path=/var/www/html
-    --allow-root
-  register: wp_plugin_update
-  changed_when: "'Updated' in wp_plugin_update.stdout"
-  # wp-cli's `plugin update --all` exits 1 with "No plugins updated" when
-  # every plugin is already at the latest version -- not a real failure,
-  # just nothing to do (routinely the case now that the install task above
-  # uses --force and already fetches the latest version).
-  failed_when: >-
-    wp_plugin_update.rc != 0 and
-    'No plugins updated' not in wp_plugin_update.stderr
 
-# Ownership fix after updates – wp-cli runs as root and may create files
-# owned by root:root that PHP-FPM (www-data, uid 33) cannot write to.
-- name: WordPress | Fix wp-content ownership after updates
-  ansible.builtin.command: >
-    k3s kubectl exec deployment/wordpress
-    --namespace wordpress
-    --container wordpress-fpm --
-    chown -R www-data:www-data /var/www/html/wp-content
-  changed_when: false
+    # -----------------------------------------------------------------------------
+    # Remove unused plugins and themes
+    # -----------------------------------------------------------------------------
+    # Deactivated is not disabled: the files still sit under wp-content and are
+    # reachable over HTTP, so a vulnerability in a bundled-but-unused plugin or
+    # theme is still exploitable. Deleting them is the only thing that actually
+    # removes the code path. Both lists are declared per host in host_vars.
+    #
+    # Placed after `core update` but before the update tasks below on purpose:
+    # a core update can reinstall the bundled default themes, so the removal has
+    # to run after it to have any effect – and running it before the update tasks
+    # means nothing gets downloaded that is about to be deleted anyway.
+    - name: WordPress | Remove unused plugins
+      ansible.builtin.command: >
+        k3s kubectl exec deployment/wordpress
+        --namespace wordpress
+        --container wordpress-fpm --
+        php /usr/local/lib/wp-cli/wp-cli.phar plugin delete {{ item }}
+        --path=/var/www/html
+        --allow-root
+      loop: "{{ blog_wordpress_remove_plugins | default([]) }}"
+      register: wp_plugin_delete
+      changed_when: "'Deleted' in wp_plugin_delete.stdout"
+      # Already gone (deleted on an earlier run, or never installed) is the
+      # steady state here, not an error – wp-cli exits 1 and warns either way.
+      failed_when: >-
+        wp_plugin_delete.rc != 0 and
+        'could not be found' not in (wp_plugin_delete.stdout + wp_plugin_delete.stderr)
+
+    # --status=inactive can never return the active theme, so the site's own theme
+    # is structurally safe from this task – no name matching required. WordPress
+    # still needs one default theme installed as a fallback: if the active theme
+    # ever fatals, core switches to a bundled default, and with none present that
+    # path ends in a white screen instead. blog_wordpress_keep_themes holds it.
+    - name: WordPress | List inactive themes
+      ansible.builtin.command: >
+        k3s kubectl exec deployment/wordpress
+        --namespace wordpress
+        --container wordpress-fpm --
+        php /usr/local/lib/wp-cli/wp-cli.phar theme list --status=inactive --field=name
+        --path=/var/www/html
+        --allow-root
+      register: wp_inactive_themes
+      changed_when: false
+
+    - name: WordPress | Remove unused themes (keeping the fallback)
+      ansible.builtin.command: >
+        k3s kubectl exec deployment/wordpress
+        --namespace wordpress
+        --container wordpress-fpm --
+        php /usr/local/lib/wp-cli/wp-cli.phar theme delete {{ item }}
+        --path=/var/www/html
+        --allow-root
+      loop: >-
+        {{ wp_inactive_themes.stdout_lines
+           | map('trim') | select()
+           | difference(blog_wordpress_keep_themes | default([])) | list }}
+      register: wp_theme_delete
+      changed_when: "'Deleted' in wp_theme_delete.stdout"
+
+
+    - name: WordPress | Update all plugins
+      ansible.builtin.command: >
+        k3s kubectl exec deployment/wordpress
+        --namespace wordpress
+        --container wordpress-fpm --
+        php /usr/local/lib/wp-cli/wp-cli.phar plugin update --all
+        --path=/var/www/html
+        --allow-root
+      register: wp_plugin_update
+      changed_when: "'Updated' in wp_plugin_update.stdout"
+      # wp-cli's `plugin update --all` exits 1 with "No plugins updated" when
+      # every plugin is already at the latest version -- not a real failure,
+      # just nothing to do (routinely the case now that the install task above
+      # uses --force and already fetches the latest version).
+      failed_when: >-
+        wp_plugin_update.rc != 0 and
+        'No plugins updated' not in wp_plugin_update.stderr
+
+    # Themes were previously never updated by this role – only core and plugins
+    # were. An out-of-date theme is the same class of exposure as an out-of-date
+    # plugin: its PHP runs on every request. Same exit-1-when-nothing-to-do
+    # handling as the plugin task above.
+    - name: WordPress | Update all themes
+      ansible.builtin.command: >
+        k3s kubectl exec deployment/wordpress
+        --namespace wordpress
+        --container wordpress-fpm --
+        php /usr/local/lib/wp-cli/wp-cli.phar theme update --all
+        --path=/var/www/html
+        --allow-root
+      register: wp_theme_update
+      changed_when: "'Updated' in wp_theme_update.stdout"
+      failed_when: >-
+        wp_theme_update.rc != 0 and
+        'No themes updated' not in wp_theme_update.stderr
+
+  always:
+    # Same reasoning as the plugin block above: wp-cli writes updated
+    # files as root:root, so the chown has to happen even when one of the
+    # update tasks fails, or PHP-FPM is left unable to write to wp-content.
+    - name: WordPress | Fix wp-content ownership after updates
+      ansible.builtin.command: >
+        k3s kubectl exec deployment/wordpress
+        --namespace wordpress
+        --container wordpress-fpm --
+        chown -R www-data:www-data /var/www/html/wp-content
+      changed_when: false
 
 
 # -----------------------------------------------------------------------------
-# Restart the pod when core or plugins actually changed
+# Restart the pod when core, plugins or themes actually changed
 # -----------------------------------------------------------------------------
 # PHP runs with opcache.validate_timestamps=0 (see the php-config ConfigMap in
 # blog_k3s_deploy): file mtimes are never re-checked, so bytecode already in
@@ -401,7 +505,7 @@
   ansible.builtin.command: >
     k3s kubectl rollout restart deployment/wordpress
     --namespace wordpress
-  when: wp_core_update.changed or wp_plugin_update.changed
+  when: wp_core_update.changed or wp_plugin_update.changed or wp_theme_update.changed
   changed_when: true
 
 - name: WordPress | Wait for the restarted pod to become ready
@@ -409,5 +513,5 @@
     k3s kubectl rollout status deployment/wordpress
     --namespace wordpress
     --timeout=300s
-  when: wp_core_update.changed or wp_plugin_update.changed
+  when: wp_core_update.changed or wp_plugin_update.changed or wp_theme_update.changed
   changed_when: false

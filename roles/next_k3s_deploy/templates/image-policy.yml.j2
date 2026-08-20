@@ -1,0 +1,43 @@
+# Image registry allowlist for the nextcloud namespace – managed by Ansible
+# (next_k3s_deploy). Same reasoning as the blog's version of this file
+# (roles/blog_k3s_deploy/templates/image-policy.yml.j2) — see there for the
+# full "why ValidatingAdmissionPolicy instead of ImagePolicyWebhook" writeup.
+#
+# MariaDB/Redis are native host services here, not k3s pods (see
+# next_mariadb/next_redis), so they don't appear in this allowlist.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: nextcloud-image-registry
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups: [""]
+      apiVersions: ["v1"]
+      operations: ["CREATE", "UPDATE"]
+      resources: ["pods"]
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: nextcloud
+  variables:
+  - name: allowedRepos
+    expression: >
+      ['busybox', 'nextcloud', 'nginx', 'collabora/code', 'hipages/php-fpm_exporter',
+       'docker.io/library/busybox', 'docker.io/library/nextcloud', 'docker.io/library/nginx',
+       'docker.io/collabora/code', 'docker.io/hipages/php-fpm_exporter']
+  validations:
+  - expression: >
+      object.spec.containers.all(c, c.image.split(':')[0] in variables.allowedRepos)
+      && (!has(object.spec.initContainers) ||
+          object.spec.initContainers.all(c, c.image.split(':')[0] in variables.allowedRepos))
+    message: "Image is not on the nextcloud namespace's approved-repository allowlist (see image-policy.yml.j2)"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: nextcloud-image-registry-binding
+spec:
+  policyName: nextcloud-image-registry
+  validationActions: ["Deny"]

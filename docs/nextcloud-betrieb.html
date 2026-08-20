@@ -1755,10 +1755,41 @@ openssl s_client -connect nextcloud.example.com:443 -status 2>/dev/null | \
   </tr>
   <tr>
     <td>Secrets</td>
-    <td>Ansible Vault, K8s Secrets (Opaque), no_log auf sensible Tasks</td>
+    <td>Ansible Vault, K8s Secrets (Opaque), no_log auf sensible Tasks;
+        MYSQL_PASSWORD/NEXTCLOUD_ADMIN_PASSWORD/SMTP_PASSWORD werden jetzt als
+        gemountete Dateien geliefert (<code>_FILE</code>-Konvention) statt als
+        Klartext-Env-Var – dasselbe Muster wie beim Blog, hier am 2026-08-20 gespiegelt</td>
     <td>alle Rollen</td>
   </tr>
+  <tr>
+    <td>Image-Allowlist</td>
+    <td><code>ValidatingAdmissionPolicy</code> im <code>nextcloud</code>-Namespace,
+        derselbe Mechanismus wie beim Blog</td>
+    <td><code>next_k3s_deploy</code></td>
+  </tr>
+  <tr>
+    <td>ServiceAccount-Härtung</td>
+    <td><code>automountServiceAccountToken: false</code> auf nextcloud-/collabora-/cron-Pod-Templates
+        + der Default-SA des Namespace</td>
+    <td><code>next_k3s_deploy</code></td>
+  </tr>
 </table>
+<div class="callout callout-info">
+  <strong>Noch nicht live ausgerollt (2026-08-20)</strong>
+  Die drei Punkte oben wurden im Zuge der CIS/kube-bench-Härtung des
+  Blog-Clusters am 2026-08-20 in den Ansible-Code aufgenommen und hier aus
+  Konsistenzgründen gespiegelt, aber <strong>nicht live angewendet</strong> –
+  die Nextcloud-Produktionshosts (<code>cvjm</code>, <code>sofie</code>)
+  sind noch nicht aktiv. Sie greifen beim ersten echten
+  <code>ansible-playbook nextcloud-k3s.yml</code>-Lauf. Anders als beim Blog
+  gibt es bei Nextcloud keine eigene NetworkPolicy (nur
+  <code>collabora-netpol</code> existiert, unverändert) – MariaDB/Redis
+  laufen hier als Host-Services, nicht als Pods, daher greift der
+  "Calico-Startup-Race"-Befund von der WordPress-Seite aktuell nicht. Falls
+  später eine <code>nextcloud-netpol</code> eingeführt wird, die den
+  nextcloud-/Cron-Pod selbst einschränkt, diesen Befund erneut prüfen (siehe
+  WP-Cron-Abschnitt im WordPress-Betriebshandbuch).
+</div>
 
 <h3>Container- &amp; App-Härtung</h3>
 <p>

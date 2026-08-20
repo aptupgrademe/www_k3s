@@ -18,8 +18,18 @@ spec:
   jobTemplate:
     spec:
       template:
+        metadata:
+          # Same "app: wordpress" identity as the main Deployment pod, so the
+          # wordpress-netpol NetworkPolicy (egress to MariaDB/Redis/DNS/HTTPS)
+          # covers cron pods too — wp-cron.php needs the exact same access
+          # (it runs the same WP bootstrap, including the wp_version_check /
+          # wp_update_plugins hooks that call out to wordpress.org).
+          labels:
+            app: wordpress
         spec:
           restartPolicy: OnFailure
+          # wp-cron.php never talks to the Kubernetes API — no SA token needed.
+          automountServiceAccountToken: false
           containers:
           - name: wp-cron
             image: {{ blog_image_wordpress }}
@@ -32,9 +42,23 @@ spec:
                 drop: [ALL]
               seccompProfile:
                 type: RuntimeDefault
+            # 5s startup delay: Calico/Felix needs a moment after pod creation
+            # to program this pod's NetworkPolicy rules (egress to
+            # MariaDB/Redis, see wordpress-netpol). Long-lived pods never hit
+            # this - their readinessProbe initialDelaySeconds (20s+) covers
+            # it - but wp-cron.php connects to Redis within its first second
+            # of life, every 5 minutes. Verified live (isolated fsockopen("redis", ...)
+            # test, no WordPress involved): a brand-new pod's first connection
+            # attempt got "Connection refused"; the same test with a 5s sleep
+            # first succeeded consistently. wp-cron.php itself doesn't fail
+            # loudly enough to trigger OnFailure retry (WP's Redis
+            # object-cache drop-in calls wp_die(), which exits 0), so this
+            # isn't self-healing - the delay is the actual fix, not a
+            # band-aid for a retry to paper over.
             command:
-            - php
-            - /var/www/html/wp-cron.php
+            - sh
+            - -c
+            - sleep 5 && php /var/www/html/wp-cron.php
             env:
             - name: WORDPRESS_DB_HOST
               valueFrom:
@@ -51,14 +75,38 @@ spec:
                 secretKeyRef:
                   name: wordpress-secrets
                   key: db-user
-            - name: WORDPRESS_DB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: wordpress-secrets
-                  key: db-password
+            # CIS 5.4.1: file, not a plain env var — same reasoning as the
+            # main wordpress-fpm container.
+            - name: WORDPRESS_DB_PASSWORD_FILE
+              value: /etc/secrets/db-password
+            # Pre-existing gap, found while testing the NetworkPolicy change
+            # above: this container never had WORDPRESS_CONFIG_EXTRA at all,
+            # unlike wordpress-fpm in the main Deployment. Without it,
+            # WP_REDIS_HOST is undefined and the Redis Object Cache drop-in
+            # falls back to its own default (127.0.0.1) - nothing listens
+            # there in this pod, so every wp-cron.php run has been hard
+            # dying on "Error establishing a Redis connection" (confirmed
+            # live) rather than actually running the scheduled WP-Cron events
+            # (version checks, scheduled posts, etc.). Must stay identical to
+            # the wordpress-fpm block in wordpress-deployment.yml.j2.
+            - name: WORDPRESS_CONFIG_EXTRA
+              value: |
+                define('WP_HOME',    'https://{{ blog_hostname }}');
+                define('WP_SITEURL', 'https://{{ blog_hostname }}');
+                define('WP_REDIS_HOST',     'redis');
+                define('WP_REDIS_PORT',     6379);
+                define('WP_REDIS_DATABASE', 0);
+                define('WP_REDIS_SCHEME',   'tcp');
+                define('WP_REDIS_MAXTTL', 86400);
+                define('WP_CACHE', true);
+                define('WPCACHEHOME', '/var/www/html/wp-content/plugins/wp-super-cache/');
+                define('DISALLOW_FILE_EDIT', true);
             volumeMounts:
             - name: wordpress-www
               mountPath: /var/www/html
+              readOnly: true
+            - name: db-credentials
+              mountPath: /etc/secrets
               readOnly: true
             resources:
               requests:
@@ -72,3 +120,10 @@ spec:
             hostPath:
               path: {{ blog_k3s_www_dir }}
               type: Directory
+          - name: db-credentials
+            secret:
+              secretName: wordpress-secrets
+              items:
+              - key: db-password
+                path: db-password
+              defaultMode: 0444

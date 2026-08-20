@@ -22,6 +22,8 @@ spec:
       labels:
         app: mariadb
     spec:
+      # MariaDB never talks to the Kubernetes API — no SA token needed.
+      automountServiceAccountToken: false
       # -------------------------------------------------------------------
       # Init container: fix HostPath directory ownership
       # mariadb runs as mysql user (uid 999, gid 999).
@@ -69,11 +71,10 @@ spec:
         - --tmp-table-size=32M
         - --max-heap-table-size=32M
         env:
-        - name: MARIADB_ROOT_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: wordpress-secrets
-              key: db-root-password
+        # CIS 5.4.1: files, not plain env vars — mariadb's file_env() helper
+        # supports the _FILE convention (verified live against this image).
+        - name: MARIADB_ROOT_PASSWORD_FILE
+          value: /etc/secrets/db-root-password
         - name: MARIADB_DATABASE
           valueFrom:
             secretKeyRef:
@@ -84,11 +85,8 @@ spec:
             secretKeyRef:
               name: wordpress-secrets
               key: db-user
-        - name: MARIADB_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: wordpress-secrets
-              key: db-password
+        - name: MARIADB_PASSWORD_FILE
+          value: /etc/secrets/db-password
         # Required when upgrading from a previous major version (e.g. 10.x → 11.x).
         # Runs mariadb-upgrade on first start to migrate auth tables and system schema.
         - name: MARIADB_AUTO_UPGRADE
@@ -99,6 +97,9 @@ spec:
         volumeMounts:
         - name: mariadb-data
           mountPath: /var/lib/mysql
+        - name: db-credentials
+          mountPath: /etc/secrets
+          readOnly: true
         resources:
           requests:
             memory: "256Mi"
@@ -115,7 +116,7 @@ spec:
             - -c
             - >
               mysqladmin ping -h 127.0.0.1
-              -u root -p"${MARIADB_ROOT_PASSWORD}" 2>/dev/null
+              -u root -p"$(cat /etc/secrets/db-root-password)" 2>/dev/null
           initialDelaySeconds: 20
           periodSeconds: 10
           failureThreshold: 6
@@ -126,7 +127,7 @@ spec:
             - -c
             - >
               mysqladmin ping -h 127.0.0.1
-              -u root -p"${MARIADB_ROOT_PASSWORD}" 2>/dev/null
+              -u root -p"$(cat /etc/secrets/db-root-password)" 2>/dev/null
           initialDelaySeconds: 30
           periodSeconds: 20
           failureThreshold: 3
@@ -172,6 +173,17 @@ spec:
       - name: mysqld-exporter-config
         secret:
           secretName: wordpress-secrets
+          defaultMode: 0444
+      # CIS 5.4.1: root/app-user DB passwords delivered as files, not plain
+      # env vars. Also read directly by the readiness/liveness probes above.
+      - name: db-credentials
+        secret:
+          secretName: wordpress-secrets
+          items:
+          - key: db-root-password
+            path: db-root-password
+          - key: db-password
+            path: db-password
           defaultMode: 0444
 ---
 apiVersion: v1

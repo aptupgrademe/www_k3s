@@ -596,6 +596,65 @@ real_ip_recursive on;</code></pre>
   verfügbar. Die eigentliche Anwendung der Zone erfolgt über die
   <code>server-snippets</code>-Annotation im WordPress-Ingress.
 </div>
+
+<h3>NetworkPolicy (Calico) – Pod-zu-Pod-Traffic innerhalb des Clusters</h3>
+<p>
+  Alles oben regelt Traffic, der <em>am</em> Cluster ankommt. Seit 2026-08-20
+  setzt <code>common_calico</code> (Felix + kube-controllers, Policy-Only-Modus –
+  kein BGP, kein eigenes IPAM/CNI, Flannel macht weiterhin das gesamte
+  Pod-Networking) zusätzlich drei <code>NetworkPolicy</code>-Objekte
+  <em>innerhalb</em> des <code>wordpress</code>-Namespace durch. Flannel allein
+  <strong>ignoriert</strong> NetworkPolicy-Objekte stillschweigend – Calico
+  liefert nur die fehlende Durchsetzungsebene nach.
+</p>
+<table>
+  <tr><th>Policy</th><th>Gilt für</th><th>Erlaubter Ingress</th><th>Erlaubter Egress</th></tr>
+  <tr>
+    <td><code>wordpress-netpol</code></td>
+    <td>Pods mit Label <code>app: wordpress</code> (Deployment + <code>wordpress-cron</code>)</td>
+    <td>Port 80 nur von der ingress-nginx-Host-IP; Port 9253 (php-fpm-exporter) vom Pod-CIDR (Host-Prometheus via NodePort)</td>
+    <td>DNS; MariaDB :3306; Redis :6379; offenes Internet auf :443 (Core-/Plugin-/WP-CLI-Updates – lässt sich nicht enger fassen, siehe unten)</td>
+  </tr>
+  <tr>
+    <td><code>mariadb-netpol</code></td>
+    <td>Pods mit Label <code>app: mariadb</code></td>
+    <td>Port 3306 nur von <code>app: wordpress</code>-Pods; Port 9104 (mysqld-exporter) vom Pod-CIDR</td>
+    <td>Keiner – eigenständige DB, keine Replikation/externen Calls</td>
+  </tr>
+  <tr>
+    <td><code>redis-netpol</code></td>
+    <td>Pods mit Label <code>app: redis</code></td>
+    <td>Port 6379 nur von <code>app: wordpress</code>-Pods</td>
+    <td>Keiner – reiner In-Memory-Cache</td>
+  </tr>
+</table>
+<div class="callout callout-info">
+  <strong>Bekannte Einschränkung: keine domänenbasierte Egress-Filterung</strong>
+  Standard-<code>NetworkPolicy</code> matcht nur nach IP/CIDR, und Calico läuft
+  hier im Policy-Only-OSS-Modus (keine FQDN-fähigen Network-Sets – das ist ein
+  Calico-Enterprise-Feature). WordPress-Core, seine Plugins und der
+  WP-CLI-Init-Container brauchen ausgehendes HTTPS zu CDN-gestützten, nicht
+  enumerierbaren IP-Bereichen (wordpress.org, github.com/objects.githubusercontent.com).
+  Port 443 zu <code>0.0.0.0/0</code> bleibt deshalb im Egress von
+  <code>wordpress-netpol</code> offen – was das tatsächlich einschränkt, ist
+  <em>laterale Bewegung innerhalb des Clusters</em> (kube-system, cert-manager,
+  ingress-nginx-Admin-Ports, jeder künftige Pod), nicht C2/Exfiltration über HTTPS.
+</div>
+<div class="callout callout-warn">
+  <strong>Neue Pods und die Felix-Startup-Race</strong>
+  Der allererste ausgehende Verbindungsversuch eines brandneuen Pods (in
+  etwa der ersten Sekunde nach Containerstart) kann mit "Connection refused"
+  fehlschlagen, wenn Calicos Felix die Policy-Regeln für diesen Pod noch
+  nicht fertig programmiert hat. Lang laufende Pods bemerken das nie – ihre
+  <code>readinessProbe</code> mit <code>initialDelaySeconds</code> (20s+)
+  deckt das ab – aber kurzlebige Jobs, die sofort verbinden, können das
+  reproduzierbar treffen. Deshalb startet der Command im
+  <code>wordpress-cron</code>-Container mit <code>sleep 5 &amp;&amp;</code> –
+  siehe WP-Cron unten. Bei jeder künftigen NetworkPolicy für einen weiteren
+  kurzlebigen Workload dran denken (Nextclouds <code>nextcloud-cron</code>
+  hat aktuell keine eigene NetworkPolicy, ist also nicht betroffen – bräuchte
+  aber dieselbe Behandlung, falls später eine hinzukommt).
+</div>
 </section>
 
 <!-- ─────────────────────────── DATEIEN ──────────────────────────────── -->
@@ -627,8 +686,8 @@ real_ip_recursive on;</code></pre>
   <tr><th>Rolle</th><th>Aufgabe</th></tr>
   <tr><td><code>blog_packages</code></td><td>Pakete installieren (z.B. SELinux-Tools)</td></tr>
   <tr><td><code>blog_selinux</code></td><td>SELinux enforcing, <code>container_file_t</code> für HostPath-Verzeichnisse</td></tr>
-  <tr><td><code>common_k3s</code></td><td>K3s, Helm, cert-manager, nginx-ingress (F5) – gemeinsame Basis</td></tr>
-  <tr><td><code>blog_k3s_deploy</code></td><td>K8s-Manifeste: Namespace, Secrets, ConfigMaps, Deployments, Ingress, CronJob</td></tr>
+  <tr><td><code>common_k3s</code></td><td>K3s, Helm, cert-manager, nginx-ingress (F5), Calico (policy-only, für NetworkPolicy-Durchsetzung), Audit-Logging, EventRateLimit-/NodeRestriction-Admission-Plugins, Pod-PID-Limit, PKI-Dateirechte, clusterweite Default-ServiceAccount-Härtung – gemeinsame Basis, geteilt mit Nextcloud</td></tr>
+  <tr><td><code>blog_k3s_deploy</code></td><td>K8s-Manifeste: Namespace (+ Pod-Security-Standards-Labels, Default-SA-Härtung), Secrets, ConfigMaps, Deployments, Ingress, CronJob, NetworkPolicy, Image-Allowlist</td></tr>
   <tr><td><code>blog_wordpress</code></td><td>Post-Deploy: WP-CLI-Befehle (Admin, Plugins, Einstellungen)</td></tr>
 </table>
 
@@ -638,12 +697,16 @@ real_ip_recursive on;</code></pre>
   <tr>
     <td><code>wordpress-deployment.yml.j2</code></td>
     <td>Deployment + Service für WordPress</td>
-    <td>Image-Tags, Volumes, Env-Variablen (DB-Credentials als Secret-Ref)</td>
+    <td>Image-Tags, Volumes, Env-Variablen. DB-Passwort wird als gemountete
+        Datei geliefert (<code>WORDPRESS_DB_PASSWORD_FILE</code>), nicht als
+        Env-Variable im Klartext – siehe Sicherheit</td>
   </tr>
   <tr>
     <td><code>mariadb-deployment.yml.j2</code></td>
     <td>Deployment + Service für MariaDB</td>
-    <td>Datenbankinitialisierung beim ersten Start, HostPath-Volume</td>
+    <td>Datenbankinitialisierung beim ersten Start, HostPath-Volume. Root-/User-Passwörter
+        als Dateien; Readiness-/Liveness-Probes lesen das Root-Passwort direkt
+        aus der gemounteten Datei (<code>$(cat /etc/secrets/db-root-password)</code>)</td>
   </tr>
   <tr>
     <td><code>nginx-cm.yml.j2</code></td>
@@ -653,7 +716,10 @@ real_ip_recursive on;</code></pre>
   <tr>
     <td><code>secret.yml.j2</code></td>
     <td>Secret <code>wordpress-secrets</code></td>
-    <td>DB-Host, DB-Name, DB-User, DB-Passwort – als Env-Variablen in den Pod</td>
+    <td>DB-Host, DB-Name, DB-User, DB-Passwort, Admin-Credentials,
+        Exporter-Passwort. Die Passwort-Keys werden von den anderen
+        Templates unten als gemountete Dateien konsumiert (0444, readOnly),
+        nicht als Env-Variablen</td>
   </tr>
   <tr>
     <td><code>ingress.yml.j2</code></td>
@@ -663,7 +729,24 @@ real_ip_recursive on;</code></pre>
   <tr>
     <td><code>cronjob.yml.j2</code></td>
     <td>K8s CronJob <code>wordpress-cron</code></td>
-    <td>Führt <code>wp-cron.php</code> alle 5 Minuten aus; ersetzt WP-internen Pseudo-Cron</td>
+    <td>Führt <code>wp-cron.php</code> alle 5 Minuten aus; ersetzt WP-internen
+        Pseudo-Cron. Command ist <code>sleep 5 &amp;&amp; php ...</code> –
+        Grund siehe WP-Cron-Abschnitt</td>
+  </tr>
+  <tr>
+    <td><code>networkpolicy.yml.j2</code></td>
+    <td>3× <code>NetworkPolicy</code>: <code>wordpress-netpol</code>,
+        <code>mariadb-netpol</code>, <code>redis-netpol</code></td>
+    <td>Schränkt MariaDB/Redis auf Ingress nur von WordPress ein und
+        begrenzt WordPress' eigenen Egress – siehe Netzwerk &amp; TLS und Sicherheit</td>
+  </tr>
+  <tr>
+    <td><code>image-policy.yml.j2</code></td>
+    <td><code>ValidatingAdmissionPolicy</code> + Binding
+        <code>wordpress-image-registry</code></td>
+    <td>Lehnt jeden Pod im <code>wordpress</code>-Namespace ab, dessen Image
+        nicht auf der freigegebenen Repository-Liste steht (nach Repo-Name,
+        tag-unabhängig)</td>
   </tr>
 </table>
 </section>
@@ -1198,7 +1281,47 @@ k3s kubectl logs -n wordpress -l job-name=wordpress-cron-&lt;id&gt;</code></pre>
 
 <h3>Manuelle Ausführung (für Tests)</h3>
 <pre><code>k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
-  php /var/www/html/wp-cron.php</code></pre>
+  php /var/www/html/wp-cron.php
+
+# Oder ein einmaliger Job aus der aktiven CronJob-Spec (näher an dem, was
+# der Scheduler wirklich ausführt, inkl. WORDPRESS_CONFIG_EXTRA):
+k3s kubectl create job --from=cronjob/wordpress-cron wordpress-cron-manual-test -n wordpress</code></pre>
+
+<div class="callout callout-warn">
+  <strong>Zwei Bugs hier gefunden und gefixt am 2026-08-20 – gut zu wissen</strong>
+  <p>
+    Ein CronJob mit <code>STATUS: Complete</code> bedeutet <strong>nicht</strong>,
+    dass das PHP darin die geplanten WP-Cron-Events tatsächlich ausgeführt hat –
+    WordPress' <code>wp_die()</code> beendet sich mit Exit-Code 0, ein harter
+    PHP-Fatal zeigt also trotzdem als sauberes "Complete" an. Immer
+    <code>kubectl logs</code> auf dem Pod prüfen, nicht nur den Job-Status.
+  </p>
+  <ol>
+    <li>
+      <strong>Fehlende <code>WORDPRESS_CONFIG_EXTRA</code> (vorbestehend, unabhängig von NetworkPolicy).</strong>
+      Der Cron-Container hatte diese Env-Variable nie gesetzt, anders als der
+      Haupt-Container <code>wordpress-fpm</code> – daher war
+      <code>WP_REDIS_HOST</code> bei jedem wp-cron.php-Lauf undefiniert, und
+      das Redis-Object-Cache-Drop-In fiel still auf seinen eigenen
+      Default zurück (<code>127.0.0.1</code>, dort lauscht in diesem Pod
+      nichts) → Fatal "Error establishing a Redis connection". Gefixt, indem
+      <code>cronjob.yml.j2</code> denselben <code>WORDPRESS_CONFIG_EXTRA</code>-Block
+      wie das Haupt-Deployment bekommen hat.
+    </li>
+    <li>
+      <strong>Calico/Felix-Startup-Race (durch das Hinzufügen von <code>wordpress-netpol</code> eingeführt).</strong>
+      Nachdem die NetworkPolicy oben live war, konnte der allererste
+      Redis-Verbindungsversuch eines brandneuen Cron-Pods (in der ersten
+      Sekunde seines Lebens) selbst mit Fix #1 noch "Connection refused"
+      liefern – Felix hatte die Egress-Regel für den Pod noch nicht fertig
+      programmiert. Gefixt mit einem <code>sleep 5 &amp;&amp;</code>-Prefix
+      vor dem Container-Command. Siehe den NetworkPolicy-Hinweis unter
+      Netzwerk &amp; TLS dazu, warum sich das nicht über
+      <code>restartPolicy: OnFailure</code> selbst heilt.
+    </li>
+  </ol>
+  <p>Beide Fixes sind live gegen einen echten (nicht manuell getriggerten) planmäßigen Tick verifiziert.</p>
+</div>
 </section>
 
 <!-- ─────────────────────────── UPDATES ──────────────────────────────── -->
@@ -1444,12 +1567,28 @@ k3s kubectl logs -n ingress-nginx daemonset/ingress-nginx-nginx-ingress-controll
 <pre><code># CronJob-Status:
 k3s kubectl get cronjob wordpress-cron -n wordpress
 
-# Letzter Job-Pod (sollte "Completed" sein):
+# Letzter Job-Pod (sollte "Completed" sein) -- "Completed" allein beweist
+# aber NICHTS, siehe unten:
 k3s kubectl get pods -n wordpress --sort-by=.metadata.creationTimestamp | tail -5
+
+# IMMER auch die echten Logs prüfen -- ein fataler wp_die() endet trotzdem mit Exit 0:
+k3s kubectl logs -n wordpress -l job-name=&lt;job-name-von-oben&gt;
 
 # Manuell auslösen (für Test):
 k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
   php /var/www/html/wp-cron.php</code></pre>
+<p>
+  Zeigen die Logs eine HTML-Seite mit "Error establishing a Redis
+  connection": das war ein echter Bug, gefixt am 2026-08-20 (siehe Hinweis
+  im WP-Cron-Abschnitt oben) – eine fehlende <code>WORDPRESS_CONFIG_EXTRA</code>-Env-Var
+  im Cron-Container, plus eine Calico-Policy-Programmierungs-Race für den
+  ersten Verbindungsversuch des brandneuen Pods. Tritt es nach einer
+  künftigen Änderung an <code>cronjob.yml.j2</code> wieder auf, beides
+  prüfen: (1) stimmt der Env-Block des Cron-Containers noch mit dem
+  <code>WORDPRESS_CONFIG_EXTRA</code> des Haupt-Deployments überein, und (2)
+  startet der Command noch mit <code>sleep 5 &amp;&amp;</code>, bevor
+  irgendetwas über das Netzwerk verbindet.
+</p>
 
 <h3>"Permission denied" / "Read-only file system" bei dnf, sysctl oder /sys-Schreibzugriffen über SSH</h3>
 <p>
@@ -1735,10 +1874,85 @@ k3s kubectl exec deployment/mariadb -n wordpress -- \
   </tr>
   <tr>
     <td>Secrets</td>
-    <td>Ansible Vault, K8s Secrets (Opaque), no_log auf sensible Tasks</td>
+    <td>Ansible Vault, K8s Secrets (Opaque), no_log auf sensible Tasks;
+        DB-Passwörter werden Containern als gemountete Dateien geliefert
+        (<code>_FILE</code>-Env-Var-Konvention), nicht als Klartext-Env-Var</td>
     <td>alle Rollen</td>
   </tr>
+  <tr>
+    <td>NetworkPolicy</td>
+    <td>Calico (Policy-Only) sorgt dafür, dass MariaDB/Redis nur von
+        WordPress-Pods erreichbar sind, und begrenzt WordPress' eigenen
+        lateralen Egress im Cluster – volle Topologie siehe Netzwerk &amp; TLS</td>
+    <td><code>common_calico</code>, <code>blog_k3s_deploy</code></td>
+  </tr>
+  <tr>
+    <td>Image-Allowlist</td>
+    <td><code>ValidatingAdmissionPolicy</code> lehnt jeden Pod im
+        <code>wordpress</code>-Namespace ab, dessen Image nicht auf der
+        freigegebenen Repository-Liste steht (nach Repo-Name, beliebiger Tag) –
+        im API-Server eingebaut (GA seit Kubernetes 1.30), keine zusätzliche
+        Webhook-Infrastruktur nötig</td>
+    <td><code>blog_k3s_deploy</code></td>
+  </tr>
+  <tr>
+    <td>K8s-API-Audit-Log</td>
+    <td>Jeder API-Request wird nach
+        <code>/var/lib/rancher/k3s/server/logs/audit.log</code> geloggt
+        (30 Tage/10 Backups/100MB Rotation). Secrets/ConfigMaps auf
+        Metadata-Level (wer/wann, nie Inhalt), <code>pods/exec</code>/<code>attach</code>/<code>portforward</code>
+        auf Request-Level, RBAC-Objektänderungen mit vollem RequestResponse</td>
+    <td><code>common_k3s</code></td>
+  </tr>
+  <tr>
+    <td>Admission Control</td>
+    <td>EventRateLimit (50 qps/100 Burst, verhindert Event-Flood-DoS durch
+        einen crashloopenden Pod) neben k3s' eigenem Standard NodeRestriction
+        (begrenzt, was ein kompromittiertes kubelet über die API ändern kann)</td>
+    <td><code>common_k3s</code></td>
+  </tr>
+  <tr>
+    <td>Pod-PID-Limit</td>
+    <td><code>--pod-max-pids=4096</code> – begrenzt eine Fork-Bomb in einem
+        kompromittierten Container auf diesen Pod, kann nicht den gesamten
+        PID-Raum des Nodes erschöpfen</td>
+    <td><code>common_k3s</code></td>
+  </tr>
+  <tr>
+    <td>ServiceAccount-Härtung</td>
+    <td><code>automountServiceAccountToken: false</code> auf jedem Pod-Template
+        <em>und</em> jeder Nicht-kube-system-Default-ServiceAccount clusterweit –
+        keiner von WordPress/MariaDB/Redis/Cron spricht je mit der Kubernetes-API,
+        also gibt es keinen Grund für ein Token im Dateisystem</td>
+    <td><code>common_k3s</code>, <code>blog_k3s_deploy</code></td>
+  </tr>
 </table>
+
+<div class="callout callout-info">
+  <strong>kube-bench (CIS Kubernetes Benchmark) Ergebnis – 2026-08-20</strong>
+  <code>63 PASS / 3 FAIL / 50 WARN / 14 INFO</code> gegen das
+  <code>k3s-cis-1.9</code>-Profil (Tagesbeginn: 55/4/57/14). Die meisten WARNs
+  sind kube-bench-"Manual"-Checks – fest auf WARN codiert unabhängig vom
+  tatsächlichen Zustand, weil sie menschliches Urteilsvermögen brauchen (z.B.
+  RBAC-Minimierung – live geprüft am 2026-08-20: es existiert keine einzige
+  selbst angelegte RBAC-Rolle in diesem Cluster, alles ist entweder ungenutzte
+  K8s-Bordmittel oder von Helm-Charts mit exakt zugeschnittenen Rechten
+  installiert). Die 3 verbleibenden FAILs sind bewusst akzeptiert, keine
+  Versäumnisse:
+  <ul>
+    <li><strong>etcd-cafile</strong> – False Positive, dieser Cluster nutzt
+        eingebettetes SQLite statt etcd, der Check greift nicht.</li>
+    <li><strong>Wildcard-RBAC</strong> – Calicos eigene
+        <code>calico-kube-controllers</code>-ClusterRole braucht
+        Wildcard-Rechte zur Verwaltung ihrer CRDs (IPPools, NetworkPolicies
+        etc.); Hand-Trimmen riskiert, dass calico-node/kube-controllers nicht
+        mehr starten. Das ist der sichtbare Preis für die NetworkPolicy-Durchsetzung oben.</li>
+    <li><strong>SA-Tokens noch gemountet</strong> – nur bei cert-manager,
+        ingress-nginx und Calicos eigenen Pods, die alle echten API-Zugriff
+        für ihre Arbeit brauchen (Beobachten von Certificates/Ingress/NetworkPolicy-Objekten).
+        k3s' eingebaute Ausnahmeliste deckt nur seine eigenen Kernkomponenten ab, nicht diese Add-ons.</li>
+  </ul>
+</div>
 
 <h3>Container- &amp; App-Härtung</h3>
 <p>

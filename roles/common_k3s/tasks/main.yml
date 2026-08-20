@@ -11,3 +11,4 @@
 - ansible.builtin.import_tasks: install_helm.yml
 - ansible.builtin.import_tasks: cert_manager.yml
 - ansible.builtin.import_tasks: nginx_ingress.yml
+- ansible.builtin.import_tasks: default_sa_hardening.yml

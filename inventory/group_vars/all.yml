@@ -26,7 +26,7 @@ blog_k3s_db_dir: /srv/wordpress-db
 # upgrades in place (binary swap + service restart) if they differ.
 # Verify latest: https://github.com/k3s-io/k3s/releases
 # =============================================================================
-k3s_version: "v1.36.2+k3s1"
+k3s_version: "v1.36.3+k3s1"
 
 # =============================================================================
 # Helm version – pinned (not the v3-only get-helm-3 installer script) so
@@ -38,7 +38,7 @@ k3s_version: "v1.36.2+k3s1"
 # 2026-07-08, security patches end 2026-11-11.
 # Verify latest: https://github.com/helm/helm/releases
 # =============================================================================
-helm_version: "v4.2.3"
+helm_version: "v4.2.4"
 
 # =============================================================================
 # Calico version – pinned, same pattern as k3s_version/helm_version above.
@@ -57,14 +57,18 @@ calico_version: "v3.32.1"
 # Verify latest: https://artifacthub.io/packages/helm/nginx-stable/nginx-ingress  (F5)
 #                https://artifacthub.io/packages/helm/cert-manager/cert-manager
 # =============================================================================
-ingress_nginx_chart_version: "2.6.1"
-cert_manager_chart_version:  "1.21.0"
+ingress_nginx_chart_version: "2.6.4"   # appVersion 5.5.4 (controller image) - re-checked 2026-08-20 against
+                                        # the published helm.nginx.com/stable index; still the newest chart
+                                        # actually released (2.7.0 exists on GitHub's main branch but hasn't
+                                        # been packaged/published to the repo yet - don't trust Chart.yaml on
+                                        # main as a proxy for "latest available", check the index.yaml itself)
+cert_manager_chart_version:  "1.21.1"
 
 # =============================================================================
 # Monitoring stack versions – update here to roll out across all hosts
 # =============================================================================
-node_exporter_version: "1.12.0"
-prometheus_version:    "3.13.1"
+node_exporter_version: "1.12.1"
+prometheus_version:    "3.13.2"
 prometheus_retention:  "30d"
 # grafana_admin_pass: set per host in host_vars/<host>/vault.yml
 
@@ -81,7 +85,11 @@ prometheus_retention:  "30d"
 #   MariaDB:    https://hub.docker.com/_/mariadb/tags
 #   Nginx:      https://hub.docker.com/_/nginx/tags      (filter: *-alpine)
 # =============================================================================
-nextcloud_image_fpm:       "nextcloud:34-fpm"
+# Was floating on the major-only tag "34-fpm" (silently drifts to whatever
+# Docker Hub rebuilds under that tag - inconsistent with every other image in
+# this file being pinned to an exact patch). Pinned to the current patch
+# 2026-08-20; check the URL above for newer 34.0.x builds periodically.
+nextcloud_image_fpm:       "nextcloud:34.0.3-fpm"
 # nginx stable branch (even minor). Was 1.31 (mainline) – moved to the stable
 # 1.30.x line for a production deployment. Pinned to the exact patch on purpose:
 # the floating 1.30-alpine tag stayed on a cached 1.30.3 under imagePullPolicy
@@ -90,16 +98,27 @@ nextcloud_image_fpm:       "nextcloud:34-fpm"
 # memory disclosure) and CVE-2026-56434 (ssi-module use-after-free). Pinning the
 # patch forces a fresh pull. Shared by blog + nextcloud.
 nextcloud_image_nginx:     "nginx:1.30.4-alpine"
-nextcloud_image_collabora: "collabora/code:26.04.1.4.1"
+nextcloud_image_collabora: "collabora/code:26.04.3.1.1"   # checked 2026-08-20, was 26.04.1.4.1
 nextcloud_image_busybox:   "busybox:1"
 blog_image_busybox:        "busybox:1"
 
-blog_image_wordpress:      "wordpress:7.0.2-php8.3-fpm"
-blog_image_mariadb:        "mariadb:10.11"
+blog_image_wordpress:      "wordpress:7.0.4-php8.3-fpm"
+# MariaDB 10.11 LTS, pinned to the exact patch for the same reason as nginx
+# above: the floating 10.11 tag left the node on a stale cached layer under
+# imagePullPolicy IfNotPresent (verified 2026-08-16 – node had digest
+# be981e4113326 while Docker Hub's 10.11 tag was rebuilt to de61fed4a40d3 on
+# 2026-08-04). 10.11.18 IS that rebuilt image, byte for byte – same digest –
+# so this pin changes no content, it only forces the pull that the floating
+# tag silently skipped. 10.11 is supported until Feb 2028.
+blog_image_mariadb:        "mariadb:10.11.18"
 blog_image_nginx:          "nginx:1.30.4-alpine"   # stable, exact patch pin (see nextcloud_image_nginx note)
 # Redis: object cache for WordPress (pure in-memory, no persistence)
+# Exact patch pin, same stale-cache reason as MariaDB above (node was on
+# 6ab0b6e738177, Hub's 7-alpine had moved to e7723ff73d963). 7.4.10-alpine is
+# that same image by digest. 7.4 is the last Redis 7 LTS line; moving to 8.x
+# is a deliberate major upgrade, not a patch bump – left for a separate change.
 # Check: https://hub.docker.com/_/redis/tags  (filter: *-alpine)
-blog_image_redis:          "redis:7-alpine"
+blog_image_redis:          "redis:7.4.10-alpine"
 
 # -----------------------------------------------------------------------------
 # WP-CLI – pinned version + checksum (supply-chain protection)
@@ -122,7 +141,7 @@ blog_wp_cli_sha512:  "be928f6b8ca1e8dfb9d2f4b75a13aa4aee0896f8a9a0a1c45cd5d2c986
 #   mysqld_exporter:  https://github.com/prometheus/mysqld_exporter/releases
 #   php-fpm_exporter: https://github.com/hipages/php-fpm_exporter/releases
 # =============================================================================
-mysqld_exporter_version:      "0.19.0"
-blog_image_mysqld_exporter:   "prom/mysqld-exporter:v0.19.0"
+mysqld_exporter_version:      "0.20.0"
+blog_image_mysqld_exporter:   "prom/mysqld-exporter:v0.20.0"
 blog_image_fpm_exporter:      "hipages/php-fpm_exporter:2.2.0"
 nextcloud_image_fpm_exporter: "hipages/php-fpm_exporter:2.2.0"

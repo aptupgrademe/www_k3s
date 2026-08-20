@@ -26,7 +26,8 @@
 #          fail loudly and leave the pod stuck at 0/1 Ready forever (verified
 #          live: missing any one of serviceaccounts/token, ipamhandles or the
 #          kubevirt watch reproduced this).
-# Target:  K3s single-node on AlmaLinux 9 (Nextcloud only – see nextcloud-k3s.yml)
+# Target:  K3s single-node on AlmaLinux 9 (Nextcloud and blog – see
+#          nextcloud-k3s.yml and blog.yml)
 # =============================================================================
 
 - name: Calico | Template policy-only manifest

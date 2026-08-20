@@ -5,7 +5,7 @@
 [![K3s](https://img.shields.io/badge/K3s-latest-blue.svg)](https://k3s.io/)
 [![AlmaLinux](https://img.shields.io/badge/AlmaLinux-9-green.svg)](https://almalinux.org/)
 [![Nextcloud](https://img.shields.io/badge/Nextcloud-34-0082C9.svg)](https://nextcloud.com/)
-[![WordPress](https://img.shields.io/badge/WordPress-7.0.2-21759B.svg)](https://wordpress.org/)
+[![WordPress](https://img.shields.io/badge/WordPress-7.0.4-21759B.svg)](https://wordpress.org/)
 
 Ansible playbooks to deploy and manage internet-facing servers
 (K3s on AlmaLinux 9) fully automated.
@@ -68,7 +68,7 @@ Internet
 - **Calico (policy-only mode)** – NetworkPolicy enforcement for Nextcloud;
   Collabora is restricted from ever reaching MariaDB/Redis directly, since
   K3s's default Flannel CNI does not enforce NetworkPolicy objects at all
-- **WordPress 7.0.2** with PHP-FPM, nginx sidecar, MariaDB pod and **Redis Object Cache** pod
+- **WordPress 7.0.4** with PHP-FPM, nginx sidecar, MariaDB pod and **Redis Object Cache** pod
 - Automatic installation on first pod start via container env vars and WP-CLI
 - WordPress WP-Cron as Kubernetes CronJob (no HTTP trigger)
 - **Pre-flight version check** (`common_version_check`) shows installed vs. latest versions
@@ -268,11 +268,11 @@ The `common_version_check` role compares them against latest releases at every p
 
 ```yaml
 # Helm charts
-ingress_nginx_chart_version: "2.6.1"
-cert_manager_chart_version:  "1.21.0"
+ingress_nginx_chart_version: "2.6.4"
+cert_manager_chart_version:  "1.21.1"
 
 # Container images
-blog_image_wordpress: "wordpress:7.0.2-php8.3-fpm"
+blog_image_wordpress: "wordpress:7.0.4-php8.3-fpm"
 nextcloud_image_fpm:  "nextcloud:34-fpm"
 
 # Calico (Nextcloud policy-only NetworkPolicy enforcement)

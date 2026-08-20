@@ -596,6 +596,66 @@ real_ip_recursive on;</code></pre>
   The actual application of the zone is done via the
   <code>server-snippets</code> annotation in the WordPress ingress.
 </div>
+
+<h3>NetworkPolicy (Calico) – Pod-to-Pod Traffic Inside the Cluster</h3>
+<p>
+  Everything above governs traffic <em>arriving at</em> the cluster. Since
+  2026-08-20, <code>common_calico</code> (Felix + kube-controllers,
+  policy-only mode – no BGP, no own IPAM/CNI, Flannel still does all actual
+  pod networking) also enforces three <code>NetworkPolicy</code> objects
+  <em>inside</em> the <code>wordpress</code> namespace. Flannel alone
+  silently <strong>ignores</strong> NetworkPolicy objects – Calico only adds
+  the missing enforcement layer.
+</p>
+<table>
+  <tr><th>Policy</th><th>Applies to</th><th>Allowed ingress</th><th>Allowed egress</th></tr>
+  <tr>
+    <td><code>wordpress-netpol</code></td>
+    <td>Pods labelled <code>app: wordpress</code> (Deployment + <code>wordpress-cron</code>)</td>
+    <td>Port 80 from the ingress-nginx host IP only; port 9253 (php-fpm-exporter) from the pod CIDR (host Prometheus via NodePort)</td>
+    <td>DNS; MariaDB :3306; Redis :6379; the open internet on :443 (core/plugin/WP-CLI updates – can't be scoped tighter, see below)</td>
+  </tr>
+  <tr>
+    <td><code>mariadb-netpol</code></td>
+    <td>Pods labelled <code>app: mariadb</code></td>
+    <td>Port 3306 from <code>app: wordpress</code> pods only; port 9104 (mysqld-exporter) from the pod CIDR</td>
+    <td>None – standalone DB, no replication/external calls</td>
+  </tr>
+  <tr>
+    <td><code>redis-netpol</code></td>
+    <td>Pods labelled <code>app: redis</code></td>
+    <td>Port 6379 from <code>app: wordpress</code> pods only</td>
+    <td>None – pure in-memory cache</td>
+  </tr>
+</table>
+<div class="callout callout-info">
+  <strong>Known limitation: no domain-based egress filtering</strong>
+  Standard <code>NetworkPolicy</code> matches by IP/CIDR only, and Calico
+  runs here in policy-only OSS mode (no FQDN-aware network sets – that's a
+  Calico Enterprise feature). WordPress core, its plugins, and the WP-CLI
+  init container all need outbound HTTPS to CDN-backed, non-enumerable IP
+  ranges (wordpress.org, github.com/objects.githubusercontent.com). Port
+  443 to <code>0.0.0.0/0</code> is therefore left open on
+  <code>wordpress-netpol</code>'s egress – what this actually restricts is
+  <em>lateral movement inside the cluster</em> (kube-system, cert-manager,
+  ingress-nginx admin ports, any future pod), not external C2/exfiltration
+  over HTTPS.
+</div>
+<div class="callout callout-warn">
+  <strong>New pods and the Felix startup race</strong>
+  A brand-new pod's very first outbound connection attempt (within roughly
+  the first second of container start) can fail with "Connection refused"
+  if Calico's Felix hasn't finished programming that pod's policy rules
+  yet. Long-lived pods never notice – their <code>readinessProbe</code>'s
+  <code>initialDelaySeconds</code> (20s+) covers it – but short-lived Jobs
+  that connect immediately can hit it reliably. This is why
+  <code>wordpress-cron</code>'s container command starts with
+  <code>sleep 5 &amp;&amp;</code> – see WP-Cron below. Keep this in mind
+  before adding a NetworkPolicy for any other short-lived workload
+  (Nextcloud's <code>nextcloud-cron</code> has no NetworkPolicy of its own
+  today, so it isn't affected – but would need the same treatment if one is
+  ever added).
+</div>
 </section>
 
 <!-- ─────────────────────────── FILES ──────────────────────────────── -->
@@ -627,8 +687,8 @@ real_ip_recursive on;</code></pre>
   <tr><th>Role</th><th>Task</th></tr>
   <tr><td><code>blog_packages</code></td><td>Install packages (e.g. SELinux tools)</td></tr>
   <tr><td><code>blog_selinux</code></td><td>SELinux enforcing, <code>container_file_t</code> for HostPath directories</td></tr>
-  <tr><td><code>common_k3s</code></td><td>K3s, Helm, cert-manager, nginx-ingress (F5) – common base</td></tr>
-  <tr><td><code>blog_k3s_deploy</code></td><td>K8s manifests: namespace, secrets, ConfigMaps, deployments, ingress, CronJob</td></tr>
+  <tr><td><code>common_k3s</code></td><td>K3s, Helm, cert-manager, nginx-ingress (F5), Calico (policy-only, for NetworkPolicy enforcement), audit logging, EventRateLimit/NodeRestriction admission plugins, pod PID limit, PKI file permissions, default-ServiceAccount hardening cluster-wide – common base, shared with Nextcloud</td></tr>
+  <tr><td><code>blog_k3s_deploy</code></td><td>K8s manifests: namespace (+ Pod Security Standards labels, default-SA hardening), secrets, ConfigMaps, deployments, ingress, CronJob, NetworkPolicy, image allowlist</td></tr>
   <tr><td><code>blog_wordpress</code></td><td>Post-deploy: WP-CLI commands (admin, plugins, settings)</td></tr>
 </table>
 
@@ -638,12 +698,17 @@ real_ip_recursive on;</code></pre>
   <tr>
     <td><code>wordpress-deployment.yml.j2</code></td>
     <td>Deployment + Service for WordPress</td>
-    <td>Image tags, volumes, env variables (DB credentials as secret ref)</td>
+    <td>Image tags, volumes, env variables. DB password is delivered as a
+        mounted file (<code>WORDPRESS_DB_PASSWORD_FILE</code>), not a plain
+        env var – see Security</td>
   </tr>
   <tr>
     <td><code>mariadb-deployment.yml.j2</code></td>
     <td>Deployment + Service for MariaDB</td>
-    <td>Database initialization on first start, HostPath volume</td>
+    <td>Database initialization on first start, HostPath volume. Root/user
+        passwords delivered as files; readiness/liveness probes read the
+        root password straight from the mounted file
+        (<code>$(cat /etc/secrets/db-root-password)</code>)</td>
   </tr>
   <tr>
     <td><code>nginx-cm.yml.j2</code></td>
@@ -653,7 +718,9 @@ real_ip_recursive on;</code></pre>
   <tr>
     <td><code>secret.yml.j2</code></td>
     <td>Secret <code>wordpress-secrets</code></td>
-    <td>DB host, DB name, DB user, DB password – as env variables in the pod</td>
+    <td>DB host, DB name, DB user, DB password, admin credentials, exporter
+        password. The password keys are consumed as mounted files by the
+        other templates below (0444, readOnly), not as env vars</td>
   </tr>
   <tr>
     <td><code>ingress.yml.j2</code></td>
@@ -663,7 +730,23 @@ real_ip_recursive on;</code></pre>
   <tr>
     <td><code>cronjob.yml.j2</code></td>
     <td>K8s CronJob <code>wordpress-cron</code></td>
-    <td>Runs <code>wp-cron.php</code> every 5 minutes; replaces WP's internal pseudo-cron</td>
+    <td>Runs <code>wp-cron.php</code> every 5 minutes; replaces WP's internal
+        pseudo-cron. Command is <code>sleep 5 &amp;&amp; php ...</code> – see
+        the WP-Cron section for why</td>
+  </tr>
+  <tr>
+    <td><code>networkpolicy.yml.j2</code></td>
+    <td>3× <code>NetworkPolicy</code>: <code>wordpress-netpol</code>,
+        <code>mariadb-netpol</code>, <code>redis-netpol</code></td>
+    <td>Locks MariaDB/Redis down to WordPress-only ingress and caps
+        WordPress's own egress – see Network &amp; TLS and Security</td>
+  </tr>
+  <tr>
+    <td><code>image-policy.yml.j2</code></td>
+    <td><code>ValidatingAdmissionPolicy</code> + Binding
+        <code>wordpress-image-registry</code></td>
+    <td>Rejects any pod in the <code>wordpress</code> namespace whose image
+        isn't on the approved-repository allowlist (by repo name, tag-agnostic)</td>
   </tr>
 </table>
 </section>
@@ -1198,7 +1281,46 @@ k3s kubectl logs -n wordpress -l job-name=wordpress-cron-&lt;id&gt;</code></pre>
 
 <h3>Manual Execution (for testing)</h3>
 <pre><code>k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
-  php /var/www/html/wp-cron.php</code></pre>
+  php /var/www/html/wp-cron.php
+
+# Or trigger a one-off Job from the live CronJob spec (closer to what the
+# scheduler actually runs, including the WORDPRESS_CONFIG_EXTRA env var):
+k3s kubectl create job --from=cronjob/wordpress-cron wordpress-cron-manual-test -n wordpress</code></pre>
+
+<div class="callout callout-warn">
+  <strong>Two bugs found and fixed here on 2026-08-20 – worth knowing about</strong>
+  <p>
+    A CronJob showing <code>STATUS: Complete</code> does <strong>not</strong>
+    mean the PHP inside actually ran the scheduled WP-Cron events – WordPress's
+    <code>wp_die()</code> exits 0, so a hard PHP fatal still shows as a clean
+    "Complete" Job. Always check <code>kubectl logs</code> on the pod, not
+    just the Job status.
+  </p>
+  <ol>
+    <li>
+      <strong>Missing <code>WORDPRESS_CONFIG_EXTRA</code> (pre-existing, unrelated to NetworkPolicy).</strong>
+      The cron container never had this env var set, unlike the main
+      <code>wordpress-fpm</code> container – so <code>WP_REDIS_HOST</code> was
+      undefined on every wp-cron.php run ever, and the Redis Object Cache
+      drop-in silently fell back to its own default (<code>127.0.0.1</code>,
+      nothing listening there in that pod) → fatal
+      "Error establishing a Redis connection". Fixed by giving
+      <code>cronjob.yml.j2</code> the identical <code>WORDPRESS_CONFIG_EXTRA</code>
+      block as the main Deployment.
+    </li>
+    <li>
+      <strong>Calico/Felix startup race (introduced by adding <code>wordpress-netpol</code>).</strong>
+      Once the NetworkPolicy above was live, a brand-new cron pod's very
+      first Redis connection attempt (within its first second of life)
+      could still get "Connection refused" even with #1 fixed – Felix
+      hadn't finished programming the pod's egress rule yet. Fixed with a
+      <code>sleep 5 &amp;&amp;</code> prefix on the container command. See
+      the NetworkPolicy callout in Network &amp; TLS for why this doesn't
+      self-heal via <code>restartPolicy: OnFailure</code>.
+    </li>
+  </ol>
+  <p>Both are fixed and verified live against a real (not manually triggered) scheduled tick.</p>
+</div>
 </section>
 
 <!-- ─────────────────────────── UPDATES ──────────────────────────────── -->
@@ -1438,12 +1560,28 @@ k3s kubectl logs -n ingress-nginx daemonset/ingress-nginx-nginx-ingress-controll
 <pre><code># CronJob status:
 k3s kubectl get cronjob wordpress-cron -n wordpress
 
-# Last job pod (should be "Completed"):
+# Last job pod (should be "Completed") -- but "Completed" alone does NOT
+# prove success, see below:
 k3s kubectl get pods -n wordpress --sort-by=.metadata.creationTimestamp | tail -5
+
+# ALWAYS check the actual logs too -- a fatal wp_die() still exits 0:
+k3s kubectl logs -n wordpress -l job-name=&lt;job-name-from-above&gt;
 
 # Trigger manually (for testing):
 k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
   php /var/www/html/wp-cron.php</code></pre>
+<p>
+  If the logs show an HTML page with "Error establishing a Redis
+  connection": this was a real bug, fixed 2026-08-20 (see the callout in the
+  WP-Cron section above) – a missing <code>WORDPRESS_CONFIG_EXTRA</code> env
+  var on the cron container, plus a Calico policy-programming race for the
+  brand-new pod's first connection attempt. If it recurs after a future
+  <code>cronjob.yml.j2</code> change, check both: (1) does the cron
+  container's env block still match the main Deployment's
+  <code>WORDPRESS_CONFIG_EXTRA</code>, and (2) does the command still start
+  with <code>sleep 5 &amp;&amp;</code> before anything that connects over
+  the network.
+</p>
 
 <h3>"Permission Denied" / "Read-Only File System" on dnf, sysctl, or /sys Writes via SSH</h3>
 <p>
@@ -1717,10 +1855,84 @@ k3s kubectl exec deployment/mariadb -n wordpress -- \
   </tr>
   <tr>
     <td>Secrets</td>
-    <td>Ansible Vault, K8s secrets (Opaque), no_log on sensitive tasks</td>
+    <td>Ansible Vault, K8s secrets (Opaque), no_log on sensitive tasks; DB
+        passwords delivered to containers as mounted files
+        (<code>_FILE</code> env-var convention), not plain env vars</td>
     <td>all roles</td>
   </tr>
+  <tr>
+    <td>NetworkPolicy</td>
+    <td>Calico (policy-only) enforces MariaDB/Redis reachable from
+        WordPress pods only, and caps WordPress's own lateral egress inside
+        the cluster – see Network &amp; TLS for the full topology</td>
+    <td><code>common_calico</code>, <code>blog_k3s_deploy</code></td>
+  </tr>
+  <tr>
+    <td>Image allowlist</td>
+    <td><code>ValidatingAdmissionPolicy</code> rejects any pod in the
+        <code>wordpress</code> namespace whose image isn't on the
+        approved-repository list (by repo name, any tag) – built into the
+        apiserver (GA since Kubernetes 1.30), no extra webhook infra needed</td>
+    <td><code>blog_k3s_deploy</code></td>
+  </tr>
+  <tr>
+    <td>K8s API audit log</td>
+    <td>Every API request logged to <code>/var/lib/rancher/k3s/server/logs/audit.log</code>
+        (30d/10 backups/100MB rotation). Secrets/ConfigMaps at Metadata level
+        (who/when, never content), <code>pods/exec</code>/<code>attach</code>/<code>portforward</code>
+        at Request level, RBAC object changes at full RequestResponse</td>
+    <td><code>common_k3s</code></td>
+  </tr>
+  <tr>
+    <td>Admission control</td>
+    <td>EventRateLimit (50 qps/100 burst, prevents event-flood DoS from a
+        crashlooping pod) alongside k3s's own default NodeRestriction
+        (limits what a compromised kubelet can modify via the API)</td>
+    <td><code>common_k3s</code></td>
+  </tr>
+  <tr>
+    <td>Pod PID limit</td>
+    <td><code>--pod-max-pids=4096</code> – bounds a fork-bomb inside one
+        compromised container to that pod, can't exhaust the node's whole
+        PID space</td>
+    <td><code>common_k3s</code></td>
+  </tr>
+  <tr>
+    <td>ServiceAccount hardening</td>
+    <td><code>automountServiceAccountToken: false</code> on every pod
+        template <em>and</em> every non-kube-system default ServiceAccount
+        cluster-wide – none of WordPress/MariaDB/Redis/cron ever talk to the
+        Kubernetes API, so there's no reason for a token to sit in their
+        filesystem at all</td>
+    <td><code>common_k3s</code>, <code>blog_k3s_deploy</code></td>
+  </tr>
 </table>
+
+<div class="callout callout-info">
+  <strong>kube-bench (CIS Kubernetes Benchmark) result – 2026-08-20</strong>
+  <code>63 PASS / 3 FAIL / 50 WARN / 14 INFO</code> against the
+  <code>k3s-cis-1.9</code> profile (started the day at 55/4/57/14). Most
+  WARNs are kube-bench "Manual" checks – hard-coded to always show WARN
+  regardless of actual config, since they need human judgement (e.g. RBAC
+  minimisation – reviewed live on 2026-08-20: zero custom RBAC exists in
+  this cluster at all, everything is either unused K8s stock roles or
+  component-installed roles scoped tightly to their own job). The 3
+  remaining FAILs are consciously accepted, not oversights:
+  <ul>
+    <li><strong>etcd-cafile</strong> – false positive, this cluster uses
+        embedded SQLite, not etcd, so the check doesn't apply.</li>
+    <li><strong>Wildcard RBAC</strong> – Calico's own
+        <code>calico-kube-controllers</code> ClusterRole needs wildcard
+        grants to manage its CRDs (IPPools, NetworkPolicies, etc.); hand-trimming
+        it risks calico-node/kube-controllers failing to start. This is the
+        visible cost of the NetworkPolicy enforcement above.</li>
+    <li><strong>SA tokens still mounted</strong> – only on cert-manager,
+        ingress-nginx and Calico's own pods, all of which genuinely need API
+        access to do their job (watching Certificates/Ingress/NetworkPolicy
+        objects). k3s's built-in exception list only covers its own core
+        components, not these add-ons.</li>
+  </ul>
+</div>
 
 <h3>Container &amp; App Hardening</h3>
 <p>

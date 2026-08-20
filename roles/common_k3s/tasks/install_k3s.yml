@@ -31,6 +31,72 @@
     group: root
     mode: "0755"
 
+# CIS 3.2.1/3.2.2: minimal-but-meaningful audit policy. Secrets/ConfigMaps
+# logged at Metadata only (who/when accessed it, never the actual content).
+# pods/exec, pods/attach, pods/portforward logged at Request level - these
+# are the highest-risk actions available against a running workload and
+# worth the extra detail. RBAC object changes logged at RequestResponse
+# (full before/after) since a privilege-escalation trail is exactly what
+# this is for. Everything else at Metadata as a reasonable baseline;
+# read-only "events" watches are dropped entirely (near-zero security value,
+# high volume - would otherwise dominate the log).
+- name: K3s | Deploy audit policy (CIS 3.2.1/3.2.2)
+  ansible.builtin.copy:
+    dest: /etc/rancher/k3s/audit-policy.yaml
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      apiVersion: audit.k8s.io/v1
+      kind: Policy
+      omitStages:
+        - "RequestReceived"
+      rules:
+        - level: None
+          verbs: ["get", "list", "watch"]
+          resources:
+            - group: ""
+              resources: ["events"]
+        - level: Metadata
+          resources:
+            - group: ""
+              resources: ["secrets", "configmaps"]
+        - level: Request
+          resources:
+            - group: ""
+              resources: ["pods/exec", "pods/attach", "pods/portforward"]
+        - level: RequestResponse
+          resources:
+            - group: "rbac.authorization.k8s.io"
+              resources: ["*"]
+        - level: Metadata
+  notify: Restart k3s service
+
+# CIS 1.2.9: EventRateLimit requires its own AdmissionConfiguration (the
+# --enable-admission-plugins flag alone isn't enough - the apiserver refuses
+# to start without this). qps/burst below are the standard reference values
+# from the upstream Kubernetes docs example - generous enough for normal
+# operation, still bounds a crashlooping pod's event flood.
+- name: K3s | Deploy admission control config for EventRateLimit (CIS 1.2.9)
+  ansible.builtin.copy:
+    dest: /etc/rancher/k3s/admission-control-config.yaml
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      apiVersion: apiserver.config.k8s.io/v1
+      kind: AdmissionConfiguration
+      plugins:
+      - name: EventRateLimit
+        configuration:
+          apiVersion: eventratelimit.admission.k8s.io/v1alpha1
+          kind: Configuration
+          limits:
+          - type: Server
+            qps: 50
+            burst: 100
+  notify: Restart k3s service
+
 - name: K3s | Deploy /etc/rancher/k3s/config.yaml
   ansible.builtin.copy:
     dest: /etc/rancher/k3s/config.yaml
@@ -43,7 +109,53 @@
         - servicelb
       flannel-backend: vxlan
       write-kubeconfig-mode: "0600"
+      kube-apiserver-arg:
+        # CIS 1.2.16-1.2.19: API audit log, rotated.
+        - "audit-log-path=/var/lib/rancher/k3s/server/logs/audit.log"
+        - "audit-policy-file=/etc/rancher/k3s/audit-policy.yaml"
+        - "audit-log-maxage=30"
+        - "audit-log-maxbackup=10"
+        - "audit-log-maxsize=100"
+        # NodeRestriction is k3s's own default admission plugin (limits what
+        # a compromised kubelet can modify via the API - only its own Node/Pod
+        # objects). Unlike vanilla kube-apiserver, k3s's --enable-admission-plugins
+        # REPLACES its default list rather than adding to it - confirmed live
+        # the hard way: setting this to just "EventRateLimit" silently dropped
+        # NodeRestriction (caught by a kube-bench re-run, CIS 1.2.14 flipped
+        # from PASS to FAIL). NodeRestriction must always be listed explicitly
+        # alongside anything added here.
+        #
+        # CIS 1.2.9: rate-limit apiserver-bound events (see
+        # admission-control-config.yaml above).
+        #
+        # CIS 1.2.11 (AlwaysPullImages) deliberately NOT enabled here: it
+        # forces a fresh registry pull on every single pod start, bypassing
+        # the local image cache entirely - including wordpress-cron, which
+        # starts a new pod every 5 minutes. AlwaysPullImages exists to stop
+        # one multi-tenant user from reaching another's cached image without
+        # valid pull credentials; there's no such multi-tenant boundary here
+        # (every workload is Ansible-deployed, same trust level), so the
+        # actual security gain is close to zero, while a transient registry
+        # blip would turn into cascading ImagePullBackOff across the cluster
+        # instead of pods just running from cache like they do today.
+        - "enable-admission-plugins=NodeRestriction,EventRateLimit"
+        - "admission-control-config-file=/etc/rancher/k3s/admission-control-config.yaml"
+      # CIS 4.2.13: bound PIDs per pod so a fork-bomb in one compromised
+      # container can't exhaust the node's whole PID space.
+      kubelet-arg:
+        - "pod-max-pids=4096"
   notify: Restart k3s service
+
+# apiserver does not create --audit-log-path's parent directory itself - it
+# fails to start if this is missing. Must exist BEFORE the restart below
+# (triggered by any of the three tasks above), not after.
+- name: K3s | Ensure audit log directory exists
+  ansible.builtin.file:
+    path: /var/lib/rancher/k3s/server/logs
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
 
 
 # -----------------------------------------------------------------------------
@@ -121,6 +233,22 @@
   retries: 30
   delay: 5
   changed_when: false
+
+# CIS 1.1.20: k3s writes these world/group-readable (0644). Re-asserted on
+# every run since k3s regenerates some of them on restart/cert rotation.
+- name: K3s | Find PKI certificate files (CIS 1.1.20)
+  ansible.builtin.find:
+    paths: /var/lib/rancher/k3s/server/tls
+    patterns: "*.crt"
+  register: k3s_pki_certs
+
+- name: K3s | Restrict PKI certificate file permissions (CIS 1.1.20)
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    mode: "0600"
+  loop: "{{ k3s_pki_certs.files }}"
+  loop_control:
+    label: "{{ item.path }}"
 
 
 # -----------------------------------------------------------------------------

@@ -17,6 +17,8 @@ spec:
       template:
         spec:
           restartPolicy: OnFailure
+          # cron.php never talks to the Kubernetes API — no SA token needed.
+          automountServiceAccountToken: false
           containers:
           - name: cron
             image: {{ nextcloud_image_fpm }}
