@@ -49,3 +49,18 @@
     name: nftables
     state: started
     enabled: true
+
+# firewalld ships installed-but-inactive on this image and is never used to
+# manage packet filtering here - nftables rules above are applied directly.
+# Masking (not removing the package) prevents it from ever being started by
+# accident and silently taking over/conflicting with the ruleset above;
+# removing the package outright was considered and rejected (2026-08-21) -
+# it depends on nftables itself, so `dnf remove firewalld` cascades into
+# removing nftables and fail2ban too (verified live via dnf --assumeno).
+- name: Mask firewalld (unused, would conflict with hand-rolled nftables rules)
+  ansible.builtin.systemd:
+    name: firewalld
+    enabled: false
+    masked: true
+    state: stopped
+  failed_when: false  # package may not be present on every host

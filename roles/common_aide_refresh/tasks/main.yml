@@ -1,0 +1,49 @@
+---
+# =============================================================================
+# Role: common_aide_refresh
+# Purpose: Refresh the AIDE file-integrity baseline at the very end of the
+#          playbook run, if this run actually changed anything AIDE watches.
+#
+# Without this, every playbook run that touches a package or a monitored
+# config file (nftables.conf, sysctl.d, modprobe.d, k3s binaries, ...) shows
+# up as a false "AIDE found differences" alert on the next scheduled check -
+# not a real finding, just the baseline not having caught up yet. Happened
+# twice in a row (2026-08-21 CIS hardening rollout, 2026-08-22/23 NFS/Samba
+# package removal + firewall change) before this role existed; manually
+# running `aide --update` after every relevant playbook run doesn't scale.
+#
+# Placed as the LAST role in the play (after blog_verify / nextcloud_verify)
+# so it sees the fully-settled end state, not an intermediate one from
+# earlier in the run.
+# =============================================================================
+
+- name: AIDE refresh | Check whether AIDE is set up on this host
+  ansible.builtin.stat:
+    path: /var/lib/aide/aide.db.gz
+  register: aide_db
+
+- name: AIDE refresh | Check current state against the baseline
+  ansible.builtin.command: systemd-run --wait --pipe --quiet -- aide --check
+  register: aide_check
+  changed_when: false
+  failed_when: false
+  when: aide_db.stat.exists
+
+# aide --check exits non-zero when the filesystem no longer matches the
+# baseline - which, right after a playbook run that changed something, is
+# expected and not a security finding. See role purpose note above.
+- name: AIDE refresh | Rebuild the baseline (state changed since last check)
+  ansible.builtin.command: systemd-run --wait --pipe --quiet -- aide --update
+  changed_when: true
+  when:
+    - aide_db.stat.exists
+    - aide_check.rc is defined
+    - aide_check.rc != 0
+
+- name: AIDE refresh | Activate the rebuilt baseline
+  ansible.builtin.command: mv /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz
+  changed_when: true
+  when:
+    - aide_db.stat.exists
+    - aide_check.rc is defined
+    - aide_check.rc != 0

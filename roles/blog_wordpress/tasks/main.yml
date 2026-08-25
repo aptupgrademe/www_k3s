@@ -344,6 +344,135 @@
 
 
 # -----------------------------------------------------------------------------
+# AI usage disclosure
+# Discreet, site-wide transparency notice (footer link + dedicated page),
+# per Art. 50 EU AI Act. Deliberately kept out of the primary nav menu.
+# -----------------------------------------------------------------------------
+- name: WordPress | Create or update AI Usage Notice page
+  ansible.builtin.command:
+    argv:
+      - k3s
+      - kubectl
+      - exec
+      - deployment/wordpress
+      - --namespace
+      - wordpress
+      - --container
+      - wordpress-fpm
+      - --
+      - php
+      - /usr/local/lib/wp-cli/wp-cli.phar
+      - eval
+      - |
+        $slug = 'ai-usage-notice';
+        $content = '<p>Short version: yes, I use AI tools on this blog &ndash; for some of the writing, and for some of the images.</p>
+        <h3>Text</h3>
+        <p>Every post here comes from something I actually did &ndash; a real homelab project, a real Ansible run, a real troubleshooting session. AI tools (mainly <a href="https://www.anthropic.com/claude" target="_blank" rel="noopener">Claude</a>, sometimes ChatGPT) help me draft, structure, and edit the writing. I review, correct, and personally stand behind everything that gets published.</p>
+        <h3>Images</h3>
+        <p>Some images on this site are AI-generated or AI-edited &ndash; for example the comic-style portrait on the <a href="/about/">About</a> page, and some illustrative graphics created with tools like FLUX/ComfyUI. Screenshots, terminal output, dashboards, and API responses shown in posts are real and unedited unless a post says otherwise.</p>
+        <p style="font-size:13px;color:#888;">This notice is provided for transparency, in line with Art. 50 of the EU AI Act on labelling AI-generated and AI-assisted content.</p>';
+        $existing = get_page_by_path($slug);
+        if ($existing) {
+            wp_update_post(['ID' => $existing->ID, 'post_title' => 'AI Usage Notice', 'post_content' => $content]);
+            echo "updated\n";
+        } else {
+            wp_insert_post(['post_type' => 'page', 'post_status' => 'publish',
+                'post_title' => 'AI Usage Notice', 'post_name' => $slug, 'post_content' => $content]);
+            echo "created\n";
+        }
+      - --path=/var/www/html
+      - --allow-root
+  register: wp_ai_notice_page
+  changed_when: "'created' in wp_ai_notice_page.stdout or 'updated' in wp_ai_notice_page.stdout"
+
+- name: WordPress | Link AI Usage Notice from the About page
+  ansible.builtin.command:
+    argv:
+      - k3s
+      - kubectl
+      - exec
+      - deployment/wordpress
+      - --namespace
+      - wordpress
+      - --container
+      - wordpress-fpm
+      - --
+      - php
+      - /usr/local/lib/wp-cli/wp-cli.phar
+      - eval
+      - |
+        $about = get_page_by_path('about');
+        if ($about && strpos($about->post_content, 'ai-usage-notice') === false) {
+            $note = '<p><small>Curious what on this blog is AI-assisted? See the <a href="/ai-usage-notice/">AI Usage Notice</a>.</small></p>';
+            wp_update_post(['ID' => $about->ID, 'post_content' => $about->post_content . "\n" . $note]);
+            echo "updated\n";
+        } else {
+            echo "unchanged\n";
+        }
+      - --path=/var/www/html
+      - --allow-root
+  register: wp_about_ai_link
+  changed_when: "'updated' in wp_about_ai_link.stdout"
+
+- name: WordPress | Deploy AI disclosure mu-plugin (discreet footer notice)
+  ansible.builtin.command:
+    argv:
+      - k3s
+      - kubectl
+      - exec
+      - deployment/wordpress
+      - --namespace
+      - wordpress
+      - --container
+      - wordpress-fpm
+      - --
+      - sh
+      - -c
+      - |
+        cat > /var/www/html/wp-content/mu-plugins/ai-disclosure.php << 'PHPEOF'
+        <?php
+        /**
+         * AI usage disclosure – managed by Ansible (blog_wordpress).
+         * Adds a discreet, site-wide footer note linking to the AI Usage
+         * Notice page, per Art. 50 EU AI Act transparency requirements.
+         */
+        add_action('wp_footer', function () {
+            $page = get_page_by_path('ai-usage-notice');
+            if (!$page) {
+                return;
+            }
+            printf(
+                '<div style="text-align:center;font-size:11px;color:#999;opacity:.8;padding:6px 0;">%s <a href="%s" style="color:inherit;text-decoration:underline;">%s</a></div>',
+                esc_html__('Some text and images on this site are AI-assisted or AI-generated.'),
+                esc_url(get_permalink($page)),
+                esc_html__('Details')
+            );
+        });
+        PHPEOF
+        chown www-data:www-data /var/www/html/wp-content/mu-plugins/ai-disclosure.php
+  changed_when: true
+
+
+# -----------------------------------------------------------------------------
+# Close public self-registration
+# Personal blog, no membership feature relies on it – comments already
+# require an existing login (comment_registration). Left open, it gets
+# farmed by spam-registration bots (found and cleaned up 18 fake accounts,
+# GSA-Search-Engine-Ranker-style throwaway addresses, on 2026-08-21).
+# -----------------------------------------------------------------------------
+- name: WordPress | Disable public user self-registration
+  ansible.builtin.command: >
+    k3s kubectl exec deployment/wordpress
+    --namespace wordpress
+    --container wordpress-fpm --
+    php /usr/local/lib/wp-cli/wp-cli.phar option update users_can_register 0
+    --path=/var/www/html
+    --allow-root
+  register: wp_disable_registration
+  changed_when: "'Success: Value updated' in wp_disable_registration.stdout"
+
+
+# -----------------------------------------------------------------------------
 # Disable WP-Cron HTTP trigger
 # The K8s CronJob (blog_k3s_deploy) runs wp-cron.php on a schedule instead.
 # -----------------------------------------------------------------------------

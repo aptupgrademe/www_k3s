@@ -105,3 +105,8 @@
     # WordPress setup waits for pod readiness → by now pods are Running.
     - { role: blog_wordpress,       tags: [blog_wordpress] }        # WordPress install + plugins via kubectl exec
     - { role: blog_verify,          tags: [blog_verify] }           # Post-deployment smoke tests (services, K8s, HTTPS, security, performance)
+
+    # Always last: refresh the AIDE baseline if this run changed anything it
+    # watches, so tomorrow's scheduled AIDE check isn't a false alarm about
+    # today's own approved changes.
+    - { role: common_aide_refresh,  tags: [common_aide_refresh] }

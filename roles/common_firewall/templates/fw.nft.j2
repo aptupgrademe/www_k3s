@@ -119,12 +119,16 @@ table inet filter {
 
     # -------------------------------------------------------------------------
     # Incoming: web server (ingress-nginx with hostNetwork=true)
-    # TCP 80/443: HTTP + HTTPS  |  UDP 443: QUIC (HTTP/3)
     # -------------------------------------------------------------------------
+    # UDP 443 (QUIC/HTTP3) intentionally NOT opened: the F5 nginx-ingress
+    # controller in use (nginxinc/kubernetes-ingress, see common_k3s) has no
+    # HTTP/3 support at all (verified live 2026-08-21, curl --http3-only fails
+    # outright and the controller's Service exposes TCP 80/443 only - no UDP
+    # listener exists behind this port regardless). Re-add the udp dport 443
+    # accept rules here (and in the output chain below) if/when the ingress
+    # controller gains HTTP/3 support.
     ip  daddr {{ server_ipv4 }} tcp dport { 80, 443 } ct state new accept
-    ip  daddr {{ server_ipv4 }} udp dport 443          ct state new accept
     ip6 daddr {{ server_ipv6 }} tcp dport { 80, 443 } accept
-    ip6 daddr {{ server_ipv6 }} udp dport 443          accept
 
     # Incoming: management (SSH on non-standard port)
     ip  daddr {{ server_ipv4 }} tcp dport 10022 ct state new accept
@@ -212,8 +216,11 @@ table inet filter {
     udp dport 123 ct state new accept
 
     # HTTP / HTTPS (package downloads, ACME, external APIs)
+    # No outgoing QUIC (udp dport 443): everything calling out from this host
+    # (dnf, curl in Ansible tasks, the ACME client) speaks plain HTTP/TCP, and
+    # nothing here is a browser that would opportunistically upgrade to
+    # HTTP/3. See the input chain above for the matching removal + rationale.
     tcp dport { 80, 443 } ct state new accept
-    udp dport 443          ct state new accept  # QUIC outgoing
 
     # SMTP submission (msmtp – rkhunter/cron/dnf-automatic on both blog and nextcloud hosts)
     tcp dport 465 ct state new accept  # TLS

@@ -224,6 +224,27 @@
     name: rsync
     state: absent
 
+# NFS/RPC/Samba-client stack pulled in by the base cloud image, not used by
+# anything in this repo (no NFS mounts, no Samba shares) - verified via
+# `rpm -q --whatrequires` and a `dnf remove --assumeno` dry-run 2026-08-21:
+# clean removal, only drags along the unused libwbclient dependency, no
+# collateral damage to anything actually in use (unlike avahi-libs/bluez,
+# deliberately left alone - that chain drags out sysstat/pcp-libs too).
+# rpcbind specifically (UDP/TCP 111) is a known historical target for RPC
+# portmapper reflection/amplification abuse - one less unused listener-
+# capable daemon on the host.
+- name: CIS | Remove unused NFS/RPC/Samba-client packages (verified 2026-08-21)
+  ansible.builtin.dnf:
+    name:
+      - nfs-utils
+      - rpcbind
+      - gssproxy
+      - samba-common
+      - samba-common-libs
+      - samba-client-libs
+    state: absent
+    autoremove: true
+
 # -----------------------------------------------------------------------------
 # Mount hardening: nodev/nosuid/noexec on /tmp, /var/tmp, /dev/shm
 # -----------------------------------------------------------------------------
