@@ -5,12 +5,21 @@
 
 # The Nextcloud FPM container writes Nextcloud's PHP files here on first run.
 # Using a HostPath PV guarantees data persists across pod restarts.
+#
+# Owner is www-data's uid (33), not root - same reasoning as the config/data
+# dirs below: this task runs on every Ansible pass, so root:root here would
+# silently undo the init container's chown after the first deploy. Found
+# live on the blog's equivalent WordPress www dir 2026-08-26 (TranslatePress
+# failing to CREATE TABLE with a misleading "Permission denied", actually
+# caused by this exact pattern re-asserting root ownership on every
+# playbook run) - this k3s Nextcloud path isn't live yet, fixing it here so
+# it doesn't repeat the same bug once it is.
 - name: Dirs | Create Nextcloud www directory (HostPath for app files)
   ansible.builtin.file:
     path: "{{ nextcloud_k3s_www_dir }}"
     state: directory
-    owner: root
-    group: root
+    owner: 33
+    group: 33
     mode: "0755"
 
 # Pre-create the config directory as uid 33 (www-data inside the container).

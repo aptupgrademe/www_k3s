@@ -32,9 +32,30 @@
 # aide --check exits non-zero when the filesystem no longer matches the
 # baseline - which, right after a playbook run that changed something, is
 # expected and not a security finding. See role purpose note above.
+#
+# aide --update ALSO exits non-zero whenever it finds and records
+# differences - that is normal, documented AIDE behaviour (the return code
+# is a bitmask of added/removed/changed, e.g. rc=7 just means "found and
+# wrote all three kinds of changes"), not a failure. failed_when: false here
+# is deliberate: trust the presence of aide.db.new.gz afterwards as the real
+# success signal, not the exit code. Got this wrong on the first version of
+# this role - a live run legitimately found package-upgrade-driven changes,
+# aide --update handled them fine and wrote the new db, but the task still
+# treated the non-zero rc as a failure and aborted the whole play *before*
+# the next task could activate the new database (verified live 2026-08-26).
 - name: AIDE refresh | Rebuild the baseline (state changed since last check)
   ansible.builtin.command: systemd-run --wait --pipe --quiet -- aide --update
   changed_when: true
+  failed_when: false
+  when:
+    - aide_db.stat.exists
+    - aide_check.rc is defined
+    - aide_check.rc != 0
+
+- name: AIDE refresh | Check the rebuilt database was actually written
+  ansible.builtin.stat:
+    path: /var/lib/aide/aide.db.new.gz
+  register: aide_db_new
   when:
     - aide_db.stat.exists
     - aide_check.rc is defined
@@ -47,3 +68,4 @@
     - aide_db.stat.exists
     - aide_check.rc is defined
     - aide_check.rc != 0
+    - aide_db_new.stat.exists

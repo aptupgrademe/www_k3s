@@ -34,6 +34,20 @@
     name: aide
     state: present
 
+# k3s creates a new subdirectory under /var/log/pods for every pod start and
+# every CronJob run, which changes the parent directory's link count - AIDE's
+# default /var/log ruleset picks that up as a "changed" entry on essentially
+# every daily check. Not a security finding, just constant expected k3s
+# churn (confirmed live 2026-08-21 and again 2026-08-26 - same false
+# positive both times). Excluding the whole subtree is safe: pod logs
+# aren't a tamper-detection target, they're ephemeral container stdout/
+# stderr capture, not config or binaries.
+- name: CIS | Exclude /var/log/pods from AIDE (k3s log churn, not a finding)
+  ansible.builtin.lineinfile:
+    path: /etc/aide.conf
+    line: "!/var/log/pods"
+    insertafter: "^/var/log LOG$"
+
 - name: CIS | Check whether the AIDE database already exists
   ansible.builtin.stat:
     path: /var/lib/aide/aide.db.gz

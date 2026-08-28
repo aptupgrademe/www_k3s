@@ -1,0 +1,12 @@
+---
+# opcache.validate_timestamps is off on this host (performance tuning, see
+# the OPcache hardening commit) - PHP-FPM never notices a changed mu-plugin
+# file on its own, it keeps running whatever was compiled into OPcache at
+# first load until the process restarts. Found live 2026-08-26: an updated
+# breadcrumb-fix.php mu-plugin silently kept executing its old version
+# through several cache-clears and file edits, because none of those touch
+# OPcache - only a pod restart does. Any task that writes a PHP file PHP-FPM
+# might already have compiled needs to notify this handler.
+- name: Restart wordpress deployment (OPcache picks up changed PHP files)
+  ansible.builtin.command: k3s kubectl rollout restart deployment/wordpress -n wordpress
+  changed_when: true

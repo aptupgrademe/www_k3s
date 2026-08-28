@@ -129,6 +129,17 @@
         PHPEOF
         chown www-data:www-data /var/www/html/wp-content/mu-plugins/security-hardening.php
   changed_when: true
+  notify: Restart wordpress deployment (OPcache picks up changed PHP files)
+
+# A breadcrumb-fix.php mu-plugin used to live here, working around a
+# TranslatePress + Yoast/Breadcrumb-Trail compatibility bug (TranslatePress's
+# automatic gettext translation corrupted raw PHP date-format characters used
+# internally by both breadcrumb systems). Removed 2026-08-26 along with
+# TranslatePress itself (see removed 'translatepress-multilingual' entry in
+# host_vars) - the user wasn't happy with the plugin and one-language-free-tier
+# limit, so it's gone rather than fixed further. The underlying corruption
+# only ever happened because TranslatePress was auto-translating those gettext
+# calls; without it, both breadcrumb systems work unmodified.
 
 
 # -----------------------------------------------------------------------------
@@ -603,6 +614,30 @@
       failed_when: >-
         wp_theme_update.rc != 0 and
         'No themes updated' not in wp_theme_update.stderr
+
+    # Translation strings (core, plugin, theme .mo files) get refreshed by
+    # WordPress.org translators independently of version bumps - a plugin
+    # can stay on the same version for months while its German/French/etc.
+    # strings still improve. Unlike plugin/theme update --all, these exit 0
+    # whether or not anything needed updating ("Success: Translations are up
+    # to date."), so no special failed_when handling is needed here.
+    # There is no single unified `wp language update` - verified live
+    # 2026-08-26 ("'update' is not a registered subcommand of 'language'"),
+    # it's three separate per-type subcommands.
+    - name: WordPress | Update installed translations (core, plugins, themes)
+      ansible.builtin.command: >
+        k3s kubectl exec deployment/wordpress
+        --namespace wordpress
+        --container wordpress-fpm --
+        php /usr/local/lib/wp-cli/wp-cli.phar language {{ item }}
+        --path=/var/www/html
+        --allow-root
+      loop:
+        - "core update"
+        - "plugin update --all"
+        - "theme update --all"
+      register: wp_language_update
+      changed_when: "'Success: Updated' in wp_language_update.stdout"
 
   always:
     # Same reasoning as the plugin block above: wp-cli writes updated

@@ -64,6 +64,14 @@ spec:
           set -e
           chown -R 33:33 /var/www/html
           chmod 0755 /var/www/html
+          # Same Calico/Felix startup race as the wp-cron container (see
+          # cronjob.yml.j2): a brand-new pod's first outbound connection can
+          # fail before NetworkPolicy egress rules are programmed. Caused a
+          # live outage 2026-08-26 - this init container's wget to GitHub
+          # hung on a rollout restart, the old pod had already been
+          # terminated (single replica, no maxUnavailable buffer), site
+          # returned 502 until the init container was retried by hand.
+          sleep 5
           echo "Downloading WP-CLI {{ blog_wp_cli_version }}..."
           wget -q -O /wp-cli/wp-cli.phar \
             https://github.com/wp-cli/wp-cli/releases/download/v{{ blog_wp_cli_version }}/wp-cli-{{ blog_wp_cli_version }}.phar
