@@ -85,6 +85,35 @@
       [ $? -ne 0 ] && echo "$OUT" | /usr/bin/mail -s "[$(hostname -f)] AIDE found file integrity changes" {{ aide_mail }}
     user: root
 
+# common_aide_refresh (end of playbook) only re-baselines when an Ansible
+# run actually touches this host. dnf-automatic (common_dnf_automatic)
+# installs security updates - including kernel swaps - silently every night
+# in its own 00:00-01:00 window with no Ansible run involved, so that path
+# never refreshed the baseline. Confirmed live 2026-08-29/2026-09-01: a
+# kernel update (687.39.1 -> 687.42.1) landed via dnf-automatic, and the
+# next @daily "AIDE integrity check" above mailed a false-positive alert
+# (3273 added/3273 removed/364 changed, all just old-kernel-out/new-kernel-in
+# plus the usual hardlink/inode churn that comes with it) because the
+# baseline was still the pre-update one from 3 days earlier.
+#
+# Fixed by refreshing the baseline once more, at 04:00 - after the
+# dnf-automatic install window and the 03:30 reboot-if-needed job
+# (common_dnf_automatic) have both settled, but well before the next
+# midnight's check above. No mail here on purpose: this is routine
+# maintenance, not a finding - see the "unnecessary notifications" ask
+# that prompted this fix. Same rc-tolerant shape as common_aide_refresh
+# (aide --update's non-zero exit on finding+recording changes is normal,
+# not a failure - only the presence of aide.db.new.gz signals success).
+- name: CIS | Schedule nightly AIDE baseline refresh (after dnf-automatic's update window)
+  ansible.builtin.cron:
+    name: "AIDE baseline refresh after automatic updates"
+    hour: "4"
+    minute: "0"
+    job: >-
+      /usr/sbin/aide --update >/dev/null 2>&1;
+      [ -f /var/lib/aide/aide.db.new.gz ] && mv /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz
+    user: root
+
 # -----------------------------------------------------------------------------
 # Kernel modules: blacklist legacy/unused filesystem drivers
 # -----------------------------------------------------------------------------
