@@ -282,7 +282,7 @@
 <main>
 
 <h1>WordPress – Betriebs&shy;dokumentation</h1>
-<p class="subtitle">WordPress 7.0.2 auf K3s (AlmaLinux 9) &middot; Letzte Aktualisierung: Juli 2026</p>
+<p class="subtitle">WordPress 7.1.0 auf K3s (AlmaLinux 9) &middot; Letzte Aktualisierung: September 2026</p>
 
 <!-- ─────────────────────────── ÜBERBLICK ─────────────────────────────── -->
 <section id="ueberblick">
@@ -298,7 +298,7 @@
 <div class="card-grid">
   <div class="card">
     <div class="label">WordPress</div>
-    <div class="value">7.0.2 (wordpress:7.0.2-php8.3-fpm)</div>
+    <div class="value">7.1.0 (wordpress:7.1.0-php8.4-fpm)</div>
   </div>
   <div class="card">
     <div class="label">Betriebssystem</div>
@@ -358,7 +358,7 @@
 <span class="c-pod">│  fastcgi       │ :9000                  │</span>
 <span class="c-pod">│  ┌─────────────▼─────────────────────┐  │</span>
 <span class="c-pod">│  │  wordpress-fpm  PHP-FPM 8.3       │  │</span>
-<span class="c-pod">│  │  wordpress:7.0.2-php8.3-fpm              │  │</span>
+<span class="c-pod">│  │  wordpress:7.1.0-php8.4-fpm              │  │</span>
 <span class="c-pod">│  └───────────────────────────────────┘  │</span>
 <span class="c-pod">└──────────────────────────────────────────┘</span>
         │
@@ -415,7 +415,7 @@
 <h3>WordPress-Pod im Detail</h3>
 <div class="card">
   <h4>Container 1: <code>wordpress-fpm</code></h4>
-  <p>Das offizielle <code>wordpress:7.0.2-php8.3-fpm</code>-Image. Führt PHP-FPM auf Port 9000 aus.
+  <p>Das offizielle <code>wordpress:7.1.0-php8.4-fpm</code>-Image. Führt PHP-FPM auf Port 9000 aus.
   Beim ersten Start installiert der Docker-Entrypoint WordPress automatisch anhand
   der Umgebungsvariablen (DB-Host, DB-Name, DB-User, DB-Passwort).
   WordPress-Dateien werden in <code>/var/www/html</code> auf dem gemeinsamen
@@ -797,7 +797,7 @@ k3s kubectl get secret wordpress-secrets -n wordpress \
 </p>
 
 <pre><code># inventory/group_vars/all.yml
-blog_image_wordpress: "wordpress:7.0.2-php8.3-fpm"   # WordPress PHP-FPM
+blog_image_wordpress: "wordpress:7.1.0-php8.4-fpm"   # WordPress PHP-FPM
 blog_image_mariadb:   "mariadb:10.11"       # MariaDB LTS
 blog_image_nginx:     "nginx:1.31-alpine"   # nginx Sidecar</code></pre>
 
@@ -805,9 +805,9 @@ blog_image_nginx:     "nginx:1.31-alpine"   # nginx Sidecar</code></pre>
 <table>
   <tr><th>Tag-Format</th><th>Bedeutung</th><th>Beispiel</th></tr>
   <tr>
-    <td><code>7.0.2-fpm</code></td>
+    <td><code>7.1.0-fpm</code></td>
     <td>Fest auf einen bestimmten WordPress-Patch-Release gepinnt; wird manuell in Ansible hochgesetzt</td>
-    <td><code>wordpress:7.0.2-php8.3-fpm</code></td>
+    <td><code>wordpress:7.1.0-php8.4-fpm</code></td>
   </tr>
   <tr>
     <td><code>10.11</code></td>
@@ -833,10 +833,10 @@ blog_image_nginx:     "nginx:1.31-alpine"   # nginx Sidecar</code></pre>
 
 <div class="callout callout-warn">
   <strong>Rebuild ohne Tag-Änderung</strong>
-  Wenn Docker Hub <code>wordpress:7.0.2-php8.3-fpm</code> unter demselben Tag neu baut
+  Wenn Docker Hub <code>wordpress:7.1.0-php8.4-fpm</code> unter demselben Tag neu baut
   (z.B. ein Base-Image-Security-Patch), passiert auf dem Server <em>nichts automatisch</em>.
   Der Tag ist lokal gecacht. Refresh erzwingen:
-  <pre style="margin-top:8px"><code>crictl pull docker.io/library/wordpress:7.0.2-php8.3-fpm
+  <pre style="margin-top:8px"><code>crictl pull docker.io/library/wordpress:7.1.0-php8.4-fpm
 k3s kubectl rollout restart deployment/wordpress -n wordpress</code></pre>
 </div>
 </section>
@@ -1367,12 +1367,12 @@ k3s kubectl get pods -n wordpress</code></pre>
 
 <h3>WordPress-Update: Rebuild innerhalb desselben Tags</h3>
 <p>
-  Wenn Docker Hub <code>wordpress:7.0.2-php8.3-fpm</code> neu baut (z.B. ein
+  Wenn Docker Hub <code>wordpress:7.1.0-php8.4-fpm</code> neu baut (z.B. ein
   Base-Image-Security-Patch) und der Tag im Ansible unverändert bleibt:
 </p>
 <ol class="steps">
   <li>Neues Image manuell pullen:
-    <pre><code>crictl pull docker.io/library/wordpress:7.0.2-php8.3-fpm</code></pre>
+    <pre><code>crictl pull docker.io/library/wordpress:7.1.0-php8.4-fpm</code></pre>
   </li>
   <li>Pod neu starten:
     <pre><code>k3s kubectl rollout restart deployment/wordpress -n wordpress
@@ -1380,7 +1380,7 @@ k3s kubectl rollout status  deployment/wordpress -n wordpress --timeout=300s</co
   </li>
 </ol>
 
-<h3>WordPress-Update: Versionssprung (z.B. 7.0.2 → 7.1)</h3>
+<h3>WordPress-Update: Versionssprung (z.B. 7.1.0 → 7.2)</h3>
 
 <div class="callout callout-danger">
   <strong>Backup vor jedem Major-Update!</strong>
@@ -1389,7 +1389,7 @@ k3s kubectl rollout status  deployment/wordpress -n wordpress --timeout=300s</co
 
 <ol class="steps">
   <li>Tag in <code>inventory/group_vars/all.yml</code> ändern:
-    <pre><code>blog_image_wordpress: "wordpress:7.0.2-php8.3-fpm"</code></pre>
+    <pre><code>blog_image_wordpress: "wordpress:7.1.0-php8.4-fpm"</code></pre>
   </li>
   <li>Playbook ausführen – K3s zieht das neue Image und rollt den Pod durch:
     <pre><code>ansible-playbook blog.yml --limit www.apt-upgrade.me --ask-vault-pass</code></pre>

@@ -118,7 +118,7 @@ blog_image_nginx:          "nginx:1.30.4-alpine"   # stable, exact patch pin (se
 # that same image by digest. 7.4 is the last Redis 7 LTS line; moving to 8.x
 # is a deliberate major upgrade, not a patch bump – left for a separate change.
 # Check: https://hub.docker.com/_/redis/tags  (filter: *-alpine)
-blog_image_redis:          "redis:7.4.10-alpine"
+blog_image_redis:          "redis:7.4.11-alpine"  # bumped 2026-09-02, was 7.4.10-alpine
 
 # -----------------------------------------------------------------------------
 # WP-CLI – pinned version + checksum (supply-chain protection)
