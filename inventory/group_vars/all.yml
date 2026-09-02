@@ -68,7 +68,7 @@ cert_manager_chart_version:  "1.21.1"
 # Monitoring stack versions – update here to roll out across all hosts
 # =============================================================================
 node_exporter_version: "1.12.1"
-prometheus_version:    "3.13.2"
+prometheus_version:    "3.14.0"  # bumped 2026-08-28, was 3.13.2
 prometheus_retention:  "30d"
 # grafana_admin_pass: set per host in host_vars/<host>/vault.yml
 
@@ -102,7 +102,7 @@ nextcloud_image_collabora: "collabora/code:26.04.3.1.1"   # checked 2026-08-20, 
 nextcloud_image_busybox:   "busybox:1"
 blog_image_busybox:        "busybox:1"
 
-blog_image_wordpress:      "wordpress:7.0.4-php8.3-fpm"
+blog_image_wordpress:      "wordpress:7.1.0-php8.4-fpm"  # bumped 2026-08-28, was 7.0.4-php8.3-fpm (core + PHP 8.3→8.4)
 # MariaDB 10.11 LTS, pinned to the exact patch for the same reason as nginx
 # above: the floating 10.11 tag left the node on a stale cached layer under
 # imagePullPolicy IfNotPresent (verified 2026-08-16 – node had digest
@@ -110,7 +110,7 @@ blog_image_wordpress:      "wordpress:7.0.4-php8.3-fpm"
 # 2026-08-04). 10.11.18 IS that rebuilt image, byte for byte – same digest –
 # so this pin changes no content, it only forces the pull that the floating
 # tag silently skipped. 10.11 is supported until Feb 2028.
-blog_image_mariadb:        "mariadb:10.11.18"
+blog_image_mariadb:        "mariadb:10.11.19"  # bumped 2026-08-28, was 10.11.18
 blog_image_nginx:          "nginx:1.30.4-alpine"   # stable, exact patch pin (see nextcloud_image_nginx note)
 # Redis: object cache for WordPress (pure in-memory, no persistence)
 # Exact patch pin, same stale-cache reason as MariaDB above (node was on
