@@ -59,6 +59,8 @@
     - monit-check-service.sh
     - monit-check-firewall.sh
     - monit-check-pods.sh
+    - monit-check-certs.sh
+    - monit-check-f2b-jails.sh
 
 - name: Monit | Deploy main config (/etc/monitrc, mode 0600 required)
   ansible.builtin.template:

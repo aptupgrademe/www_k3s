@@ -35,4 +35,21 @@ check program firewall with path "/usr/local/sbin/monit-check-firewall.sh"
 # --- K3s workloads in a bad state ---
 check program k3s_pods with path "/usr/local/sbin/monit-check-pods.sh"
     if status != 0 then alert
+
+# --- fail2ban jails actually watching a file, not just "running" ---
+# The pod-log path contains the ingress pod's UID and changes on every pod
+# restart, but fail2ban resolves the glob only at start - so a restart leaves
+# the jails running against a path that no longer exists, banning nobody.
+# The separate fail2ban process check above cannot see this.
+check program f2b_jails with path "/usr/local/sbin/monit-check-f2b-jails.sh"
+    if status != 0 then alert
+
+# --- TLS certificates: warn long before they expire ---
+# Hostnames are discovered from the Ingress resources by the script itself.
+# Checked every 30 cycles (~1x/hour at the default interval) - certificate
+# expiry moves in days, there is nothing to gain from checking every 2 minutes,
+# and each check opens a TLS connection per hostname.
+check program certs with path "/usr/local/sbin/monit-check-certs.sh {{ monit_cert_min_days }}"
+    every 30 cycles
+    if status != 0 then alert
 {% endif %}
