@@ -38,18 +38,32 @@ echo "=== WordPress Backup: www.apt-upgrade.me ($REMOTE_HOST) ==="
 mkdir -p "$LOCAL_WWW_DIR"
 
 echo "[1/4] Enabling WordPress maintenance mode ..."
-# WP-CLI is downloaded by the init container to /var/www/html/wp-cli.phar
+# WP-CLI ships inside the image at /usr/local/lib/wp-cli/wp-cli.phar.
 $SSH_CMD "k3s kubectl exec deployment/wordpress -n $NAMESPACE -c wordpress-fpm -- \
-  php /var/www/html/wp-cli.phar maintenance-mode activate \
+  php /usr/local/lib/wp-cli/wp-cli.phar maintenance-mode activate \
   --path=/var/www/html --allow-root" > /dev/null
 
+# With set -e, any failure below would leave the site in maintenance mode -
+# i.e. a failed backup would also take the blog offline. Always lift it again.
+trap '$SSH_CMD "k3s kubectl exec deployment/wordpress -n $NAMESPACE -c wordpress-fpm -- \
+  php /usr/local/lib/wp-cli/wp-cli.phar maintenance-mode deactivate \
+  --path=/var/www/html --allow-root" > /dev/null 2>&1 || true' EXIT
+
 echo "[2/4] Creating database dump from MariaDB pod ..."
-# MariaDB runs as a K3s pod; MARIADB_ROOT_PASSWORD is injected via K8s Secret.
-# We reference it directly in the shell command inside the container.
+# MariaDB runs as a K3s pod. The image takes the root password as a *_FILE
+# secret mount, not as a plain environment variable - reading the env var
+# instead authenticates with an empty password and the dump comes back empty.
 $SSH_CMD "k3s kubectl exec deployment/mariadb -n $NAMESPACE -c mariadb -- \
   sh -c 'mysqldump --single-transaction $REMOTE_DB_NAME \
-    -u root -p\"\$MARIADB_ROOT_PASSWORD\" 2>/dev/null'" \
+    -u root -p\"\$(cat \$MARIADB_ROOT_PASSWORD_FILE)\"'" \
   > "$LOCAL_BACKUP_DIR/db.sql"
+
+# Redirection makes the dump's exit status invisible, so verify the content.
+# An unusable backup has to fail here, not on the day it is needed.
+if ! grep -q "INSERT INTO \`wp_posts\`" "$LOCAL_BACKUP_DIR/db.sql"; then
+  echo "ERROR: dump contains no wp_posts rows - not a usable backup." >&2
+  exit 1
+fi
 
 echo "[3/4] Backing up WordPress files from $REMOTE_WWW_DIR ..."
 rsync -az --delete \
@@ -58,8 +72,9 @@ rsync -az --delete \
 
 echo "[4/4] Disabling maintenance mode ..."
 $SSH_CMD "k3s kubectl exec deployment/wordpress -n $NAMESPACE -c wordpress-fpm -- \
-  php /var/www/html/wp-cli.phar maintenance-mode deactivate \
+  php /usr/local/lib/wp-cli/wp-cli.phar maintenance-mode deactivate \
   --path=/var/www/html --allow-root" > /dev/null
+trap - EXIT
 
 echo ""
 echo "Backup complete → $LOCAL_BACKUP_DIR"

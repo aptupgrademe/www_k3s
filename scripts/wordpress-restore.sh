@@ -48,7 +48,7 @@ echo "    Source: $BACKUP_DIR"
 
 echo "[1/9] Enabling maintenance mode ..."
 $SSH_CMD "k3s kubectl exec deployment/wordpress -n $NAMESPACE -c wordpress-fpm -- \
-  php /var/www/html/wp-cli.phar maintenance-mode activate \
+  php /usr/local/lib/wp-cli/wp-cli.phar maintenance-mode activate \
   --path=/var/www/html --allow-root" || true
 
 echo "[2/9] Scaling down WordPress and MariaDB deployments ..."
@@ -81,7 +81,7 @@ scp -i "$SSH_KEY" -P $REMOTE_SSH_PORT "$BACKUP_DIR/db.sql" \
   "$REMOTE_USER@$REMOTE_HOST:/tmp/wp_restore.sql"
 $SSH_CMD "k3s kubectl exec deployment/mariadb -n $NAMESPACE -c mariadb -- \
   sh -c 'mysql $REMOTE_DB_NAME \
-    -u root -p\"\$MARIADB_ROOT_PASSWORD\" < /tmp/wp_restore.sql' && \
+    -u root -p\"\$(cat \$MARIADB_ROOT_PASSWORD_FILE)\" < /tmp/wp_restore.sql' && \
   rm -f /tmp/wp_restore.sql"
 
 echo "[7/9] Fixing file ownership (www-data = uid 33) ..."
@@ -94,7 +94,7 @@ $SSH_CMD "k3s kubectl wait deployment/wordpress -n $NAMESPACE \
 
 echo "[9/9] Disabling maintenance mode ..."
 $SSH_CMD "k3s kubectl exec deployment/wordpress -n $NAMESPACE -c wordpress-fpm -- \
-  php /var/www/html/wp-cli.phar maintenance-mode deactivate \
+  php /usr/local/lib/wp-cli/wp-cli.phar maintenance-mode deactivate \
   --path=/var/www/html --allow-root"
 
 echo ""
