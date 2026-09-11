@@ -57,6 +57,9 @@ spec:
             add: [CHOWN, FOWNER, DAC_OVERRIDE]
           seccompProfile:
             type: RuntimeDefault
+          # Only ever writes into the two mounted volumes below (wordpress-www,
+          # wp-cli) - chown/chmod/wget/sha512sum need no other writable path.
+          readOnlyRootFilesystem: true
         command:
         - sh
         - -c
@@ -107,6 +110,13 @@ spec:
             add: [CHOWN, SETGID, SETUID, DAC_OVERRIDE, FOWNER]
           seccompProfile:
             type: RuntimeDefault
+          # NOT verified live yet (unlike the capabilities above) - based on
+          # the official image's documented behaviour: PHP-FPM here never
+          # daemonizes (no -D), so it writes no pid file, and error_log goes
+          # to stderr. The only runtime write path is PHP temp files, already
+          # covered by the tmp emptyDir below. Check pod status after rollout;
+          # if FPM fails to start, the missing path will be in its log.
+          readOnlyRootFilesystem: true
         env:
         # Database
         - name: WORDPRESS_DB_HOST
@@ -218,6 +228,8 @@ spec:
             drop: [ALL]
           seccompProfile:
             type: RuntimeDefault
+          # Stateless scraper, writes nothing to disk.
+          readOnlyRootFilesystem: true
         env:
         - name: PHP_FPM_SCRAPE_URI
           value: "tcp://127.0.0.1:9000/fpm-status"
@@ -250,6 +262,13 @@ spec:
             add: [CHOWN, SETGID, SETUID, NET_BIND_SERVICE]
           seccompProfile:
             type: RuntimeDefault
+          # NOT verified live yet. The official nginx image is built with
+          # --pid-path=/run/nginx.pid and its client_body/proxy/fastcgi temp
+          # paths under /var/cache/nginx - the two emptyDir mounts below cover
+          # both. access_log/error_log already point at /dev/stdout/stderr
+          # (see nginx-cm.yml.j2), so no log path needed. Check pod status
+          # after rollout.
+          readOnlyRootFilesystem: true
         ports:
         - containerPort: 80
           name: http
@@ -260,6 +279,10 @@ spec:
         - name: nginx-config
           mountPath: /etc/nginx/conf.d/default.conf
           subPath: default.conf
+        - name: nginx-run
+          mountPath: /run
+        - name: nginx-cache
+          mountPath: /var/cache/nginx
         resources:
           requests:
             memory: "32Mi"
@@ -313,6 +336,17 @@ spec:
       - name: wp-cli
         emptyDir:
           sizeLimit: 32Mi
+      # Below: backing store for nginx's writable paths now that
+      # readOnlyRootFilesystem is on (pid file + client/proxy/fastcgi temp
+      # dirs). Tiny and disposable - nothing here needs to survive a restart.
+      - name: nginx-run
+        emptyDir:
+          medium: Memory
+          sizeLimit: 4Mi
+      - name: nginx-cache
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Mi
 ---
 apiVersion: v1
 kind: Service

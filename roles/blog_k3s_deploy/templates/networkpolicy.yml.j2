@@ -94,12 +94,19 @@ spec:
   # Core/plugin/theme updates (wordpress.org) and the WP-CLI init container's
   # GitHub download – see "Known limitation" above, cannot be scoped tighter
   # than "the open internet on 443" with this cluster's NetworkPolicy engine.
+  # Port 80 alongside it: confirmed live 2026-09-04 that `wp language plugin
+  # update` connects to api.wordpress.org on plain HTTP, not HTTPS - failed
+  # with "cURL error 7: Failed to connect ... port 80" until this was added.
+  # Same 0.0.0.0/0 host set as 443 above, just a second port on it - no new
+  # risk category.
   - to:
     - ipBlock:
         cidr: 0.0.0.0/0
     ports:
     - protocol: TCP
       port: 443
+    - protocol: TCP
+      port: 80
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

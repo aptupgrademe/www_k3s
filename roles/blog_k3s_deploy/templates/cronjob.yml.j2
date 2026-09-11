@@ -42,6 +42,13 @@ spec:
                 drop: [ALL]
               seccompProfile:
                 type: RuntimeDefault
+              # NOT verified live yet. wp-cron.php runs the same WP bootstrap
+              # as the main pod (wp_version_check/wp_update_plugins - see the
+              # WORDPRESS_CONFIG_EXTRA comment below), which can shell out to
+              # download_url()/tempnam() using PHP's default temp dir - same
+              # tmp mount as wordpress-fpm in the main Deployment. Check pod
+              # status after rollout.
+              readOnlyRootFilesystem: true
             # 5s startup delay: Calico/Felix needs a moment after pod creation
             # to program this pod's NetworkPolicy rules (egress to
             # MariaDB/Redis, see wordpress-netpol). Long-lived pods never hit
@@ -108,6 +115,8 @@ spec:
             - name: db-credentials
               mountPath: /etc/secrets
               readOnly: true
+            - name: tmp
+              mountPath: /tmp
             resources:
               requests:
                 memory: "64Mi"
@@ -127,3 +136,9 @@ spec:
               - key: db-password
                 path: db-password
               defaultMode: 0444
+          # Same RAM-backed tmp as wordpress-fpm in the main Deployment -
+          # see the securityContext comment above.
+          - name: tmp
+            emptyDir:
+              medium: Memory
+              sizeLimit: 32Mi

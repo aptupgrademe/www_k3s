@@ -35,6 +35,12 @@ spec:
             add: [SETGID, SETUID]
           seccompProfile:
             type: RuntimeDefault
+          # NOT verified live yet. --save "" --appendonly no means Redis
+          # shouldn't write to disk at all, but the image's WORKDIR is /data -
+          # the emptyDir below is a defensive backstop for that chdir, not
+          # something Redis is expected to actually use. Check pod status
+          # after rollout.
+          readOnlyRootFilesystem: true
         # Disable all persistence – RAM-only cache, restarts start fresh.
         # maxmemory is set well below the 128Mi container limit (mem_fragmentation_ratio
         # observed at 2.73 live, i.e. actual RSS usage is well above Redis' own
@@ -46,6 +52,9 @@ spec:
         ports:
         - containerPort: 6379
           name: redis
+        volumeMounts:
+        - name: data
+          mountPath: /data
         resources:
           requests:
             memory: "32Mi"
@@ -59,6 +68,13 @@ spec:
           initialDelaySeconds: 5
           periodSeconds: 10
           failureThreshold: 3
+      volumes:
+      # Defensive backstop for the image's /data WORKDIR now that
+      # readOnlyRootFilesystem is on - see the securityContext comment above.
+      - name: data
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Mi
 ---
 apiVersion: v1
 kind: Service
