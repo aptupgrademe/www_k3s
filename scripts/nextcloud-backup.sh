@@ -28,22 +28,16 @@ fi
 case "$ENV" in
   test)
     REMOTE_USER="root"
-    REMOTE_HOST="82.165.165.230"
-    REMOTE_SSH_PORT=22          # change to 10022 once common_ssh is applied
     LOCAL_BACKUP_DIR="/data/nextcloud/test"
     REMOTE_DB_NAME="test_nextcloud"
     ;;
   sofie)
     REMOTE_USER="root"
-    REMOTE_HOST="CHANGE_ME"     # set ansible_host in inventory/hosts.yml
-    REMOTE_SSH_PORT=10022
     LOCAL_BACKUP_DIR="/data/nextcloud/sofie"
     REMOTE_DB_NAME="sofie_nextcloud"
     ;;
   cvjm)
     REMOTE_USER="root"
-    REMOTE_HOST="CHANGE_ME"     # set ansible_host in inventory/hosts.yml
-    REMOTE_SSH_PORT=10022
     LOCAL_BACKUP_DIR="/data/nextcloud/cvjm"
     REMOTE_DB_NAME="cvjm_nextcloud"
     ;;
@@ -54,11 +48,10 @@ case "$ENV" in
     ;;
 esac
 
-if [[ "$REMOTE_HOST" == "CHANGE_ME" ]]; then
-  echo "Error: IP for '$ENV' is not configured yet."
-  echo "Set ansible_host in inventory/hosts.yml and fill in host_vars/$ENV/vars.yml."
-  exit 1
-fi
+# Address and SSH port come from the (gitignored) Ansible inventory, so no real
+# address is ever hardcoded in this tracked file - see lib/inventory-lookup.sh.
+source "$(dirname "${BASH_SOURCE[0]}")/lib/inventory-lookup.sh"
+inventory_lookup "$ENV"
 
 # ---------------------------------------------------------------------------
 # Fixed values (same for all servers)

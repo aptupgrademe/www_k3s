@@ -20,8 +20,10 @@ set -euo pipefail
 # Configuration
 # ---------------------------------------------------------------------------
 REMOTE_USER="root"
-REMOTE_HOST="217.154.101.78"
-REMOTE_SSH_PORT=10022
+# Address and SSH port come from the (gitignored) Ansible inventory, so no real
+# address is ever hardcoded in this tracked file - see lib/inventory-lookup.sh.
+source "$(dirname "${BASH_SOURCE[0]}")/lib/inventory-lookup.sh"
+inventory_lookup "www.apt-upgrade.me"
 SSH_KEY="$HOME/.ssh/id_rsa"
 
 BACKUP_DIR="/data/wordpress/www.apt-upgrade.me"
