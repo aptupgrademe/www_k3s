@@ -27,3 +27,8 @@ docs/*-audit*.md
 # Only publickey.asc (the public half) is tracked and served at /publickey.asc.
 roles/blog_k3s_deploy/files/privatekey.asc
 roles/blog_k3s_deploy/files/*.rev
+
+# Blog post drafts – written here for convenience, published on the blog,
+# not part of the repo. Untracked alone is not enough: a `git add -A` would
+# sweep them into a commit and onto the public remote.
+blog-draft-*
