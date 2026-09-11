@@ -8,8 +8,16 @@
     # Must be "restarted", not "reloaded": systemd only re-applies exec-time
     # sandboxing (RestrictAddressFamilies, ProtectKernelTunables, ...) when the
     # unit is (re)started. A reload just SIGHUPs the running process, so
-    # hardening.conf changes would silently never take effect. OpenSSH is safe
-    # to restart here — the listening master respawns, but already-established
-    # sessions are handled by independent forked child processes and survive.
+    # hardening.conf changes would silently never take effect.
     state: restarted
     daemon_reload: true
+
+# In practice this restart kills the very connection Ansible is using to run
+# it (observed live 2026-09-10: the task itself, or the next task reusing the
+# same multiplexed connection, fails with "Module result deserialization
+# failed" / a stale-PrivateTmp-namespace error) - the opposite of what the
+# comment above this handler used to assume. Reset immediately so Ansible
+# opens a fresh connection against the just-restarted sshd instead of either
+# failing here or limping along on a half-dead one.
+- name: Reset connection after sshd restart
+  ansible.builtin.meta: reset_connection

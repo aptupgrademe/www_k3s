@@ -44,11 +44,26 @@
     state: absent
   when: ansible_distribution == 'AlmaLinux'
 
-- name: Enable and start nftables service
+- name: Enable nftables (starts automatically on the next boot)
+  ansible.builtin.service:
+    name: nftables
+    enabled: true
+
+# Skipped on the initial hardening run (ssh_first_run, set by common_ssh):
+# starting nftables live here, on a host where it has never run before, means
+# an already-open SSH connection that predates it (this one) has no conntrack
+# entry yet. The new ruleset only explicitly accepts *new* connections on
+# 10022 - this untracked pre-existing one matches neither that rule nor
+# "ct state established,related", so its packets just get dropped: the
+# connection goes silently dead mid-play instead of erroring out (observed
+# live 2026-09-10 as a multi-minute hang right at this task). The "First run
+# only" block below reboots instead, so nftables and the new SSH port both
+# come up together from a clean boot, with nothing pre-dating either.
+- name: Start nftables now (first run activates it via reboot instead, see below)
   ansible.builtin.service:
     name: nftables
     state: started
-    enabled: true
+  when: not ssh_first_run
 
 # firewalld ships installed-but-inactive on this image and is never used to
 # manage packet filtering here - nftables rules above are applied directly.
@@ -64,3 +79,43 @@
     masked: true
     state: stopped
   failed_when: false  # package may not be present on every host
+
+
+# -----------------------------------------------------------------------------
+# First run only: activate the new SSH port + firewall together via a reboot
+# -----------------------------------------------------------------------------
+# Replaces the old manual dance (reboot by hand without disconnecting, then
+# edit ansible_port in host_vars, then re-run) with a single unattended
+# playbook run. sshd_config/the hardening drop-in (common_ssh) and the
+# nftables ruleset (above) are already on disk at this point but neither is
+# live yet on a first run - nftables was deliberately left un-started above,
+# and sshd only listens on 10022 (files/sshd_config has no fallback Port 22).
+# A clean boot brings both up together with nothing pre-dating either, so the
+# reconnect afterward is a genuinely new, correctly-tracked connection - see
+# the comment on "Start nftables now" above for why doing this live instead
+# hangs.
+# -----------------------------------------------------------------------------
+- name: First run only – reboot to activate the new SSH port and firewall together
+  when: ssh_first_run
+  block:
+    - name: First run | Reboot
+      ansible.builtin.reboot:
+        reboot_timeout: 180
+        connect_timeout: 20
+        test_command: whoami
+      vars:
+        ansible_port: 10022
+
+    - name: First run | Use the new SSH port for the rest of this run
+      ansible.builtin.set_fact:
+        ansible_port: 10022
+
+    - name: First run | Reminder to persist the new port for future runs
+      ansible.builtin.debug:
+        msg: >-
+          This run has switched to port 10022 and will finish over it, but
+          that's only in-memory for this run. Before the next separate
+          playbook invocation, change ansible_port from 22 to 10022 in
+          inventory/host_vars/{{ inventory_hostname }}/vars.yml - otherwise
+          Ansible won't know where to connect and this run's automation
+          can't help with that part.

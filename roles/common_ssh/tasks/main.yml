@@ -8,6 +8,20 @@
 
 
 # -----------------------------------------------------------------------------
+# STEP 0: Detect the initial hardening run (still connected on port 22)
+# -----------------------------------------------------------------------------
+# Captured before anything below changes sshd_config, so it reflects how THIS
+# run actually connected, not the port sshd ends up on. common_firewall (which
+# runs right after this role in every playbook) uses this same fact to decide
+# whether to activate the new firewall live or defer it to a reboot - see the
+# comment on "First run only" near the end of that role for why.
+# -----------------------------------------------------------------------------
+- name: Detect whether this is the initial SSH/firewall hardening run
+  ansible.builtin.set_fact:
+    ssh_first_run: "{{ (ansible_port | default(22) | int) == 22 }}"
+
+
+# -----------------------------------------------------------------------------
 # STEP 1: Ensure SELinux management tools are present
 # -----------------------------------------------------------------------------
 # "semanage" (from policycoreutils-python-utils) lets us assign SELinux labels
@@ -137,6 +151,10 @@
 # with "Unable to initialize Netlink socket" since it inherits sshd's seccomp
 # filter. This previously made it impossible to diagnose or fix nftables
 # issues remotely.
+# No RestrictSUIDSGID: its seccomp filter is inherited by every SSH session
+# and blocks chmod/chown from setting setuid/setgid bits even for root,
+# regardless of capabilities. This broke installing packages (e.g. MariaDB's
+# setuid-root auth_pam_tool) over an SSH session.
 # -----------------------------------------------------------------------------
 - name: Ensure sshd.service.d drop-in directory exists
   ansible.builtin.file:
@@ -159,7 +177,8 @@
       ProtectKernelModules=yes
       ProtectControlGroups=yes
       RestrictRealtime=yes
-      RestrictSUIDSGID=yes
       LockPersonality=yes
       RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
-  notify: Reload sshd
+  notify:
+    - Reload sshd
+    - Reset connection after sshd restart
