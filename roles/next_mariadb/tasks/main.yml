@@ -36,6 +36,37 @@
       - python3-PyMySQL
     state: present
 
+# -----------------------------------------------------------------------------
+# systemd sandboxing. This is the counterpart to what was deliberately NOT done
+# to sshd: sshd spawns user sessions, so restricting it restricts every human
+# and every Ansible task. MariaDB spawns nothing, so a restriction here reaches
+# only the database. See the file's comments for why each setting is safe on
+# this server - they were checked against what MariaDB actually does, not
+# copied from a template.
+# -----------------------------------------------------------------------------
+- name: MariaDB | Ensure systemd drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/system/mariadb.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: MariaDB | Deploy systemd hardening drop-in
+  ansible.builtin.copy:
+    src: systemd-hardening.conf
+    dest: /etc/systemd/system/mariadb.service.d/99-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart MariaDB
+
+# The drop-in has to be live before the service starts, otherwise the first run
+# on a fresh host would start MariaDB unsandboxed and only restart it later.
+- name: MariaDB | Reload systemd so the drop-in takes effect
+  ansible.builtin.systemd:
+    daemon_reload: true
+
 - name: Ensure MariaDB service is enabled and started
   ansible.builtin.service:
     name: mariadb
@@ -62,6 +93,48 @@
     group: root
     mode: "0755"
 
+# The config below enables the slow query log and points it at a file. MariaDB
+# does not create the directory: without it the server logs
+#   [ERROR] Could not use /var/log/mariadb/slow.log for logging (error 2).
+#   Turning logging off for the whole duration of the MariaDB server process.
+# and then runs happily with slow logging silently disabled - a diagnostic that
+# looks switched on and collects nothing.
+- name: MariaDB | Ensure log directory exists
+  ansible.builtin.file:
+    path: /var/log/mariadb
+    state: directory
+    owner: mysql
+    group: mysql
+    mode: "0750"
+    setype: mysqld_log_t
+  notify: Restart MariaDB
+
+# Without this the slow log grows without bound. The mariadb package ships a
+# logrotate snippet for the error log only, since upstream does not assume a
+# separate slow log file.
+- name: MariaDB | Rotate the slow query log
+  ansible.builtin.copy:
+    dest: /etc/logrotate.d/mariadb-slow
+    content: |
+      # Managed by Ansible (next_mariadb)
+      /var/log/mariadb/slow.log {
+          weekly
+          rotate 4
+          missingok
+          notifempty
+          compress
+          delaycompress
+          create 0640 mysql mysql
+          # flush-logs makes the server reopen its log files after rotation,
+          # otherwise it keeps writing to the renamed (now invisible) inode.
+          postrotate
+              /usr/bin/mariadb-admin flush-logs --defaults-file=/etc/my.cnf 2>/dev/null || true
+          endscript
+      }
+    owner: root
+    group: root
+    mode: "0644"
+
 - name: MariaDB | Configure bind-address to 0.0.0.0 (allow K3s pod connections)
   ansible.builtin.copy:
     dest: /etc/my.cnf.d/nextcloud-k3s.cnf
@@ -87,11 +160,21 @@
       max_connections                = 50
       tmp_table_size                 = 32M
       max_heap_table_size            = 32M
-      # Slow query log – written to the MariaDB error log (picked up by journald).
-      # Queries taking longer than long_query_time seconds are logged.
+      # Slow query log. Queries slower than long_query_time seconds are logged
+      # to this file; the directory is created by the task above, without which
+      # MariaDB disables slow logging at startup and says so only once.
       slow_query_log                 = 1
       slow_query_log_file            = /var/log/mariadb/slow.log
       long_query_time                = 1
+      # Do not reverse-resolve client addresses. Every pod connection otherwise
+      # triggers a DNS lookup that cannot succeed for a 10.42.x pod IP, costing
+      # latency on connect and filling the log with
+      #   [Warning] IP address '10.42.0.245' could not be resolved
+      # Safe here because no account is granted by hostname: the app user is
+      # {{ k3s_pod_cidr }}-matched, the exporter uses 127.0.0.1, and the
+      # remaining accounts connect over the unix socket, which MariaDB always
+      # treats as 'localhost' regardless of this setting.
+      skip_name_resolve               = 1
     owner: root
     group: root
     mode: "0644"
@@ -178,6 +261,43 @@
     login_password: "{{ mysql_root_password }}"
     column_case_sensitive: false
   when: db_check.rc != 0
+  no_log: true
+
+
+# -----------------------------------------------------------------------------
+# The hardening mysql_secure_installation would have done. MariaDB ships two
+# anonymous accounts (empty user name, no password) and an empty 'test'
+# database. The accounts hold only USAGE, so they read nothing - but they let
+# anyone who can reach port 3306 open a session without credentials and
+# fingerprint the server, and historically they carry implicit rights on
+# 'test' and any 'test_%' database.
+#
+# Runs on every play, not only on first install: some upgrade paths recreate
+# the accounts, and removing an absent account is a no-op. Placed after the
+# root password is established, since it authenticates as root.
+# -----------------------------------------------------------------------------
+- name: MariaDB | Remove anonymous database accounts
+  community.mysql.mysql_user:
+    name: ""
+    host: "{{ item }}"
+    state: absent
+    column_case_sensitive: false
+    login_unix_socket: "{{ mariadb_socket }}"
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+  loop:
+    - localhost
+    - "{{ ansible_fqdn }}"
+    - "{{ ansible_hostname }}"
+  no_log: true
+
+- name: MariaDB | Remove the unused 'test' database
+  community.mysql.mysql_db:
+    name: test
+    state: absent
+    login_unix_socket: "{{ mariadb_socket }}"
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
   no_log: true
 
 
