@@ -124,6 +124,16 @@ Internet
 | OCSP Stapling | on (resolver 1.1.1.1/8.8.8.8) |
 | `ssl_session_tickets` | off (Perfect Forward Secrecy) |
 | HSTS | `max-age=31536000; includeSubDomains; preload` |
+| Certificates | Let's Encrypt via cert-manager (HTTP-01), ECDSA P-256 |
+| Before issuance | Self-signed placeholder, so a host is never served a bare TLS reset |
+
+Certificates are watched by Monit and alert well before expiry. Until
+cert-manager has issued the real one, a short-lived self-signed placeholder is
+seeded for each hostname: this ingress controller otherwise answers a host
+whose secret does not exist yet with `ssl_reject_handshake`, which is
+indistinguishable from "server down" and hides the actual cause (wrong DNS, a
+blocked ACME solver, …). cert-manager overwrites the placeholder as soon as
+issuance succeeds.
 
 #### System Hardening
 
@@ -133,6 +143,11 @@ Internet
 - **ClamAV** nightly scan of Nextcloud user data / WordPress uploads, email alerts
 - **dnf-automatic** for auto security updates, automatic reboot if required
 - **systemd hardening** drop-ins for sshd, node_exporter, prometheus
+- **CIS AlmaLinux 9 Benchmark** hardening (AIDE file integrity, kernel module
+  blacklist, cron/sudo permissions, `nodev,nosuid,noexec` mount options)
+- **Monit watchdog** with email alerts on resource, service, firewall and K3s
+  pod problems – including **TLS certificate expiry**, so a silently failing
+  cert-manager renewal is noticed weeks before the site would go dark
 
 ---
 
@@ -169,6 +184,24 @@ ansible-playbook nextcloud-k3s.yml --limit myserver --ask-vault-pass
 # Deploy WordPress
 ansible-playbook blog.yml --limit myserver --ask-vault-pass
 ```
+
+### First run on a fresh server
+
+A fresh server still has SSH on port 22, while these playbooks move it to
+10022 and switch on the nftables firewall. Set `ansible_port: 22` in the
+host's `vars.yml` for the very first run.
+
+The playbook handles the switchover itself: it writes the new SSH config and
+firewall ruleset but activates neither mid-run, then reboots once so both come
+up together from a clean boot and reconnects on the new port. (Activating them
+live instead would kill the connection Ansible is using – the firewall has no
+conntrack entry for a session that predates it, so the run just hangs.)
+
+Afterwards, change `ansible_port` from `22` to `10022` in that same
+`vars.yml`. This is the one manual step that cannot be automated away: Ansible
+reads the port from the inventory *before* it connects, so the next separate
+run has no other way to know where to reach the server. The playbook prints a
+reminder at the end of a first run.
 
 ---
 
@@ -244,13 +277,22 @@ ansible-vault encrypt inventory/host_vars/<host>/vault.yml
 | `common_calico` | Calico policy-only mode: NetworkPolicy enforcement (Nextcloud) |
 | `common_firewall` | nftables (table inet, banned4/banned6 sets, K3s exceptions) |
 | `common_ssh` | SSH hardening (port 10022, key-only, PermitRootLogin without-password) |
-| `common_prometheus` | Prometheus metrics collector |
-| `common_grafana` | Grafana dashboards + alert rules |
+| `common_prometheus` | Prometheus metrics collector (dashboards/history only – see note below) |
+| `common_grafana` | Grafana dashboards |
 | `common_node_exporter` | Host metrics exporter |
 | `common_mysqld_exporter` | MariaDB metrics exporter |
+| `common_monit` | Watchdog and **the actual alerting path** – e-mails on resource/service/firewall/pod/TLS-certificate problems, auto-restarts fail2ban |
 | `common_fail2ban` | Brute-force protection; writes to nftables banned sets |
 | `common_auditd` | Linux audit daemon |
 | `common_rkhunter` | Rootkit detection with daily scan |
+| `common_cis_hardening` | CIS AlmaLinux 9 Benchmark: AIDE, kernel modules, cron/sudo, mount options |
+| `common_aide_refresh` | Refreshes the AIDE baseline after approved changes, so the nightly check isn't a false alarm |
+
+> **Alerting:** Monit sends the mail, Prometheus does not. Prometheus evaluates
+> the rules in `alert.rules.yml`, but no Alertmanager is deployed – a firing rule
+> is only visible in its web UI. That is deliberate for a single-node setup:
+> Monit already covers the same ground (load, memory, disk, services, firewall,
+> K3s pods, TLS expiry) and mails about it.
 
 ### Nextcloud & WordPress
 

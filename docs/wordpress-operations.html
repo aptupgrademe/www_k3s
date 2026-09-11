@@ -314,11 +314,11 @@
   </div>
   <div class="card">
     <div class="label">Web Server</div>
-    <div class="value">nginx 1.31 (Sidecar)</div>
+    <div class="value">nginx 1.30 (Sidecar)</div>
   </div>
   <div class="card">
     <div class="label">Ingress</div>
-    <div class="value">nginx-ingress F5 2.6.1</div>
+    <div class="value">nginx-ingress F5 2.6.4</div>
   </div>
 </div>
 
@@ -366,7 +366,7 @@
         ▼
 <span class="c-pod">┌──────────────────────────┐</span>
 <span class="c-pod">│  Pod: mariadb            │</span>
-<span class="c-pod">│  mariadb:10.11           │</span>
+<span class="c-pod">│  mariadb:10.11.19        │</span>
 <span class="c-pod">│  Namespace: wordpress    │</span>
 <span class="c-pod">└──────────────────────────┘</span>
         │
@@ -422,7 +422,7 @@
   HostPath volume.</p>
 
   <h4>Container 2: <code>nginx</code></h4>
-  <p>nginx sidecar (<code>nginx:1.31-alpine</code>) on port 80. Serves
+  <p>nginx sidecar (<code>nginx:1.30.4-alpine</code>) on port 80. Serves
   static requests directly from the shared volume; PHP requests are forwarded via
   FastCGI to port 9000. TLS is already terminated by nginx-ingress (F5)
   – this nginx only speaks plain HTTP.</p>
@@ -798,26 +798,36 @@ k3s kubectl get secret wordpress-secrets -n wordpress \
 
 <pre><code># inventory/group_vars/all.yml
 blog_image_wordpress: "wordpress:7.1.0-php8.4-fpm"   # WordPress PHP-FPM
-blog_image_mariadb:   "mariadb:10.11"       # MariaDB LTS
-blog_image_nginx:     "nginx:1.31-alpine"   # nginx Sidecar</code></pre>
+blog_image_mariadb:   "mariadb:10.11.19"    # MariaDB (10.11 LTS)
+blog_image_nginx:     "nginx:1.30.4-alpine" # nginx Sidecar (1.30 stable)</code></pre>
 
 <h3>Tag Strategy</h3>
+<p>
+  All three images are pinned to an exact patch version, not a floating tag. With
+  <code>imagePullPolicy: IfNotPresent</code>, K3s only pulls a new image when the tag
+  in the manifest actually changes &ndash; a floating tag (a bare <code>10.11</code> or
+  <code>1.30-alpine</code>) can leave a node on a stale cached layer indefinitely even
+  after Docker Hub rebuilds that tag upstream. Every version bump here is therefore a
+  deliberate, manual edit in <code>group_vars/all.yml</code>, applied by re-running the
+  playbook (which updates the manifest and triggers a rollout restart) &ndash; there is
+  no automatic patch tracking for any of the three images.
+</p>
 <table>
   <tr><th>Tag Format</th><th>Meaning</th><th>Example</th></tr>
   <tr>
-    <td><code>7.1.0-fpm</code></td>
-    <td>Pinned to a specific WordPress patch release; bumped manually in Ansible</td>
+    <td><code>7.1.0-php8.4-fpm</code></td>
+    <td>Exact WordPress patch release; bumped manually in Ansible</td>
     <td><code>wordpress:7.1.0-php8.4-fpm</code></td>
   </tr>
   <tr>
-    <td><code>10.11</code></td>
-    <td>MariaDB LTS branch; patch updates come automatically, major upgrade requires migration</td>
-    <td><code>mariadb:10.11</code> (LTS until June 2028)</td>
+    <td><code>10.11.19</code></td>
+    <td>Exact MariaDB patch within the 10.11 LTS branch; bumped manually, major upgrade (11.x/12.x) requires a DB migration</td>
+    <td><code>mariadb:10.11.19</code> (10.11 LTS until Feb 2028)</td>
   </tr>
   <tr>
-    <td><code>1.31-alpine</code></td>
-    <td>nginx stable branch; minor patches come automatically</td>
-    <td><code>nginx:1.31-alpine</code></td>
+    <td><code>1.30.4-alpine</code></td>
+    <td>Exact nginx patch on the 1.30.x stable branch; bumped manually</td>
+    <td><code>nginx:1.30.4-alpine</code></td>
   </tr>
 </table>
 
@@ -1034,6 +1044,21 @@ k3s kubectl describe certificate wordpress-tls -n wordpress</code></pre>
   runs partly as host services, partly as sidecar containers in K3s pods.
   Grafana is accessible via the ingress at the blog hostname under <code>/grafana/</code>.
 </p>
+
+<div class="callout callout-warn">
+  <strong>Who actually notifies you: Monit, not Prometheus</strong>
+  These are two separate systems and only one of them sends mail.
+  <strong>Monit is the alerting path</strong> – it e-mails on state changes for
+  load, memory, disk space and inodes, fail2ban (which it also auto-restarts),
+  the other services, whether the firewall is really default-drop, K3s pods in
+  a bad state, and TLS certificates nearing expiry. rkhunter, ClamAV, AIDE and
+  dnf-automatic mail independently of it.
+  <strong>Prometheus is for dashboards and history only.</strong> It does
+  evaluate the rules in <code>alert.rules.yml</code>, but no Alertmanager is
+  deployed, so a firing rule is only visible in the Prometheus web UI –
+  <em>nobody is notified</em>. That is deliberate for a single-node setup:
+  Monit already covers the same ground and mails about it.
+</div>
 
 <div class="card-grid">
   <div class="card">
@@ -1395,13 +1420,19 @@ k3s kubectl rollout status  deployment/wordpress -n wordpress --timeout=300s</co
 
 <h3>MariaDB Update</h3>
 <div class="callout callout-warn">
-  <strong>MariaDB 10.11 is LTS (support until June 2028)</strong>
+  <strong>MariaDB 10.11 is LTS (support until Feb 2028)</strong>
   An upgrade to 11.x or 12.x requires a database migration and is
   not a simple tag change. Do not perform without a test run.
 </div>
-<p>Patch updates within 10.11:</p>
-<pre><code>crictl pull docker.io/library/mariadb:10.11
-k3s kubectl rollout restart deployment/mariadb -n wordpress</code></pre>
+<p>Patch updates within 10.11 are pinned to an exact version and bumped manually:</p>
+<ol class="steps">
+  <li>Change the tag in <code>inventory/group_vars/all.yml</code>:
+    <pre><code>blog_image_mariadb: "mariadb:10.11.19"</code></pre>
+  </li>
+  <li>Run the playbook &ndash; K3s pulls the new image and rolls out the pod:
+    <pre><code>ansible-playbook blog.yml --limit www.apt-upgrade.me --ask-vault-pass</code></pre>
+  </li>
+</ol>
 </section>
 
 <!-- ─────────────────────────── BACKUP ───────────────────────────────── -->
@@ -2086,6 +2117,40 @@ k3s kubectl exec deployment/mariadb -n wordpress -- \
     <td>A compromised container process can no longer perform privileged kernel operations (no mount, no raw socket, no module loading). Each container only gets back the handful of capabilities it actually needs.</td>
     <td>all deployments &ndash; <code>securityContext</code></td>
   </tr>
+</table>
+<p>
+  Every container starts from <code>capabilities: drop: [ALL]</code> and gets back only the specific capabilities its startup actually needs &ndash; verified live by removing one at a time until something broke. Most containers (both metrics exporters, the wp-cron job) need none at all and stay at the bare drop.
+</p>
+<table>
+  <tr><th>Container</th><th>Capabilities added back</th><th>Why</th></tr>
+  <tr>
+    <td>Init containers (busybox, WordPress + MariaDB)</td>
+    <td><code>CHOWN</code>, <code>FOWNER</code>, <code>DAC_OVERRIDE</code></td>
+    <td>Fix ownership/permissions on the HostPath data directory before the main container starts &ndash; a fresh volume is owned by root, the app runs as a different UID.</td>
+  </tr>
+  <tr>
+    <td>WordPress (PHP-FPM)</td>
+    <td><code>CHOWN</code>, <code>SETGID</code>, <code>SETUID</code>, <code>DAC_OVERRIDE</code>, <code>FOWNER</code></td>
+    <td>Extracts WP-CLI and writes into the document root as <code>www-data</code>. Confirmed live: without <code>FOWNER</code>/<code>DAC_OVERRIDE</code> the extraction fails with <code>tar: Cannot change mode ... Operation not permitted</code>.</td>
+  </tr>
+  <tr>
+    <td>nginx sidecar</td>
+    <td><code>CHOWN</code>, <code>SETGID</code>, <code>SETUID</code>, <code>NET_BIND_SERVICE</code></td>
+    <td>Binds port 80 (once every capability is dropped, even root loses the implicit right to bind ports &lt;1024) and forks worker processes as the unprivileged <code>nginx</code> user.</td>
+  </tr>
+  <tr>
+    <td>MariaDB</td>
+    <td><code>CHOWN</code>, <code>SETGID</code>, <code>SETUID</code>, <code>DAC_OVERRIDE</code>, <code>FOWNER</code></td>
+    <td>Drops from root to the <code>mysql</code> user and initializes/repairs the datadir on the HostPath volume on first start.</td>
+  </tr>
+  <tr>
+    <td>Redis</td>
+    <td><code>SETGID</code>, <code>SETUID</code></td>
+    <td>Entrypoint starts as root and re-execs as the <code>redis</code> user &ndash; the server itself never binds a privileged port, so no <code>NET_BIND_SERVICE</code>.</td>
+  </tr>
+</table>
+<table>
+  <tr><th>Measure</th><th>What it prevents</th><th>Implementation</th></tr>
   <tr>
     <td>OPcache restart after updates</td>
     <td><code>opcache.validate_timestamps=0</code> keeps compiled PHP bytecode in memory &ndash; without a restart the <em>old, vulnerable code keeps running</em> after a security update. The playbook restarts the pod after core/plugin updates.</td>

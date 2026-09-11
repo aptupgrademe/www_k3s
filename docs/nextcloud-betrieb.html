@@ -297,7 +297,7 @@
 <div class="card-grid">
   <div class="card">
     <div class="label">Nextcloud</div>
-    <div class="value">34.x (nextcloud:34-fpm)</div>
+    <div class="value">34.0.3 (nextcloud:34.0.3-fpm)</div>
   </div>
   <div class="card">
     <div class="label">Betriebssystem</div>
@@ -358,7 +358,7 @@
 <span class="c-pod">│  fastcgi │ :9000     │</span>
 <span class="c-pod">│  ┌───────▼────────┐  │</span>
 <span class="c-pod">│  │ nextcloud-fpm  │  │</span>
-<span class="c-pod">│  │ PHP 8.4 + FPM  │  │</span>
+<span class="c-pod">│  │ PHP 8.3 + FPM  │  │</span>
 <span class="c-pod">│  └────────────────┘  │</span>
 <span class="c-pod">└──────────────────────┘</span>
         │                │
@@ -425,13 +425,13 @@
   schreiben.</p>
 
   <h4>Container 1: <code>nextcloud-fpm</code></h4>
-  <p>Das offizielle <code>nextcloud:34-fpm</code>-Image. Führt PHP-FPM auf Port 9000 aus.
+  <p>Das offizielle <code>nextcloud:34.0.3-fpm</code>-Image. Führt PHP-FPM auf Port 9000 aus.
   Bei einem leeren <code>/var/www/html</code> installiert der Docker-Entrypoint
   Nextcloud automatisch anhand der Umgebungsvariablen (DB, Admin, Redis).
   Bei einem Update läuft <code>occ upgrade</code> automatisch.</p>
 
   <h4>Container 2: <code>nginx</code></h4>
-  <p>nginx-Sidecar (<code>nginx:1.31-alpine</code>) auf Port 80. Beantwortet
+  <p>nginx-Sidecar (<code>nginx:1.30.4-alpine</code>) auf Port 80. Beantwortet
   statische Anfragen direkt aus dem gemeinsamen Volume; PHP-Anfragen werden per
   FastCGI an Port 9000 weitergeleitet. TLS ist bereits durch nginx-ingress (F5)
   terminiert – nginx spricht nur plain HTTP.</p>
@@ -790,42 +790,42 @@ k3s kubectl get secret nextcloud-secrets -n nextcloud \
 </p>
 
 <pre><code># inventory/group_vars/all.yml
-nextcloud_image_fpm:       "nextcloud:34-fpm"      # Nextcloud PHP-FPM
-nextcloud_image_nginx:     "nginx:1.31-alpine"          # nginx Sidecar
-nextcloud_image_collabora: "collabora/code:26.04.1.4.1" # Collabora CODE
-nextcloud_image_busybox:   "busybox:1"             # Init-Container</code></pre>
+nextcloud_image_fpm:       "nextcloud:34.0.3-fpm"       # Nextcloud PHP-FPM
+nextcloud_image_nginx:     "nginx:1.30.4-alpine"        # nginx Sidecar
+nextcloud_image_collabora: "collabora/code:26.04.3.1.1" # Collabora CODE
+nextcloud_image_busybox:   "busybox:1"                  # Init-Container</code></pre>
 
 <h3>Tag-Strategie</h3>
 <table>
   <tr><th>Tag-Format</th><th>Bedeutung</th><th>Beispiel</th></tr>
   <tr>
-    <td><code>34-fpm</code></td>
-    <td>Folgt Minor- und Patch-Updates in Nextcloud 34.x automatisch beim Pull</td>
-    <td><code>nextcloud:34-fpm</code> (aktuell)</td>
+    <td><code>34.0.3-fpm</code></td>
+    <td>Exakter Nextcloud-Patch-Pin; wird manuell in <code>all.yml</code> hochgesetzt, sobald ein neuerer Build geprüft und bestätigt ist</td>
+    <td><code>nextcloud:34.0.3-fpm</code> (aktuell)</td>
   </tr>
   <tr>
-    <td><code>35-fpm</code></td>
+    <td><code>35.0.0-fpm</code></td>
     <td>Nächste Major-Version – muss explizit gesetzt werden</td>
     <td>Änderung in <code>all.yml</code> nötig</td>
   </tr>
   <tr>
-    <td><code>1.31-alpine</code></td>
-    <td>nginx Minor-Track; Patch-Updates kommen automatisch</td>
-    <td><code>nginx:1.31-alpine</code> (aktuell)</td>
+    <td><code>1.30.4-alpine</code></td>
+    <td>nginx-Stable-Branch, auf den exakten Patch gepinnt, damit ein Rebuild unter demselben Tag nicht stillschweigend übersprungen wird</td>
+    <td><code>nginx:1.30.4-alpine</code> (aktuell)</td>
   </tr>
   <tr>
-    <td><code>26.04</code></td>
-    <td>Collabora Release-Cycle (quartalsweise)</td>
-    <td><code>collabora/code:26.04.1.4.1</code> (aktuell) → <code>26.08</code></td>
+    <td><code>26.04.3.1.1</code></td>
+    <td>Collabora-Release-Patch; wird regelmäßig gegen Docker Hub geprüft</td>
+    <td><code>collabora/code:26.04.3.1.1</code> (aktuell)</td>
   </tr>
 </table>
 
 <div class="callout callout-warn">
-  <strong>Patch-Update ohne Tag-Änderung</strong>
-  Wenn Docker Hub z.B. <code>nextcloud:34-fpm</code> von 34.0.1 auf 34.0.2 aktualisiert,
-  passiert auf dem Server <em>nichts automatisch</em>. Der Tag ist lokal gecacht.
-  Manuell updaten:
-  <pre style="margin-top:8px"><code>crictl pull docker.io/library/nextcloud:34-fpm
+  <strong>Rebuild ohne Tag-Änderung</strong>
+  Wenn Docker Hub <code>nextcloud:34.0.3-fpm</code> unter demselben Tag neu baut
+  (z.B. ein Base-Image-Security-Patch), passiert auf dem Server <em>nichts
+  automatisch</em>. Der Tag ist lokal gecacht. Manuell auffrischen:
+  <pre style="margin-top:8px"><code>crictl pull docker.io/library/nextcloud:34.0.3-fpm
 k3s kubectl rollout restart deployment/nextcloud -n nextcloud</code></pre>
 </div>
 </section>
@@ -1008,6 +1008,27 @@ redis-cli FLUSHALL</code></pre>
   läuft teils als Host-Dienste, teils als Sidecar-Container im Nextcloud-K3s-Pod.
   Grafana ist über K3s-Ingress am Nextcloud-Hostname unter <code>/grafana/</code> erreichbar.
 </p>
+
+<div class="callout callout-warn">
+  <strong>Wer tatsächlich alarmiert: Monit, nicht Prometheus</strong>
+  Das sind zwei getrennte Systeme, und nur eines davon verschickt Mails.
+  <strong>Monit ist der Alarmierungsweg</strong> – es mailt bei Zustandswechseln
+  zu Load, Speicher, Plattenplatz und Inodes, fail2ban (das es zusätzlich
+  automatisch neu startet), den übrigen Diensten, ob die Firewall wirklich auf
+  Default-Drop steht, K3s-Pods in schlechtem Zustand und TLS-Zertifikaten kurz
+  vor Ablauf. rkhunter, ClamAV, AIDE und dnf-automatic mailen unabhängig davon.
+  <strong>Prometheus dient nur Dashboards und Historie.</strong> Es wertet zwar
+  die Regeln in <code>alert.rules.yml</code> aus
+  (<code>DiskSpaceLow</code>, <code>DiskSpaceCritical</code>,
+  <code>LowMemory</code>, <code>HighCpuLoad</code>,
+  <code>NodeExporterDown</code>), aber es ist <em>kein Alertmanager</em>
+  installiert – eine feuernde Regel ist ausschließlich in der
+  Prometheus-Weboberfläche sichtbar, <em>niemand wird benachrichtigt</em>.
+  Das ist für ein Single-Node-Setup bewusst so: Monit deckt dasselbe ab und
+  mailt darüber. Verlasse dich also nicht darauf, dass die Prometheus-Regeln
+  jemanden erreichen – und falls doch einmal ein Alertmanager dazukommt, die
+  überlappenden Monit-Checks entfernen, statt doppelt alarmiert zu werden.
+</div>
 
 <div class="card-grid">
   <div class="card">
@@ -1272,14 +1293,14 @@ k3s kubectl get pods -n nextcloud</code></pre>
   </li>
 </ol>
 
-<h3>Container-Update: Patch innerhalb desselben Tags</h3>
+<h3>Container-Update: Rebuild innerhalb desselben Tags</h3>
 <p>
-  Wenn Docker Hub z.B. <code>nextcloud:34-fpm</code> von 34.0.1 auf 34.0.2 aktualisiert
-  und der Tag im Ansible unverändert bleibt:
+  Wenn Docker Hub <code>nextcloud:34.0.3-fpm</code> selbst neu baut (z.B. ein
+  Base-Image-Security-Patch) und der Tag im Ansible unverändert bleibt:
 </p>
 <ol class="steps">
   <li>Neues Image manuell pullen:
-    <pre><code>crictl pull docker.io/library/nextcloud:34-fpm</code></pre>
+    <pre><code>crictl pull docker.io/library/nextcloud:34.0.3-fpm</code></pre>
   </li>
   <li>Pod neu starten (nutzt jetzt das frisch gepullte Image):
     <pre><code>k3s kubectl rollout restart deployment/nextcloud -n nextcloud
@@ -1290,19 +1311,24 @@ k3s kubectl rollout status  deployment/nextcloud -n nextcloud --timeout=300s</co
   </li>
 </ol>
 
-<h3>Container-Update: Major-Versionssprung (z.B. 33 → 34)</h3>
+<h3>Container-Update: Versionssprung (Patch oder Major)</h3>
+<p>
+  <code>nextcloud_image_fpm</code> ist auf einen exakten Patch gepinnt, nicht auf
+  einen gleitenden Major-Tag – ein Sprung auf einen neueren Patch (z.B. 34.0.3 →
+  34.0.4) läuft daher genauso ab wie ein Sprung auf eine neue Major-Version (z.B.
+  34 → 35): zuerst <code>https://hub.docker.com/_/nextcloud/tags</code> (Filter:
+  <code>*-fpm</code>) auf den gewünschten Build prüfen, dann:
+</p>
 
 <div class="callout callout-danger">
-  <strong>Backup vor jedem Major-Update!</strong>
+  <strong>Backup vor jedem Versionssprung!</strong>
   Ein fehlgeschlagenes DB-Schema-Upgrade kann die Installation beschädigen.
   Immer zuerst <code>nextcloud-backup.sh</code> ausführen.
 </div>
 
 <ol class="steps">
   <li>Tag in <code>inventory/group_vars/all.yml</code> ändern:
-    <pre><code>nextcloud_image_fpm: "nextcloud:34-fpm"
-# ggf. auch:
-nextcloud_image_collabora: "collabora/code:26.08"</code></pre>
+    <pre><code>nextcloud_image_fpm: "nextcloud:34.0.4-fpm"</code></pre>
   </li>
   <li>Playbook ausführen – K3s zieht das neue Image automatisch und rollt den Pod durch:
     <pre><code>ansible-playbook nextcloud-k3s.yml --limit test --ask-vault-pass</code></pre>
@@ -1325,6 +1351,50 @@ nextcloud_image_collabora: "collabora/code:26.08"</code></pre>
   überschreiben – aber in diesem Setup kommen die App-Dateien aus dem Docker-Image.
   Immer über den Image-Tag-Wechsel updaten.
 </div>
+
+<h3>Major-Versionssprünge (z. B. 32 → 34)</h3>
+<p>
+  Nextcloud verweigert das Überspringen einer Major-Version – ein Sprung muss
+  jede dazwischenliegende Major-Version einzeln durchlaufen (32 → 33 → 34, je
+  ein Image-Tag-Wechsel + Rollout pro Schritt, nicht direkt zum Ziel). Live
+  verifiziert am 2026-09-11 anhand einer restaurierten Instanz genau auf
+  diesem Weg:
+</p>
+<ul>
+  <li>
+    Das eigene Start-<code>occ upgrade</code> des Containers muss erst fertig
+    sein, bevor er überhaupt Traffic annimmt (Readiness-Probe auf Port 9000)
+    – bei über 150 Nutzern hat das pro Major-Schritt über eine Minute
+    gedauert. Ein manuelles <code>occ upgrade</code> per
+    <code>kubectl exec</code> direkt nach dem Tag-Wechsel läuft parallel zum
+    eigenen des Containers – unschädlich, aber überflüssig; einfach warten,
+    bis der Pod Ready ist.
+  </li>
+  <li>
+    Manche Apps werden nur <em>deaktiviert</em>, wenn der Nextcloud-Upgrader
+    die installierte Version als inkompatibel einstuft – echte, dauerhafte
+    Inkompatibilitäten (z. B. <code>metadata</code> mit Nextcloud 34) bleiben
+    aber dauerhaft deaktiviert – <code>occ app:enable</code> schlägt dann hart
+    fehl mit "not compatible with this version of the server". Nach
+    <em>jedem</em> Major-Schritt <code>occ app:list</code> prüfen, nicht nur
+    einmal am Ende.
+  </li>
+  <li>
+    <code>richdocuments</code> wird von <code>next_config</code> über einen
+    direkten Download installiert, nicht über <code>occ app:install</code>
+    (siehe Kommentar in <code>roles/next_config/tasks/apps.yml</code> für den
+    Grund) – über einen Major-Sprung hinweg erkennt der Upgrader es nicht als
+    aktualisierbar und entfernt es komplett (nicht nur deaktiviert), statt
+    eine veraltete Version stehen zu lassen. Nach Erreichen der Zielversion
+    die <code>next_config</code>-Rolle (mindestens die
+    <code>apps.yml</code>-/<code>wopi.yml</code>-Tasks) erneut laufen lassen:
+    sie lädt die für diese Version aktuelle richdocuments-Version aus dem App
+    Store neu und setzt <code>wopi_url</code> erneut (eine frische
+    richdocuments-Installation setzt <code>wopi_url</code> standardmäßig auf
+    den eingebauten <code>richdocumentscode</code>-Proxy-Pfad, nicht auf den
+    externen Collabora-Server, den dieser Stack tatsächlich nutzt).
+  </li>
+</ul>
 
 <h3>Wo neue Versionen nachschauen</h3>
 <table>
