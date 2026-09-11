@@ -343,14 +343,18 @@
     # Collabora – discovery.xml root element present = Collabora is genuinely answering, not just "pod Running"
     _r_collabora_disco: "{{ '<wopi-discovery' in (_v_collabora_discovery.stdout | default('')) }}"
     # Status / installed
-    _r_installed:      "{{ (_v_status.content | default('') | from_json).installed | default(false) | bool }}"
-    _r_maintenance:    "{{ not ((_v_status.content | default('') | from_json).maintenance | default(false) | bool) }}"
+    # default('{}', true) - not default('{}'): a failed uri task leaves .content
+    # as an empty string, not undefined, and the one-argument form only
+    # substitutes for undefined. '' | from_json then aborts the whole play with
+    # a Jinja error instead of letting these checks report as failed.
+    _r_installed:      "{{ (_v_status.content | default('{}', true) | from_json).installed | default(false) | bool }}"
+    _r_maintenance:    "{{ not ((_v_status.content | default('{}', true) | from_json).maintenance | default(false) | bool) }}"
     # Security (curl via 127.0.0.1 → stdout is the HTTP status code)
     _r_env:            "{{ _v_env.stdout | default('200') | trim | int in [400, 401, 403, 404, 444] }}"
     _r_config:         "{{ _v_config.stdout | default('200') | trim | int in [400, 401, 403, 404, 444] }}"
     _r_data:           "{{ _v_data.stdout | default('200') | trim | int in [400, 401, 403, 404, 444] }}"
     # Nextcloud
-    _r_occ:            "{{ (_v_occ_status.stdout | default('{}') | from_json).installed | default(false) | bool }}"
+    _r_occ:            "{{ (_v_occ_status.stdout | default('{}', true) | from_json).installed | default(false) | bool }}"
     _r_bg_mode:        "{{ (_v_bg_mode.stdout | default('') | trim) == 'cron' }}"
     # Performance
     _r_redis:          "{{ (_v_redis.stdout | default('') | trim) == 'ok' }}"
@@ -364,7 +368,7 @@
     _d_collabora:      "{{ _v_collabora_pods.stdout | default('?') | trim | replace('\n', '  ') }}"
     _d_error_pods:     "{{ _v_error_pods.stdout | default('') | trim | replace('\n', ', ') | default('none', true) }}"
     _d_server_hdr:     "{{ _v_headers.stdout | default('') | regex_search('server: ([^\r\n]+)', '\\1') | default([], true) | first | default('(not set)') }}"
-    _d_nc_version:     "{{ (_v_status.content | default('{}') | from_json).versionstring | default('?') }}"
+    _d_nc_version:     "{{ (_v_status.content | default('{}', true) | from_json).versionstring | default('?') }}"
     _d_bg_mode:        "{{ _v_bg_mode.stdout | default('?') | trim }}"
     _d_richdocuments:  "{{ _v_richdocuments_url.stdout | default('') | trim | default('(empty)', true) }}"
 

@@ -33,7 +33,7 @@
 
 - name: Apps | richdocuments - resolve current download URL from the app store
   ansible.builtin.uri:
-    url: "https://apps.nextcloud.com/api/v1/platform/{{ nextcloud_image_fpm.split(':')[1].split('-')[0] }}.0.0/apps.json"
+    url: "https://apps.nextcloud.com/api/v1/platform/{{ nextcloud_image_fpm.split(':')[1].split('-')[0] }}/apps.json"
     return_content: true
   register: nc_appstore_apps
   when: "nc_app_list.stdout is not search('richdocuments: ')"

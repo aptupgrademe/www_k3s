@@ -167,6 +167,14 @@
     content: |
       * hard core 0
 
+- name: CIS | Ensure /etc/systemd/coredump.conf.d exists
+  ansible.builtin.file:
+    path: /etc/systemd/coredump.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: CIS | Disable core dumps via systemd-coredump
   ansible.builtin.copy:
     dest: /etc/systemd/coredump.conf.d/99-cis-hardening.conf
@@ -177,14 +185,6 @@
       [Coredump]
       Storage=none
       ProcessSizeMax=0
-
-- name: CIS | Ensure /etc/systemd/coredump.conf.d exists
-  ansible.builtin.file:
-    path: /etc/systemd/coredump.conf.d
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
 
 # fs.suid_dumpable = 0 is set via common_sysctl/templates/98-cis-hardening.conf.j2
 # instead of ansible.posix.sysctl here - that module writes directly to
