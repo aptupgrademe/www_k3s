@@ -18,3 +18,44 @@
   ansible.builtin.file:
     path: /tmp/k8s-wp-ingress.yml
     state: absent
+
+
+# -----------------------------------------------------------------------------
+# Self-signed placeholder for a not-yet-issued TLS secret
+# -----------------------------------------------------------------------------
+# Same reasoning as next_k3s_deploy/tasks/ingress.yml (see there for the full
+# writeup): this controller sets "ssl_reject_handshake on" for a hostname
+# whose Certificate secret doesn't exist yet, rejecting the TLS handshake
+# outright rather than falling back to anything - controller.defaultTLS
+# doesn't cover this, since these hostnames DO have a server block, just
+# without a working certificate. A short-lived self-signed placeholder here
+# means a host always has *some* certificate while cert-manager works on the
+# real one; cert-manager overwrites this secretName unconditionally once real
+# issuance succeeds.
+# -----------------------------------------------------------------------------
+- name: Ingress | Check whether TLS secrets already exist
+  ansible.builtin.command: >
+    k3s kubectl get secret {{ item.secret }} -n wordpress
+  loop:
+    - { secret: wordpress-tls, host: "{{ blog_hostname }}" }
+    - { secret: apt-upgrade-me-apex-tls, host: "{{ blog_hostname | regex_replace('^www\\.', '') }}" }
+  loop_control:
+    label: "{{ item.secret }}"
+  register: wp_tls_secret_check
+  changed_when: false
+  failed_when: false
+
+- name: Ingress | Seed self-signed placeholder for any TLS secret cert-manager hasn't issued yet
+  ansible.builtin.shell: |
+    set -e
+    openssl req -x509 -nodes -newkey rsa:2048 -days 7 \
+      -keyout /tmp/placeholder.key -out /tmp/placeholder.crt \
+      -subj "/CN={{ item.item.host }}"
+    k3s kubectl create secret tls {{ item.item.secret }} \
+      --cert=/tmp/placeholder.crt --key=/tmp/placeholder.key -n wordpress
+    rm -f /tmp/placeholder.crt /tmp/placeholder.key
+  loop: "{{ wp_tls_secret_check.results }}"
+  loop_control:
+    label: "{{ item.item.secret }}"
+  when: item.rc != 0
+  changed_when: true

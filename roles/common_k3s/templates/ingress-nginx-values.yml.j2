@@ -10,6 +10,14 @@ controller:
   service:
     type: ClusterIP
 
+  # Fallback for any hostname without its own ready certificate (wrong/missing
+  # DNS, a cert-manager issuance failure, ...). Without this, the controller
+  # rejects the TLS handshake outright ("unrecognized name") instead of
+  # presenting even a self-signed cert - see nginx_ingress.yml for the secret
+  # this points at and the full story on why it's needed for this controller.
+  defaultTLS:
+    secret: "ingress-nginx/ingress-default-tls"
+
   # Allow server-snippets and location-snippets on Ingress resources.
   # Used for rate-limiting location blocks and security headers.
   enableSnippets: true

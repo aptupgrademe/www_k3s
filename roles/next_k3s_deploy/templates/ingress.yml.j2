@@ -64,12 +64,16 @@ metadata:
   namespace: nextcloud
   annotations:
     nginx.org/mergeable-ingress-type: "minion"
-    # Security headers applied to all Nextcloud locations
+    # Security headers applied to all Nextcloud locations.
+    #
+    # Deliberately NOT set here: X-Frame-Options, X-Content-Type-Options and
+    # Referrer-Policy. Nextcloud sends all three itself, and nginx's add_header
+    # appends rather than replaces - so setting them here produced duplicates,
+    # with Referrer-Policy actually contradicting itself (Nextcloud's stricter
+    # "no-referrer" vs "same-origin" from here). Nextcloud owns its own
+    # security headers; this snippet only adds what it does not send.
     nginx.org/location-snippets: |
       add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
-      add_header X-Frame-Options "SAMEORIGIN" always;
-      add_header X-Content-Type-Options "nosniff" always;
-      add_header Referrer-Policy "same-origin" always;
       add_header X-Permitted-Cross-Domain-Policies "none" always;
       add_header X-Download-Options "noopen" always;
       add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
@@ -95,13 +99,6 @@ spec:
   - host: {{ nextcloud_hostname }}
     http:
       paths:
-      - path: /grafana/
-        pathType: Prefix
-        backend:
-          service:
-            name: grafana
-            port:
-              number: 3000
       - path: /
         pathType: Prefix
         backend:
@@ -109,6 +106,44 @@ spec:
             name: nextcloud
             port:
               number: 80
+
+# ============================================================
+# Grafana – MINION (/grafana/)
+# ============================================================
+# Split out of nextcloud-routes on purpose: location-snippets are per-Ingress,
+# not per-path, so Grafana and Nextcloud cannot have different header sets
+# while sharing one minion. They need different ones - Grafana sends its own
+# X-Frame-Options "deny" (stricter than the "SAMEORIGIN" this used to add
+# alongside it, and browsers may drop the header entirely when it appears
+# twice with conflicting values, removing clickjacking protection instead of
+# strengthening it) and its own X-Content-Type-Options, but no HSTS,
+# Referrer-Policy or Permissions-Policy - so those are added here.
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana-routes
+  namespace: nextcloud
+  annotations:
+    nginx.org/mergeable-ingress-type: "minion"
+    nginx.org/location-snippets: |
+      add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+      add_header Referrer-Policy "no-referrer" always;
+      add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
+      add_header X-Robots-Tag "noindex, nofollow" always;
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: {{ nextcloud_hostname }}
+    http:
+      paths:
+      - path: /grafana/
+        pathType: Prefix
+        backend:
+          service:
+            name: grafana
+            port:
+              number: 3000
 
 # ============================================================
 # Collabora – MASTER (TLS + server config, no paths)

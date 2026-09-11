@@ -22,3 +22,49 @@
   ansible.builtin.file:
     path: /tmp/k8s-nc-ingress.yml
     state: absent
+
+
+# -----------------------------------------------------------------------------
+# Self-signed placeholder for a not-yet-issued TLS secret
+# -----------------------------------------------------------------------------
+# nginx-ingress (the F5/nginx.org controller used here) reacts to a Certificate
+# whose secret doesn't exist yet by setting "ssl_reject_handshake on" for that
+# specific hostname's server block - it refuses the TLS handshake outright,
+# indistinguishable from nothing listening. This is unrelated to and not fixed
+# by controller.defaultTLS (that only covers hostnames matching NO server
+# block at all; these do have one, just without a working certificate yet).
+# Found live 2026-09-11: a DNS misconfiguration was blocking Let's Encrypt
+# issuance, and there was no way to tell "DNS is wrong" from "server is down"
+# from the browser. A short-lived self-signed placeholder here means a host
+# always has *some* certificate while cert-manager is still working (or stuck)
+# on the real one. cert-manager owns the secretName from the Certificate
+# resource and overwrites it unconditionally once real issuance succeeds, so
+# this placeholder is purely transitional - never a step backward once the
+# real thing shows up.
+# -----------------------------------------------------------------------------
+- name: Ingress | Check whether TLS secrets already exist
+  ansible.builtin.command: >
+    k3s kubectl get secret {{ item.secret }} -n nextcloud
+  loop:
+    - { secret: nextcloud-tls, host: "{{ nextcloud_hostname }}" }
+    - { secret: collabora-tls, host: "{{ collabora_hostname }}" }
+  loop_control:
+    label: "{{ item.secret }}"
+  register: nc_tls_secret_check
+  changed_when: false
+  failed_when: false
+
+- name: Ingress | Seed self-signed placeholder for any TLS secret cert-manager hasn't issued yet
+  ansible.builtin.shell: |
+    set -e
+    openssl req -x509 -nodes -newkey rsa:2048 -days 7 \
+      -keyout /tmp/placeholder.key -out /tmp/placeholder.crt \
+      -subj "/CN={{ item.item.host }}"
+    k3s kubectl create secret tls {{ item.item.secret }} \
+      --cert=/tmp/placeholder.crt --key=/tmp/placeholder.key -n nextcloud
+    rm -f /tmp/placeholder.crt /tmp/placeholder.key
+  loop: "{{ nc_tls_secret_check.results }}"
+  loop_control:
+    label: "{{ item.item.secret }}"
+  when: item.rc != 0
+  changed_when: true

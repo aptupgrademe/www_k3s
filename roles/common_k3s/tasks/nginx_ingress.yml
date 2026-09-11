@@ -13,6 +13,58 @@
 # annotations can reference them.
 # =============================================================================
 
+- name: ingress-nginx | Ensure ingress-nginx namespace exists
+  # Needed before the default-TLS secret below; the Helm install further down
+  # also has --create-namespace, but that only fires as a side effect of the
+  # helm command itself, too late for this task if it ran first.
+  ansible.builtin.shell: >
+    k3s kubectl create namespace ingress-nginx --dry-run=client -o yaml
+    | k3s kubectl apply -f -
+  changed_when: false
+
+# -----------------------------------------------------------------------------
+# Default TLS fallback certificate
+# -----------------------------------------------------------------------------
+# Without controller.defaultTLS.secret set, this controller (F5 nginx-ingress,
+# unlike the community kubernetes/ingress-nginx project) has no fallback for a
+# hostname it can't match to a ready certificate: it responds to the TLS
+# handshake with "unrecognized name" and closes the connection outright - no
+# certificate at all, not even a self-signed one, so it's indistinguishable
+# from nothing listening (found live 2026-09-11 while a DNS misconfiguration
+# was blocking a real cert from issuing: same symptom either way, no way to
+# tell "wrong DNS" from "server down" from the browser). A generic self-signed
+# cert as the default fixes that failure mode for any host/reason, permanently:
+# browsers get an expected self-signed warning instead of a bare connection
+# failure, and any host with its own real, ready certificate is unaffected -
+# nginx picks the SNI-matched one over this default automatically.
+# -----------------------------------------------------------------------------
+- name: ingress-nginx | Ensure directory for the default TLS cert/key exists
+  ansible.builtin.file:
+    path: /etc/ingress-nginx-defaults
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: ingress-nginx | Generate self-signed default TLS certificate (one-time)
+  ansible.builtin.command: >
+    openssl req -x509 -nodes -newkey rsa:2048 -days 3650
+    -keyout /etc/ingress-nginx-defaults/tls.key
+    -out /etc/ingress-nginx-defaults/tls.crt
+    -subj "/CN=ingress-nginx-fallback"
+  args:
+    creates: /etc/ingress-nginx-defaults/tls.crt
+
+- name: ingress-nginx | Apply default TLS certificate as a K8s Secret
+  ansible.builtin.shell: >
+    k3s kubectl create secret tls ingress-default-tls
+    --cert=/etc/ingress-nginx-defaults/tls.crt
+    --key=/etc/ingress-nginx-defaults/tls.key
+    --namespace ingress-nginx
+    --dry-run=client -o yaml
+    | k3s kubectl apply -f -
+  changed_when: false
+
 - name: ingress-nginx | Remove old kubernetes/ingress-nginx release if present
   # The old community chart (kubernetes/ingress-nginx) was retired in 2026.
   # Detect it by chart name prefix "ingress-nginx-" and uninstall before
