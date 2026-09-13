@@ -26,7 +26,12 @@ blog_k3s_db_dir: /srv/wordpress-db
 # upgrades in place (binary swap + service restart) if they differ.
 # Verify latest: https://github.com/k3s-io/k3s/releases
 # =============================================================================
-k3s_version: "v1.36.3+k3s1"
+k3s_version: "v1.36.4+k3s1"  # bumped 2026-09-13, was v1.36.3+k3s1 (Kubernetes
+                             # v1.36.4; containerd 2.3.4, runc 1.4.2, etcd 3.6.14).
+                             # The release also moves the bundled Traefik chart to
+                             # v40.x, which renames kubernetesIngressNginx to
+                             # kubernetesIngressNGINX - irrelevant here, Traefik is
+                             # in the disable list (see install_k3s.yml).
 
 # =============================================================================
 # Helm version – pinned (not the v3-only get-helm-3 installer script) so
@@ -38,7 +43,11 @@ k3s_version: "v1.36.3+k3s1"
 # 2026-07-08, security patches end 2026-11-11.
 # Verify latest: https://github.com/helm/helm/releases
 # =============================================================================
-helm_version: "v4.2.4"
+helm_version: "v4.3.0"  # bumped 2026-09-13, was v4.2.4. Additions only
+                        # (duration template functions, rollback --description,
+                        # ownership check before uninstall deletes). No breaking
+                        # changes to repo add/update or upgrade --install, which is
+                        # all this repo uses.
 
 # =============================================================================
 # Calico version – pinned, same pattern as k3s_version/helm_version above.
@@ -50,7 +59,17 @@ helm_version: "v4.2.4"
 # deny-all policy had zero effect before this was installed).
 # Verify latest: https://github.com/projectcalico/calico/releases
 # =============================================================================
-calico_version: "v3.32.1"
+calico_version: "v3.32.2"  # bumped 2026-09-13, was v3.32.1. Bugfix/CVE release, no
+                           # breaking changes. Two fixes matter here: a panic in
+                           # kube-controllers when the informer delivers a tombstone
+                           # to a delete handler, and IP-set programming errors in
+                           # nftables mode - both components this host actually runs.
+                           # Note: the manifest in common_calico/templates is vendored
+                           # and only its image tags are templated, so a bump like this
+                           # swaps images while the manifest structure stays at the
+                           # version it was derived from. Fine for a patch release with
+                           # no CRD or RBAC changes - re-derive the manifest for a minor
+                           # or major bump instead of just moving this string.
 
 # =============================================================================
 # Helm chart versions – update here to roll out across all hosts
@@ -62,7 +81,12 @@ ingress_nginx_chart_version: "2.6.4"   # appVersion 5.5.4 (controller image) - r
                                         # actually released (2.7.0 exists on GitHub's main branch but hasn't
                                         # been packaged/published to the repo yet - don't trust Chart.yaml on
                                         # main as a proxy for "latest available", check the index.yaml itself)
-cert_manager_chart_version:  "1.21.1"
+cert_manager_chart_version:  "1.21.2"   # bumped 2026-09-13, was 1.21.1 (appVersion
+                                        # v1.21.2). Taken from charts.jetstack.io
+                                        # index.yaml, not GitHub - same reason as the
+                                        # nginx-ingress note above. The index lists it
+                                        # as "v1.21.2"; helm --version accepts it
+                                        # without the prefix, as before.
 
 # =============================================================================
 # Monitoring stack versions – update here to roll out across all hosts
