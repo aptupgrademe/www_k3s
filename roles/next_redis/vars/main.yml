@@ -1,3 +1,0 @@
----
-# No role-internal variables.  Redis bind address and port come from inventory
-# (nextcloud_ipv4 in host_vars/<host>/vars.yml).

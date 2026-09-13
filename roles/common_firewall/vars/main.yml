@@ -1,3 +1,0 @@
----
-# No role-internal variables.  All values come from inventory (group_vars/all.yml
-# and host_vars/<host>/vars.yml).
