@@ -17,11 +17,11 @@
 # reboot check, etc.) then shows verbatim – useless when several servers
 # share the same alert setup, since you can't tell which one sent it.
 # -----------------------------------------------------------------------------
-- name: Set system hostname to the public FQDN
+- name: Packages | Set system hostname to the public FQDN
   ansible.builtin.hostname:
     name: "{{ blog_hostname }}"
 
-- name: Ensure /etc/hosts has a matching entry
+- name: Packages | Ensure /etc/hosts has a matching entry
   ansible.builtin.lineinfile:
     path: /etc/hosts
     regexp: '^127\.0\.1\.1'
@@ -31,7 +31,7 @@
 # -----------------------------------------------------------------------------
 # EPEL  (fail2ban lives here)
 # -----------------------------------------------------------------------------
-- name: Install EPEL repository
+- name: Packages | Install EPEL repository
   ansible.builtin.dnf:
     name: epel-release
     state: present
@@ -47,7 +47,7 @@
 # kernel there always fails. Security kernel updates still land via
 # dnf-automatic (common_dnf_automatic), which runs locally via a systemd
 # timer, outside the SSH session and thus unaffected by that sandboxing.
-- name: Upgrade all system packages
+- name: Packages | Upgrade all system packages
   ansible.builtin.dnf:
     name: "*"
     state: latest
@@ -72,7 +72,7 @@
 # inside the SSH session's own private mount namespace. A plain stat here
 # would see that mask and wrongly conclude a reboot is needed even when the
 # real kernel modules are perfectly fine. systemd-run escapes that sandbox.
-- name: Check whether the running kernel's module directory still exists
+- name: Packages | Check whether the running kernel's module directory still exists
   ansible.builtin.command: >-
     systemd-run --wait --pipe --quiet --
     test -d /lib/modules/{{ ansible_kernel }}
@@ -80,7 +80,7 @@
   changed_when: false
   failed_when: false
 
-- name: Reboot – running kernel's modules are gone, a newer kernel is already installed
+- name: Packages | Reboot – running kernel's modules are gone, a newer kernel is already installed
   ansible.builtin.reboot:
     reboot_timeout: 300
   when: running_kernel_modules.rc != 0
@@ -93,12 +93,12 @@
 # for security-relevant userspace updates from dnf-automatic (glibc, systemd,
 # openssl, etc.) that don't touch /lib/modules at all. Runs via systemd-run
 # for the same ProtectKernelModules-sandboxing reason as the check above.
-- name: Ensure yum-utils is installed (needed for needs-restarting)
+- name: Packages | Ensure yum-utils is installed (needed for needs-restarting)
   ansible.builtin.dnf:
     name: yum-utils
     state: present
 
-- name: Check whether a reboot is otherwise pending (needs-restarting -r)
+- name: Packages | Check whether a reboot is otherwise pending (needs-restarting -r)
   ansible.builtin.command: >-
     systemd-run --wait --pipe --quiet --
     needs-restarting -r
@@ -107,7 +107,7 @@
   failed_when: false
 
 # needs-restarting -r exits 1 when a reboot is required, 0 when not.
-- name: Reboot – needs-restarting reports a pending reboot
+- name: Packages | Reboot – needs-restarting reports a pending reboot
   ansible.builtin.reboot:
     reboot_timeout: 300
   when: needs_restarting.rc == 1
@@ -116,7 +116,7 @@
 # -----------------------------------------------------------------------------
 # Package installation
 # -----------------------------------------------------------------------------
-- name: Install host packages
+- name: Packages | Install host packages
   ansible.builtin.dnf:
     name:
       # --- Firewall ---
@@ -146,20 +146,20 @@
 # -----------------------------------------------------------------------------
 # Services
 # -----------------------------------------------------------------------------
-- name: Disable and stop firewalld (we use nftables via systemd)
+- name: Packages | Disable and stop firewalld (we use nftables via systemd)
   ansible.builtin.service:
     name: firewalld
     state: stopped
     enabled: false
   failed_when: false
 
-- name: Mask firewalld (prevents it from being started by other services)
+- name: Packages | Mask firewalld (prevents it from being started by other services)
   ansible.builtin.systemd:
     name: firewalld
     masked: true
   failed_when: false
 
-- name: Disable unnecessary NFS/RPC/LDAP services (not needed on this host)
+- name: Packages | Disable unnecessary NFS/RPC/LDAP services (not needed on this host)
   ansible.builtin.systemd:
     name: "{{ item }}"
     state: stopped
@@ -171,7 +171,7 @@
     - sssd-kcm.socket
   failed_when: false
 
-- name: Mask gssproxy (starts via socket activation despite disabled state)
+- name: Packages | Mask gssproxy (starts via socket activation despite disabled state)
   ansible.builtin.systemd:
     name: gssproxy
     masked: true

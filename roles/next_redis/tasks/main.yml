@@ -7,6 +7,8 @@
 #          nftables rules (common_firewall) restrict port 6379 to the K3s pod
 #          CIDR ({{ k3s_pod_cidr }}) and localhost.
 # Target:  AlmaLinux 9
+# Variables: bind address and port come from the inventory
+#            (nextcloud_ipv4 in host_vars/<host>/vars.yml).
 # =============================================================================
 
 
@@ -26,7 +28,7 @@
 # -----------------------------------------------------------------------------
 # Service
 # -----------------------------------------------------------------------------
-- name: Ensure Redis service is enabled and started
+- name: Redis | Ensure Redis service is enabled and started
   ansible.builtin.service:
     name: redis
     state: started
@@ -38,7 +40,7 @@
 # -----------------------------------------------------------------------------
 # Bind to loopback and the node's public IP so K3s pods can reach Redis.
 # nftables restricts port 6379 to the K3s pod CIDR and localhost.
-- name: Ensure Redis binds to localhost and node IP
+- name: Redis | Ensure Redis binds to localhost and node IP
   ansible.builtin.lineinfile:
     path: /etc/redis/redis.conf
     regexp: '^bind\s+'
@@ -46,7 +48,7 @@
     backup: true
   notify: Restart Redis
 
-- name: Ensure Redis protected-mode is enabled
+- name: Redis | Ensure Redis protected-mode is enabled
   ansible.builtin.lineinfile:
     path: /etc/redis/redis.conf
     regexp: '^protected-mode\s+'
@@ -62,7 +64,7 @@
 # hypothetical here -- fail2ban sat dead for two days on the blog host
 # without anyone noticing -- and an unauthenticated Redis holding Nextcloud's
 # file locks and session data is not something to leave on one layer.
-- name: Ensure Redis requires authentication
+- name: Redis | Ensure Redis requires authentication
   ansible.builtin.lineinfile:
     path: /etc/redis/redis.conf
     regexp: '^requirepass\s+'

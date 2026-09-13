@@ -5,13 +5,15 @@
 #          HostPath directories must carry container_file_t so containerd can
 #          read and write them while SELinux is enforcing.
 # Target:  AlmaLinux 9
+# Variables: HostPath directory paths come from the inventory
+#            (nextcloud_k3s_www_dir, nextcloud_data_dir).
 # =============================================================================
 
 
 # -----------------------------------------------------------------------------
 # Packages
 # -----------------------------------------------------------------------------
-- name: Ensure SELinux tools are installed (semanage/restorecon)
+- name: SELinux | Ensure SELinux tools are installed (semanage/restorecon)
   ansible.builtin.dnf:
     name:
       - policycoreutils
@@ -20,8 +22,11 @@
       - container-selinux   # K3s container SELinux policy
     state: present
 
-- name: Ensure SELinux is enforcing (targeted policy)
-  ansible.builtin.selinux:
+# ansible.posix, not ansible.builtin: the selinux module lives in the collection.
+# "ansible.builtin.selinux" only works because ansible-core still redirects the
+# old name, and that redirect will not last forever.
+- name: SELinux | Ensure SELinux is enforcing (targeted policy)
+  ansible.posix.selinux:
     policy: targeted
     state: enforcing
 
@@ -29,7 +34,7 @@
 # -----------------------------------------------------------------------------
 # HostPath volume directories
 # -----------------------------------------------------------------------------
-- name: Ensure Nextcloud www directory exists
+- name: SELinux | Ensure Nextcloud www directory exists
   ansible.builtin.file:
     path: "{{ nextcloud_k3s_www_dir }}"
     state: directory
@@ -37,7 +42,7 @@
     group: root
     mode: "0755"
 
-- name: Ensure Nextcloud data directory exists
+- name: SELinux | Ensure Nextcloud data directory exists
   ansible.builtin.file:
     path: "{{ nextcloud_data_dir }}"
     state: directory
@@ -52,25 +57,25 @@
 # container_file_t allows the container runtime (containerd) to read/write
 # these directories while SELinux is enforcing.
 # svirt_sandbox_file_t is an equivalent type used by some policies.
-- name: Label Nextcloud www dir as container_file_t
+- name: SELinux | Label Nextcloud www dir as container_file_t
   ansible.builtin.command: >
     semanage fcontext -a -t container_file_t "{{ nextcloud_k3s_www_dir }}(/.*)?"
   register: semanage_www
   changed_when: semanage_www.rc == 0 and "already defined" not in (semanage_www.stderr | default(""))
   failed_when: semanage_www.rc != 0 and "already defined" not in (semanage_www.stderr | default(""))
 
-- name: Apply SELinux context to Nextcloud www dir
+- name: SELinux | Apply SELinux context to Nextcloud www dir
   ansible.builtin.command: restorecon -Rv "{{ nextcloud_k3s_www_dir }}"
   changed_when: false
 
-- name: Label Nextcloud data dir as container_file_t
+- name: SELinux | Label Nextcloud data dir as container_file_t
   ansible.builtin.command: >
     semanage fcontext -a -t container_file_t "{{ nextcloud_data_dir }}(/.*)?"
   register: semanage_data
   changed_when: semanage_data.rc == 0 and "already defined" not in (semanage_data.stderr | default(""))
   failed_when: semanage_data.rc != 0 and "already defined" not in (semanage_data.stderr | default(""))
 
-- name: Apply SELinux context to Nextcloud data dir
+- name: SELinux | Apply SELinux context to Nextcloud data dir
   ansible.builtin.command: restorecon -Rv "{{ nextcloud_data_dir }}"
   changed_when: false
 
@@ -79,7 +84,7 @@
 # SELinux boolean: allow containers to make outbound network connections
 # (needed for container → MariaDB / Redis on the host, and for SMTP)
 # -----------------------------------------------------------------------------
-- name: Allow container processes to make outbound network connections
+- name: SELinux | Allow container processes to make outbound network connections
   ansible.posix.seboolean:
     name: container_manage_cgroup
     state: true
@@ -90,14 +95,14 @@
 # -----------------------------------------------------------------------------
 # Sanity checks (only when selinux_debug is true)
 # -----------------------------------------------------------------------------
-- name: Show SELinux contexts on K3s HostPath directories
+- name: SELinux | Show SELinux contexts on K3s HostPath directories
   ansible.builtin.command: >
     ls -Zd {{ nextcloud_k3s_www_dir }} {{ nextcloud_data_dir }}
   register: selinux_ctx
   changed_when: false
   when: selinux_debug | default(false)
 
-- name: Print contexts
+- name: SELinux | Print contexts
   ansible.builtin.debug:
     var: selinux_ctx.stdout_lines
   when: selinux_debug | default(false)

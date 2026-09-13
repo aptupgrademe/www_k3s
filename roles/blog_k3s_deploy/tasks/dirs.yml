@@ -14,7 +14,7 @@
 # correct ownership, not a database or SELinux problem). Same fix already
 # applied to the Nextcloud config/data dirs in next_k3s_deploy/tasks/dirs.yml
 # - this just extends it to the one directory that was missed there too.
-- name: Ensure WordPress www HostPath directory exists
+- name: Dirs | Ensure WordPress www HostPath directory exists
   ansible.builtin.file:
     path: "{{ blog_k3s_www_dir }}"
     state: directory
@@ -24,7 +24,7 @@
 
 # Deploy PGP public key served at https://<blog_hostname>/publickey.asc.
 # To update the key: edit roles/blog_k3s_deploy/files/publickey.asc and re-run the playbook.
-- name: Deploy publickey.asc to WordPress document root
+- name: Dirs | Deploy publickey.asc to WordPress document root
   ansible.builtin.copy:
     src: publickey.asc
     dest: "{{ blog_k3s_www_dir }}/publickey.asc"
@@ -36,7 +36,7 @@
 # this task re-running on every Ansible pass was silently undoing the
 # mariadb init container's chown, leaving CREATE TABLE broken for any
 # plugin/table created after the first deploy (found live 2026-08-26).
-- name: Ensure MariaDB data HostPath directory exists
+- name: Dirs | Ensure MariaDB data HostPath directory exists
   ansible.builtin.file:
     path: "{{ blog_k3s_db_dir }}"
     state: directory

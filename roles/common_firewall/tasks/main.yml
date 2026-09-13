@@ -9,13 +9,15 @@
 #          its own KUBE-* chains in iptables (a separate subsystem), so there
 #          is no lock contention with nftables.
 # Target:  AlmaLinux 9
+# Variables: all values come from the inventory (group_vars/all.yml and
+#            host_vars/<host>/vars.yml); this role defines none of its own.
 # =============================================================================
 
 
 # -----------------------------------------------------------------------------
 # Prerequisites
 # -----------------------------------------------------------------------------
-- name: Install nftables
+- name: Firewall | Install nftables
   ansible.builtin.package:
     name:
       - nftables
@@ -26,7 +28,7 @@
 # Deploy ruleset to the file the nftables systemd service actually reads.
 # AlmaLinux 9: ExecStart=/sbin/nft -f /etc/sysconfig/nftables.conf
 # -----------------------------------------------------------------------------
-- name: Upload nftables ruleset (templated)
+- name: Firewall | Upload nftables ruleset (templated)
   ansible.builtin.template:
     src: fw.nft.j2
     dest: /etc/sysconfig/nftables.conf
@@ -38,13 +40,13 @@
 # On AlmaLinux 9 the active config is /etc/sysconfig/nftables.conf.
 # /etc/nftables.conf is a distro default stub that is NOT loaded by the
 # systemd unit — but a stale copy could cause confusion on manual reloads.
-- name: Remove stale /etc/nftables.conf if it differs from the active config
+- name: Firewall | Remove stale /etc/nftables.conf if it differs from the active config
   ansible.builtin.file:
     path: /etc/nftables.conf
     state: absent
   when: ansible_distribution == 'AlmaLinux'
 
-- name: Enable nftables (starts automatically on the next boot)
+- name: Firewall | Enable nftables (starts automatically on the next boot)
   ansible.builtin.service:
     name: nftables
     enabled: true
@@ -59,7 +61,7 @@
 # live 2026-09-10 as a multi-minute hang right at this task). The "First run
 # only" block below reboots instead, so nftables and the new SSH port both
 # come up together from a clean boot, with nothing pre-dating either.
-- name: Start nftables now (first run activates it via reboot instead, see below)
+- name: Firewall | Start nftables now (first run activates it via reboot instead, see below)
   ansible.builtin.service:
     name: nftables
     state: started
@@ -72,7 +74,7 @@
 # removing the package outright was considered and rejected (2026-08-21) -
 # it depends on nftables itself, so `dnf remove firewalld` cascades into
 # removing nftables and fail2ban too (verified live via dnf --assumeno).
-- name: Mask firewalld (unused, would conflict with hand-rolled nftables rules)
+- name: Firewall | Mask firewalld (unused, would conflict with hand-rolled nftables rules)
   ansible.builtin.systemd:
     name: firewalld
     enabled: false
@@ -95,7 +97,7 @@
 # the comment on "Start nftables now" above for why doing this live instead
 # hangs.
 # -----------------------------------------------------------------------------
-- name: First run only – reboot to activate the new SSH port and firewall together
+- name: Firewall | First run only – reboot to activate the new SSH port and firewall together
   when: ssh_first_run
   block:
     - name: First run | Reboot

@@ -2,7 +2,7 @@
 # -----------------------------------------------------------------------------
 # Database maintenance
 # -----------------------------------------------------------------------------
-- name: Add missing database indices (occ db:add-missing-indices)
+- name: DB | Add missing database indices (occ db:add-missing-indices)
   ansible.builtin.command: >
     k3s kubectl exec deployment/nextcloud
     --namespace nextcloud
@@ -16,7 +16,7 @@
     'Creating' in occ_indices.stdout
   failed_when: occ_indices.rc != 0
 
-- name: Show db:add-missing-indices output
+- name: DB | Show db:add-missing-indices output
   ansible.builtin.debug:
     var: occ_indices.stdout_lines
   when: occ_indices.stdout_lines | length > 0
@@ -29,7 +29,7 @@
 # nextcloud_run_repair; now unconditional so the admin panel warning
 # "MIME-Type-Migrationen verfügbar" never appears after a playbook run.
 # -----------------------------------------------------------------------------
-- name: Run MIME type migrations and repairs (occ maintenance:repair --include-expensive)
+- name: DB | Run MIME type migrations and repairs (occ maintenance:repair --include-expensive)
   ansible.builtin.command: >
     k3s kubectl exec deployment/nextcloud
     --namespace nextcloud

@@ -16,7 +16,7 @@
 # whether to activate the new firewall live or defer it to a reboot - see the
 # comment on "First run only" near the end of that role for why.
 # -----------------------------------------------------------------------------
-- name: Detect whether this is the initial SSH/firewall hardening run
+- name: SSH | Detect whether this is the initial SSH/firewall hardening run
   ansible.builtin.set_fact:
     ssh_first_run: "{{ (ansible_port | default(22) | int) == 22 }}"
 
@@ -27,7 +27,7 @@
 # "semanage" (from policycoreutils-python-utils) lets us assign SELinux labels
 # to custom ports. Without it, Steps 2 and 3 would fail.
 # -----------------------------------------------------------------------------
-- name: Install SELinux management tools
+- name: SSH | Install SELinux management tools
   ansible.builtin.dnf:
     name: policycoreutils-python-utils
     state: present
@@ -43,7 +43,7 @@
 # "failed_when: false"  – returns non-zero when the port is unlabelled; that is
 #                         expected on a fresh system, not an error.
 # -----------------------------------------------------------------------------
-- name: Query current SELinux port labels
+- name: SSH | Query current SELinux port labels
   ansible.builtin.command: semanage port -l
   register: semanage_port_list
   changed_when: false
@@ -53,7 +53,7 @@
 # -----------------------------------------------------------------------------
 # STEP 3a: Add SELinux label for tcp/10022 (port not yet in database)
 # -----------------------------------------------------------------------------
-- name: Add ssh_port_t label for tcp/10022 in SELinux (new entry)
+- name: SSH | Add ssh_port_t label for tcp/10022 in SELinux (new entry)
   ansible.builtin.command: semanage port -a -t ssh_port_t -p tcp 10022
   when: "'10022' not in (semanage_port_list.stdout | default(''))"
   changed_when: true
@@ -65,7 +65,7 @@
 # Only runs when 10022 is already in the database but not labelled ssh_port_t.
 # "semanage port -m" updates an existing entry (-a would fail in this case).
 # -----------------------------------------------------------------------------
-- name: Update ssh_port_t label for tcp/10022 in SELinux (modify existing entry)
+- name: SSH | Update ssh_port_t label for tcp/10022 in SELinux (modify existing entry)
   ansible.builtin.command: semanage port -m -t ssh_port_t -p tcp 10022
   when:
     - "'10022' in (semanage_port_list.stdout | default(''))"
@@ -82,7 +82,7 @@
 #   notify     – handlers run once at the end of the play (Ansible deduplicates
 #                them, so multiple notifies still only trigger one restart)
 # -----------------------------------------------------------------------------
-- name: Deploy hardened sshd_config
+- name: SSH | Deploy hardened sshd_config
   ansible.builtin.copy:
     src: sshd_config
     dest: /etc/ssh/sshd_config
@@ -101,7 +101,7 @@
 # template is used instead of copy so Jinja2 variables (e.g. nextcloud_ipv4)
 # are rendered into the banner at deploy time.
 # -----------------------------------------------------------------------------
-- name: Deploy SSH login banner
+- name: SSH | Deploy SSH login banner
   ansible.builtin.template:
     src: sshd_banner.j2
     dest: /etc/ssh/sshd_banner
@@ -116,7 +116,7 @@
 # Banner directive already points at sshd_banner above (the real deterrent
 # text), so this is purely closing the separate OS-fingerprinting leak, not
 # a functional change to SSH access.
-- name: Replace /etc/issue and /etc/issue.net (remove OS/kernel version disclosure)
+- name: SSH | Replace /etc/issue and /etc/issue.net (remove OS/kernel version disclosure)
   ansible.builtin.copy:
     dest: "{{ item }}"
     owner: root
@@ -138,7 +138,7 @@
 #
 # "changed_when: false" – safe to run every time, not a meaningful change.
 # -----------------------------------------------------------------------------
-- name: Restore SELinux file contexts for /etc/ssh
+- name: SSH | Restore SELinux file contexts for /etc/ssh
   ansible.builtin.command: restorecon -Rv /etc/ssh
   changed_when: false
 
@@ -155,8 +155,18 @@
 # and blocks chmod/chown from setting setuid/setgid bits even for root,
 # regardless of capabilities. This broke installing packages (e.g. MariaDB's
 # setuid-root auth_pam_tool) over an SSH session.
+# No PrivateTmp either, for the same reason: it gives the sshd *service* its
+# own /tmp, which every SSH session then inherits. Two consequences, both
+# surprising: a file dropped in /tmp over SSH is invisible to cron and to
+# other services, and every sshd restart destroys that /tmp under any session
+# still attached to it. The second one bit twice (2026-09-10, 2026-09-13) as
+#   Cannot create repo temporary directory "/tmp/libdnf.XXXXXX"
+# from dnf running over a multiplexed connection that outlived the restart.
+# sshd itself barely uses /tmp, so the protection was worth close to nothing.
+# Per-service sandboxing belongs on services that spawn no sessions - see
+# roles/next_mariadb/files/systemd-hardening.conf for that done properly.
 # -----------------------------------------------------------------------------
-- name: Ensure sshd.service.d drop-in directory exists
+- name: SSH | Ensure sshd.service.d drop-in directory exists
   ansible.builtin.file:
     path: /etc/systemd/system/sshd.service.d
     state: directory
@@ -164,7 +174,7 @@
     group: root
     mode: "0755"
 
-- name: Deploy sshd systemd hardening drop-in
+- name: SSH | Deploy sshd systemd hardening drop-in
   ansible.builtin.copy:
     dest: /etc/systemd/system/sshd.service.d/hardening.conf
     owner: root
@@ -172,7 +182,6 @@
     mode: "0644"
     content: |
       [Service]
-      PrivateTmp=yes
       ProtectKernelTunables=yes
       ProtectKernelModules=yes
       ProtectControlGroups=yes
@@ -180,5 +189,10 @@
       LockPersonality=yes
       RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
   notify:
+    # All four, in this order. Splitting daemon-reload out of the restart made
+    # it a separate handler, and a drop-in change is worthless without it:
+    # systemd would restart sshd from its cached copy of the old unit.
+    - Reload systemd units for sshd
     - Reload sshd
     - Reset connection after sshd restart
+    - Confirm sshd is accepting connections again

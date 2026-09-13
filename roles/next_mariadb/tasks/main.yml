@@ -29,7 +29,7 @@
 # -----------------------------------------------------------------------------
 # Service
 # -----------------------------------------------------------------------------
-- name: Ensure MariaDB and Python MySQL driver are installed
+- name: MariaDB | Ensure MariaDB and Python MySQL driver are installed
   ansible.builtin.dnf:
     name:
       - mariadb-server
@@ -67,13 +67,13 @@
   ansible.builtin.systemd:
     daemon_reload: true
 
-- name: Ensure MariaDB service is enabled and started
+- name: MariaDB | Ensure MariaDB service is enabled and started
   ansible.builtin.service:
     name: mariadb
     state: started
     enabled: true
 
-- name: Wait for MariaDB socket to appear
+- name: MariaDB | Wait for MariaDB socket to appear
   ansible.builtin.wait_for:
     path: /var/lib/mysql/mysql.sock
     state: present
@@ -184,12 +184,12 @@
 # -----------------------------------------------------------------------------
 # Socket detection
 # -----------------------------------------------------------------------------
-- name: Check if /var/lib/mysql/mysql.sock exists
+- name: MariaDB | Check if /var/lib/mysql/mysql.sock exists
   ansible.builtin.stat:
     path: /var/lib/mysql/mysql.sock
   register: mysql_sock_varlib
 
-- name: Set MariaDB socket fact
+- name: MariaDB | Set MariaDB socket fact
   ansible.builtin.set_fact:
     mariadb_socket: "{{ '/var/lib/mysql/mysql.sock' if mysql_sock_varlib.stat.exists else '/run/mysqld/mysqld.sock' }}"
 
@@ -197,7 +197,7 @@
 # -----------------------------------------------------------------------------
 # Idempotency check
 # -----------------------------------------------------------------------------
-- name: Check if the Nextcloud database exists
+- name: MariaDB | Check if the Nextcloud database exists
   ansible.builtin.shell: |
     mysql --protocol=socket --socket="{{ mariadb_socket }}" -u root -p"{{ mysql_root_password }}" \
         -e "SHOW DATABASES LIKE '{{ nextcloud_db }}';" | grep -Fx "{{ nextcloud_db }}"
@@ -210,7 +210,7 @@
 # -----------------------------------------------------------------------------
 # Initial setup (only when database does not yet exist)
 # -----------------------------------------------------------------------------
-- name: Set root password (via unix socket)
+- name: MariaDB | Set root password (via unix socket)
   community.mysql.mysql_user:
     name: root
     host: localhost
@@ -223,7 +223,7 @@
   when: db_check.rc != 0
   no_log: true
 
-- name: Create /root/.my.cnf for root access with password
+- name: MariaDB | Create /root/.my.cnf for root access with password
   ansible.builtin.copy:
     dest: /root/.my.cnf
     content: |
@@ -236,7 +236,7 @@
   when: db_check.rc != 0
   no_log: true
 
-- name: Create Nextcloud database
+- name: MariaDB | Create Nextcloud database
   community.mysql.mysql_db:
     name: "{{ nextcloud_db }}"
     state: present
@@ -249,7 +249,7 @@
 # host is restricted to the first two octets of the pod CIDR (e.g. '10.42.%').
 # This limits logins to pod IPs at the DB level, independent of nftables.
 # NOTE: if k3s_pod_cidr ever changes, the old user must be dropped and recreated manually.
-- name: Create Nextcloud database user (host restricted to K3s pod CIDR)
+- name: MariaDB | Create Nextcloud database user (host restricted to K3s pod CIDR)
   community.mysql.mysql_user:
     name: "{{ nextcloud_user }}"
     host: "{{ k3s_pod_cidr.split('.')[:2] | join('.') }}.%"

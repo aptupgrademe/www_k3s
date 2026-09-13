@@ -4,6 +4,7 @@
 # Purpose: Install repositories and host packages for AlmaLinux 9.
 #          Sets up MariaDB 10.11, Redis, SELinux tools, and utilities.
 #          Nginx and PHP run inside K3s (next_k3s_deploy), not on the host.
+# Variables: none role-internal - the package lists are inline in this file.
 # =============================================================================
 
 
@@ -14,11 +15,11 @@
 # reboot check, clamav scan, etc.) then shows verbatim – useless when several
 # servers share the same alert setup, since you can't tell which one sent it.
 # -----------------------------------------------------------------------------
-- name: Set system hostname to the public FQDN
+- name: Packages | Set system hostname to the public FQDN
   ansible.builtin.hostname:
     name: "{{ nextcloud_hostname }}"
 
-- name: Ensure /etc/hosts has a matching entry
+- name: Packages | Ensure /etc/hosts has a matching entry
   ansible.builtin.lineinfile:
     path: /etc/hosts
     regexp: '^127\.0\.1\.1'
@@ -28,7 +29,7 @@
 # -----------------------------------------------------------------------------
 # STEP 1: Install DNF plugin
 # -----------------------------------------------------------------------------
-- name: Install 'dnf-plugins-core' (required for config-manager sub-command)
+- name: Packages | Install 'dnf-plugins-core' (required for config-manager sub-command)
   ansible.builtin.dnf:
     name: dnf-plugins-core
     state: present
@@ -37,12 +38,12 @@
 # -----------------------------------------------------------------------------
 # STEP 2: Enable the CRB repository
 # -----------------------------------------------------------------------------
-- name: Read list of currently enabled repositories (to check if CRB is active)
+- name: Packages | Read list of currently enabled repositories (to check if CRB is active)
   ansible.builtin.command: dnf repolist --enabled
   register: enabled_repos
   changed_when: false
 
-- name: Enable CRB repository (only if not already active)
+- name: Packages | Enable CRB repository (only if not already active)
   ansible.builtin.command: dnf -y config-manager --set-enabled crb
   when: "'crb' not in enabled_repos.stdout"
   changed_when: true
@@ -51,12 +52,12 @@
 # -----------------------------------------------------------------------------
 # STEP 3: Install the EPEL repository
 # -----------------------------------------------------------------------------
-- name: Install EPEL repository
+- name: Packages | Install EPEL repository
   ansible.builtin.dnf:
     name: epel-release
     state: present
 
-- name: Enable module_hotfixes for EPEL (prevents modular filtering errors)
+- name: Packages | Enable module_hotfixes for EPEL (prevents modular filtering errors)
   ansible.builtin.ini_file:
     path: /etc/yum.repos.d/epel.repo
     section: epel
@@ -68,12 +69,12 @@
 # -----------------------------------------------------------------------------
 # STEP 4: Add the MariaDB 10.11 Community repository
 # -----------------------------------------------------------------------------
-- name: Import MariaDB Community GPG key
+- name: Packages | Import MariaDB Community GPG key
   ansible.builtin.rpm_key:
     state: present
     key: https://mirror.mariadb.org/yum/RPM-GPG-KEY-MariaDB
 
-- name: Add MariaDB 10.11 Community repository
+- name: Packages | Add MariaDB 10.11 Community repository
   ansible.builtin.copy:
     dest: /etc/yum.repos.d/mariadb.repo
     content: |
@@ -85,7 +86,7 @@
       enabled=1
     mode: "0644"
 
-- name: Disable the AppStream mariadb module (prevents shadowing the Community packages)
+- name: Packages | Disable the AppStream mariadb module (prevents shadowing the Community packages)
   ansible.builtin.command: dnf -y module disable mariadb
   changed_when: true
   failed_when: false
@@ -101,7 +102,7 @@
 # kernel there always fails. Security kernel updates still land via
 # dnf-automatic (common_dnf_automatic), which runs locally via a systemd
 # timer, outside the SSH session and thus unaffected by that sandboxing.
-- name: Upgrade all system packages to the latest version
+- name: Packages | Upgrade all system packages to the latest version
   ansible.builtin.dnf:
     name: "*"
     state: latest
@@ -126,7 +127,7 @@
 # inside the SSH session's own private mount namespace. A plain stat here
 # would see that mask and wrongly conclude a reboot is needed even when the
 # real kernel modules are perfectly fine. systemd-run escapes that sandbox.
-- name: Check whether the running kernel's module directory still exists
+- name: Packages | Check whether the running kernel's module directory still exists
   ansible.builtin.command: >-
     systemd-run --wait --pipe --quiet --
     test -d /lib/modules/{{ ansible_kernel }}
@@ -134,7 +135,7 @@
   changed_when: false
   failed_when: false
 
-- name: Reboot – running kernel's modules are gone, a newer kernel is already installed
+- name: Packages | Reboot – running kernel's modules are gone, a newer kernel is already installed
   ansible.builtin.reboot:
     reboot_timeout: 300
   when: running_kernel_modules.rc != 0
@@ -143,7 +144,7 @@
 # -----------------------------------------------------------------------------
 # STEP 6: Install required packages
 # -----------------------------------------------------------------------------
-- name: Install packages for the web stack
+- name: Packages | Install packages for the web stack
   ansible.builtin.dnf:
     name:
       # --- Database ---
@@ -185,13 +186,13 @@
 # -----------------------------------------------------------------------------
 # STEP 7: Enable and start services
 # -----------------------------------------------------------------------------
-- name: Enable and start MariaDB
+- name: Packages | Enable and start MariaDB
   ansible.builtin.service:
     name: mariadb
     state: started
     enabled: true
 
-- name: Enable and start Redis
+- name: Packages | Enable and start Redis
   ansible.builtin.service:
     name: redis
     state: started
@@ -201,14 +202,14 @@
 # -----------------------------------------------------------------------------
 # STEP 8: Disable firewalld (we use nftables via systemd)
 # -----------------------------------------------------------------------------
-- name: Disable and stop firewalld (we use nftables via systemd)
+- name: Packages | Disable and stop firewalld (we use nftables via systemd)
   ansible.builtin.service:
     name: firewalld
     state: stopped
     enabled: false
   failed_when: false
 
-- name: Disable unnecessary NFS/RPC/LDAP services (not needed on this host)
+- name: Packages | Disable unnecessary NFS/RPC/LDAP services (not needed on this host)
   ansible.builtin.systemd:
     name: "{{ item }}"
     state: stopped
@@ -220,7 +221,7 @@
     - sssd-kcm.socket
   failed_when: false
 
-- name: Mask gssproxy (starts via socket activation despite disabled state)
+- name: Packages | Mask gssproxy (starts via socket activation despite disabled state)
   ansible.builtin.systemd:
     name: gssproxy
     masked: true

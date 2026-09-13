@@ -4,8 +4,16 @@
 #   ansible-galaxy collection install -r requirements.yml
 #
 # Used by:
-#   community.mysql  → next_mariadb   (mysql_user, mysql_db modules)
-#   ansible.posix    → next_selinux   (seboolean module)
+#   community.mysql  → next_mariadb          (mysql_user, mysql_db)
+#   ansible.posix    → next_selinux          (seboolean, selinux)
+#                      blog_selinux          (seboolean, selinux)
+#                      common_cis_hardening  (mount - the nodev/nosuid/noexec
+#                                             bind mounts on /tmp and /var/tmp)
+#
+# Note: the selinux module is written as ansible.posix.selinux on purpose.
+# ansible-core still redirects a bare "ansible.builtin.selinux" here, so the
+# wrong name appears to work as long as this collection happens to be present -
+# which hides the dependency until the redirect is removed.
 
 collections:
   - name: community.mysql
