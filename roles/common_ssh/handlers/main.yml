@@ -2,22 +2,39 @@
   ansible.builtin.command: sshd -t
   changed_when: false
 
+# daemon-reload does not touch the running sshd, so it is safe to run
+# synchronously - a failure here should still be reported normally.
+- name: Reload systemd units for sshd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+# "restarted", not "reloaded": systemd only re-applies exec-time sandboxing
+# (RestrictAddressFamilies, ProtectKernelTunables, ...) when the unit is
+# actually restarted. A reload just SIGHUPs the process, so changes to
+# hardening.conf would silently never take effect.
+#
+# The restart tears down the sshd that Ansible is running this very module
+# through, so the module's JSON result never arrives and the task dies with
+#   "Module result deserialization failed: No start of json char found"
+# (seen 2026-09-10 and again 2026-09-13). async + poll: 0 fires the restart
+# and returns immediately instead of waiting for a reply over a dying channel.
+# Losing the return value is fine here: the config was already validated by
+# the handler above, and the two steps below prove sshd came back.
 - name: Reload sshd
   ansible.builtin.systemd:
     name: sshd
-    # Must be "restarted", not "reloaded": systemd only re-applies exec-time
-    # sandboxing (RestrictAddressFamilies, ProtectKernelTunables, ...) when the
-    # unit is (re)started. A reload just SIGHUPs the running process, so
-    # hardening.conf changes would silently never take effect.
     state: restarted
-    daemon_reload: true
+  async: 30
+  poll: 0
 
-# In practice this restart kills the very connection Ansible is using to run
-# it (observed live 2026-09-10: the task itself, or the next task reusing the
-# same multiplexed connection, fails with "Module result deserialization
-# failed" / a stale-PrivateTmp-namespace error) - the opposite of what the
-# comment above this handler used to assume. Reset immediately so Ansible
-# opens a fresh connection against the just-restarted sshd instead of either
-# failing here or limping along on a half-dead one.
 - name: Reset connection after sshd restart
   ansible.builtin.meta: reset_connection
+
+# The fire-and-forget restart cannot report success, so verify it by actually
+# reconnecting. If sshd failed to come back, the play stops here - loudly, and
+# while a second session is presumably still open - rather than continuing
+# against a host that is about to become unreachable.
+- name: Confirm sshd is accepting connections again
+  ansible.builtin.wait_for_connection:
+    delay: 2
+    timeout: 60
