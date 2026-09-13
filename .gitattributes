@@ -1,0 +1,21 @@
+# Normalise line endings on checkin. The repo previously carried a mix: files
+# created by "ansible-galaxy init" or edited on Windows had CRLF, hand-written
+# ones had LF. That made diffs noisy - a one-line change could show up as a
+# whole-file rewrite - and it reached the servers, since files under files/ are
+# copied verbatim.
+#
+# text=auto lets git decide per file; eol=lf pins the working-tree ending, so
+# everything is LF regardless of the platform doing the checkout.
+* text=auto eol=lf
+
+# Belt and braces for the formats in this repo.
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.j2    text eol=lf
+*.cfg   text eol=lf
+*.sh    text eol=lf
+*.md    text eol=lf
+*.rules text eol=lf
+
+# Never touched: an ASCII-armoured key is content, not source.
+*.asc   -text
