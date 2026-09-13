@@ -1629,6 +1629,63 @@ k3s kubectl logs -n nextcloud -l job-name=nextcloud-cron-&lt;id&gt;</code></pre>
   done in the <code>common_sysctl</code> role's tasks and handlers. Do not weaken
   or remove the sshd hardening to work around this — it is deliberate.
 </p>
+
+<h3>"Cannot create repo temporary directory /tmp/libdnf.XXXXXX" from dnf over SSH</h3>
+<p>
+  Until 2026-09-13 the sshd drop-in also carried <code>PrivateTmp=yes</code>. That gives
+  the sshd <em>service</em> its own <code>/tmp</code>, which every SSH session then
+  inherits — with two surprising consequences: a file dropped into <code>/tmp</code> over
+  <code>scp</code> is invisible to cron and to other services, and every sshd restart
+  destroys that <code>/tmp</code> underneath any session still attached to it.
+</p>
+<p>
+  The second one bit twice (2026-09-10 and 2026-09-13). Ansible keeps its connection open
+  for ten minutes via <code>ControlPersist=600s</code>; if the playbook restarts sshd in
+  the meantime, that connection then points into a destroyed namespace. The symptom is
+  characteristic: <code>ls -d /tmp</code> still succeeds, while
+  <code>touch /tmp/file</code> fails with "No such file or directory".
+</p>
+<p>
+  <code>PrivateTmp</code> was therefore removed, for the same reason
+  <code>RestrictSUIDSGID</code> was before it: sshd is a factory for user sessions, so any
+  restriction placed on it applies to every session. The protective value was close to
+  nothing — sshd itself barely writes to <code>/tmp</code>. Sandboxing belongs on services
+  that spawn no sessions (see MariaDB under Security).
+</p>
+<p>
+  If the message still appears — after a manual sshd restart, for instance — discard
+  Ansible's multiplexed connection:
+</p>
+<pre><code>ssh -O exit -o ControlPath=~/.ansible/cp/&lt;id&gt; -p 10022 root@&lt;host&gt;
+# or simply all of them:
+rm -f ~/.ansible/cp/*</code></pre>
+
+<h3>"Module result deserialization failed: No start of json char found" on sshd restart</h3>
+<p>
+  The <code>Reload sshd</code> handler <em>restarts</em> sshd rather than reloading it,
+  because systemd only re-applies the sandboxing directives on a real restart. Doing so
+  tears down the very connection Ansible is running that module through: the JSON result
+  never arrives and the play aborts. The restart itself succeeds — only the reply is lost.
+</p>
+<p>
+  Since 2026-09-13 the handler chain in <code>common_ssh</code> solves this in five steps:
+</p>
+<ol>
+  <li><code>sshd -t</code> — validate the configuration <em>before</em> anything happens.</li>
+  <li><code>daemon-reload</code>, synchronously. Without it systemd would restart from its
+      cached copy of the old unit and the drop-in change would have no effect.</li>
+  <li>Restart with <code>async: 30</code> and <code>poll: 0</code> — fire it off without
+      waiting for a reply over a dying channel.</li>
+  <li><code>meta: reset_connection</code> — discard the stale connection.</li>
+  <li><code>wait_for_connection</code> — prove sshd came back.</li>
+</ol>
+<div class="callout callout-warn">
+  <strong>Always keep a second SSH session open when changing the SSH configuration.</strong>
+  Step 5 is the point of the chain: the restart can no longer report success, so it is
+  verified rather than assumed. If sshd does not come back, the play stops right there —
+  loudly, and while you are still logged in.
+</div>
+
 </section>
 
 <!-- ─────────────────────────── PERFORMANCE ──────────────────────────── -->
@@ -1887,6 +1944,42 @@ openssl s_client -connect nextcloud.example.com:443 -status 2>/dev/null | \
     <td><code>next_mariadb</code>, <code>common_mysqld_exporter</code></td>
   </tr>
 </table>
+
+<h3>MariaDB: systemd sandboxing</h3>
+<p>
+  Unlike sshd, MariaDB spawns no user sessions. A restriction there reaches only the
+  database — which is what makes the unit the right place for sandboxing, and the sshd unit
+  the wrong one. The drop-in
+  (<code>roles/next_mariadb/files/systemd-hardening.conf</code>) takes the score reported by
+  <code>systemd-analyze security mariadb</code> from <strong>8.6 down to 1.4</strong>
+  (lower is better), making MariaDB the best-sandboxed service on the host — ahead of
+  <code>chronyd</code> at 3.9.
+</p>
+<p>Every setting was checked against what this server's MariaDB actually does, not copied from a template:</p>
+<table>
+  <tr><th>Check</th><th>Finding</th><th>Consequence</th></tr>
+  <tr><td>PAM authentication?</td><td>no, every account uses <code>mysql_native_password</code></td><td><code>NoNewPrivileges=yes</code> is safe</td></tr>
+  <tr><td><code>CAP_IPC_LOCK</code> needed?</td><td>no — <code>large_pages=0</code>, <code>memlock</code> unset</td><td><code>CapabilityBoundingSet=</code> emptied entirely</td></tr>
+  <tr><td>Which devices?</td><td>only <code>/dev/null</code></td><td><code>PrivateDevices=yes</code></td></tr>
+  <tr><td>Which writable paths?</td><td>only <code>/var/lib/mysql</code></td><td><code>ProtectSystem=strict</code> + explicit <code>ReadWritePaths</code></td></tr>
+  <tr><td><code>skip_name_resolve</code>?</td><td>off → reverse DNS per connection</td><td><code>AF_NETLINK</code> must stay allowed</td></tr>
+</table>
+<div class="callout callout-warn">
+  <strong>Two directives must not be set.</strong>
+  <code>ProcSubset=pid</code> hides <code>/proc/meminfo</code>, which MariaDB reads while
+  sizing — the service would not start. And <code>RestrictAddressFamilies</code> must include
+  <code>AF_NETLINK</code> while name resolution is on: glibc enumerates local interfaces over
+  netlink. That exact mistake once broke every tool inside an SSH session.
+</div>
+<p>
+  Fixed alongside: the slow query log had never worked (<code>slow_query_log = ON</code> but
+  <code>/var/log/mariadb/</code> did not exist — MariaDB says so once at startup and then runs
+  without it). The directory is now created with SELinux type <code>mysqld_log_t</code>, plus a
+  logrotate snippet. Also removed: two anonymous accounts with no password and the empty
+  <code>test</code> database — the signature of a <code>mysql_secure_installation</code> that was
+  never run. And <code>skip_name_resolve = 1</code> ends the futile reverse-DNS lookups on every
+  pod connection (25 warnings in two hours).
+</p>
 
 <h3>Firewall in Detail</h3>
 <p>

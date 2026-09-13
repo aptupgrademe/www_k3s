@@ -1644,6 +1644,64 @@ k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
   done in the <code>common_sysctl</code> role's tasks and handlers. Do not weaken
   or remove the sshd hardening to work around this — it is deliberate.
 </p>
+
+<h3>"Cannot create repo temporary directory /tmp/libdnf.XXXXXX" from dnf over SSH</h3>
+<p>
+  Until 2026-09-13 the sshd drop-in also carried <code>PrivateTmp=yes</code>. That gives
+  the sshd <em>service</em> its own <code>/tmp</code>, which every SSH session then
+  inherits — with two surprising consequences: a file dropped into <code>/tmp</code> over
+  <code>scp</code> is invisible to cron and to other services, and every sshd restart
+  destroys that <code>/tmp</code> underneath any session still attached to it.
+</p>
+<p>
+  The second one bit twice (2026-09-10 and 2026-09-13). Ansible keeps its connection open
+  for ten minutes via <code>ControlPersist=600s</code>; if the playbook restarts sshd in
+  the meantime, that connection then points into a destroyed namespace. The symptom is
+  characteristic: <code>ls -d /tmp</code> still succeeds, while
+  <code>touch /tmp/file</code> fails with "No such file or directory".
+</p>
+<p>
+  <code>PrivateTmp</code> was therefore removed, for the same reason
+  <code>RestrictSUIDSGID</code> was before it: sshd is a factory for user sessions, so any
+  restriction placed on it applies to every session. The protective value was close to
+  nothing — sshd itself barely writes to <code>/tmp</code>. Sandboxing belongs on services
+  that spawn no sessions — on this host almost everything runs in containers, which
+  bring their own isolation.
+</p>
+<p>
+  If the message still appears — after a manual sshd restart, for instance — discard
+  Ansible's multiplexed connection:
+</p>
+<pre><code>ssh -O exit -o ControlPath=~/.ansible/cp/&lt;id&gt; -p 10022 root@&lt;host&gt;
+# or simply all of them:
+rm -f ~/.ansible/cp/*</code></pre>
+
+<h3>"Module result deserialization failed: No start of json char found" on sshd restart</h3>
+<p>
+  The <code>Reload sshd</code> handler <em>restarts</em> sshd rather than reloading it,
+  because systemd only re-applies the sandboxing directives on a real restart. Doing so
+  tears down the very connection Ansible is running that module through: the JSON result
+  never arrives and the play aborts. The restart itself succeeds — only the reply is lost.
+</p>
+<p>
+  Since 2026-09-13 the handler chain in <code>common_ssh</code> solves this in five steps:
+</p>
+<ol>
+  <li><code>sshd -t</code> — validate the configuration <em>before</em> anything happens.</li>
+  <li><code>daemon-reload</code>, synchronously. Without it systemd would restart from its
+      cached copy of the old unit and the drop-in change would have no effect.</li>
+  <li>Restart with <code>async: 30</code> and <code>poll: 0</code> — fire it off without
+      waiting for a reply over a dying channel.</li>
+  <li><code>meta: reset_connection</code> — discard the stale connection.</li>
+  <li><code>wait_for_connection</code> — prove sshd came back.</li>
+</ol>
+<div class="callout callout-warn">
+  <strong>Always keep a second SSH session open when changing the SSH configuration.</strong>
+  Step 5 is the point of the chain: the restart can no longer report success, so it is
+  verified rather than assumed. If sshd does not come back, the play stops right there —
+  loudly, and while you are still logged in.
+</div>
+
 </section>
 
 <!-- ─────────────────────────── SECURITY ───────────────────────────── -->

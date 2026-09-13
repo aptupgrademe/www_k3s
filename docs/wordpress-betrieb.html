@@ -1655,6 +1655,67 @@ k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
   in den Tasks und Handlern der Rolle <code>common_sysctl</code> umgesetzt. Die
   sshd-Härtung dafür nicht abschwächen oder entfernen — sie ist beabsichtigt.
 </p>
+
+<h3>"Cannot create repo temporary directory /tmp/libdnf.XXXXXX" bei dnf über SSH</h3>
+<p>
+  Das sshd-Drop-in enthielt bis zum 13.09.2026 zusätzlich <code>PrivateTmp=yes</code>.
+  Das gibt dem <em>Dienst</em> sshd ein eigenes <code>/tmp</code>, das jede SSH-Session
+  erbt — mit zwei überraschenden Folgen: Eine per <code>scp</code> nach <code>/tmp</code>
+  gelegte Datei ist für cron und andere Dienste unsichtbar, und jeder sshd-Neustart
+  zerstört dieses <code>/tmp</code> unter allen noch daran hängenden Sessions.
+</p>
+<p>
+  Letzteres schlug zweimal zu (10.09. und 13.09.2026). Ansible hält seine Verbindung
+  dank <code>ControlPersist=600s</code> zehn Minuten offen; startet der Playbook-Lauf
+  zwischendurch sshd neu, zeigt diese Verbindung anschließend in einen zerstörten
+  Namespace. Das Fehlerbild ist charakteristisch: <code>ls -d /tmp</code> gelingt noch,
+  <code>touch /tmp/datei</code> scheitert mit "No such file or directory".
+</p>
+<p>
+  <code>PrivateTmp</code> wurde deshalb entfernt — aus demselben Grund wie zuvor
+  <code>RestrictSUIDSGID</code>: sshd ist eine Prozessfabrik, jede Einschränkung dort
+  trifft jede Session. Der Schutzwert war gering, sshd selbst legt kaum etwas in
+  <code>/tmp</code> ab. Sandboxing gehört an Dienste, die keine Sessions starten —
+  auf diesem Host läuft ohnehin fast alles in Containern, die ihre eigene Isolation
+  mitbringen.
+</p>
+<p>
+  Tritt die Meldung dennoch auf, etwa nach einem manuellen sshd-Neustart, hilft es,
+  Ansibles gemultiplexte Verbindung wegzuwerfen:
+</p>
+<pre><code>ssh -O exit -o ControlPath=~/.ansible/cp/&lt;id&gt; -p 10022 root@&lt;host&gt;
+# oder pauschal alle:
+rm -f ~/.ansible/cp/*</code></pre>
+
+<h3>"Module result deserialization failed: No start of json char found" beim sshd-Neustart</h3>
+<p>
+  Der Handler <code>Reload sshd</code> startet sshd <em>neu</em>, statt ihn nur neu zu
+  laden — nötig, weil systemd die Sandbox-Direktiven ausschließlich bei einem echten
+  Neustart neu anwendet. Damit reißt er aber genau die Verbindung ab, über die Ansible
+  dieses Modul gerade ausführt: Das JSON-Ergebnis kommt nie an, der Lauf bricht ab.
+  Der Neustart selbst gelingt dabei — verloren geht nur die Rückmeldung.
+</p>
+<p>
+  Die Handler-Kette in <code>common_ssh</code> löst das seit dem 13.09.2026 in fünf
+  Schritten:
+</p>
+<ol>
+  <li><code>sshd -t</code> — Konfiguration validieren, <em>bevor</em> etwas passiert.</li>
+  <li><code>daemon-reload</code>, synchron. Ohne diesen Schritt würde systemd aus seiner
+      zwischengespeicherten alten Unit neu starten und die Drop-in-Änderung bliebe
+      wirkungslos.</li>
+  <li>Neustart mit <code>async: 30</code> und <code>poll: 0</code> — feuert und wartet
+      nicht auf eine Antwort über den sterbenden Kanal.</li>
+  <li><code>meta: reset_connection</code> — die alte Verbindung verwerfen.</li>
+  <li><code>wait_for_connection</code> — nachweisen, dass sshd zurück ist.</li>
+</ol>
+<div class="callout callout-warn">
+  <strong>Bei Änderungen an der SSH-Konfiguration immer eine zweite SSH-Sitzung offen halten.</strong>
+  Schritt 5 ist der Kern der Kette: Der Neustart kann keinen Erfolg mehr melden, also
+  wird er geprüft statt geglaubt. Kommt sshd nicht zurück, endet der Lauf genau dort —
+  laut, und solange man noch eingeloggt ist.
+</div>
+
 </section>
 
 <!-- ─────────────────────────── SICHERHEIT ───────────────────────────── -->
