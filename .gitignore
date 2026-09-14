@@ -32,3 +32,7 @@ roles/blog_k3s_deploy/files/*.rev
 # not part of the repo. Untracked alone is not enough: a `git add -A` would
 # sweep them into a commit and onto the public remote.
 blog-draft-*
+
+# Internal notes: kept out of main (and thus GitHub). Backed up to the
+# internal GitLab only, via the "internal" branch (git add -f on that branch).
+notes/
