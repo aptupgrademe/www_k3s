@@ -118,6 +118,14 @@
         // Hide Yoast SEO version from HTML comment
         add_filter('wpseo_debug_markers', '__return_false');
 
+        // Disable the in-admin theme/plugin file editor. Without this, anyone
+        // who reaches an admin session can edit PHP and get code execution
+        // from the dashboard. Defined here (mu-plugins load before the admin
+        // menu is built), not wp-config.php, which the container entrypoint owns.
+        if (!defined('DISALLOW_FILE_EDIT')) {
+            define('DISALLOW_FILE_EDIT', true);
+        }
+
         // Block REST API user enumeration for unauthenticated requests
         add_filter('rest_endpoints', function($endpoints) {
             if (!is_user_logged_in()) {

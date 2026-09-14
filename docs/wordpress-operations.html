@@ -1728,13 +1728,13 @@ rm -f ~/.ansible/cp/*</code></pre>
     <td><code>common_k3s</code> → nginx-ingress Helm values (<code>keepalive: "32"</code>)</td>
   </tr>
   <tr>
-    <td>TLS – OCSP Stapling</td>
+    <td>TLS – Session Tickets</td>
     <td>nginx caches the revocation status from the CA and sends it in the TLS handshake → browser saves ~50–100 ms CA round-trip per new session. <code>ssl_session_tickets off</code> enforces forward secrecy.</td>
     <td><code>common_k3s</code> → nginx-ingress Helm values (<code>http-snippets</code>)</td>
   </tr>
   <tr>
-    <td>Brotli</td>
-    <td>Brotli compression (level 6) for text/JS/CSS/fonts – 15–25% smaller than gzip; gzip remains active as fallback</td>
+    <td>gzip</td>
+    <td>gzip compression (level 6) for text/JS/CSS/fonts/JSON. Brotli is NOT active: the F5 nginx-ingress OSS image ships no ngx_brotli module (verified 2026-09-14).</td>
     <td><code>common_k3s</code> → nginx-ingress Helm values ConfigMap</td>
   </tr>
   <tr>
@@ -1835,6 +1835,15 @@ k3s kubectl exec deployment/mariadb -n wordpress -- \
             WHERE VARIABLE_NAME='Innodb_buffer_pool_reads') r,
            (SELECT VARIABLE_VALUE AS Innodb_buffer_pool_read_requests FROM information_schema.GLOBAL_STATUS
             WHERE VARIABLE_NAME='Innodb_buffer_pool_read_requests') rr;"</code></pre>
+
+<h3>Deliberately not enabled — would help, but is not possible here</h3>
+<p>Recorded so a future pass (human or AI) does not re-research or re-add these.
+Both verified 2026-09-14.</p>
+<table>
+  <tr><th>Feature</th><th>Status</th><th>Reason &amp; how to re-check</th></tr>
+  <tr><td>OCSP stapling</td><td>Not possible</td><td>Let's Encrypt has retired OCSP; certs from the current LE intermediates carry no OCSP URI, so there is nothing to staple. Re-check: <code>echo | openssl s_client -connect &lt;host&gt;:443 2&gt;/dev/null | openssl x509 -noout -ocsp_uri</code> (empty = still none). Do <strong>not</strong> re-add <code>ssl_stapling</code> to the ingress config.</td></tr>
+  <tr><td>Brotli compression</td><td>Not available</td><td>The F5 NGINX OSS ingress image ships no <code>ngx_brotli</code> module, so the <code>brotli</code> ConfigMap keys are inert and responses fall back to gzip. Re-check: <code>kubectl exec -n ingress-nginx &lt;pod&gt; -- nginx -V 2&gt;&amp;1 | grep -i brotli</code> (empty = still absent). Enabling it needs a custom controller image; gzip (level 6) is the active compression.</td></tr>
+</table>
 </section>
 
 <!-- ─────────────────────────── SECURITY ─────────────────────────────── -->
@@ -1869,7 +1878,7 @@ k3s kubectl exec deployment/mariadb -n wordpress -- \
   </tr>
   <tr>
     <td>HTTP – TLS</td>
-    <td>TLS 1.2/1.3; OCSP stapling with resolver (1.1.1.1/8.8.8.8); <code>ssl_session_tickets off</code> (forward secrecy enforced); <code>ssl-prefer-server-ciphers: false</code>; ECDSA P-256 leaf certificate (instead of RSA 2048 &ndash; cheaper handshake at equal security)</td>
+    <td>TLS 1.2/1.3; <code>ssl_session_tickets off</code> (forward secrecy enforced); <code>ssl-prefer-server-ciphers: false</code>; ECDSA P-256 leaf certificate (instead of RSA 2048 &ndash; cheaper handshake at equal security)</td>
     <td><code>common_k3s</code> → nginx-ingress Helm values</td>
   </tr>
   <tr>

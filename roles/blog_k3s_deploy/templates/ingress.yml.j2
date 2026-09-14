@@ -74,6 +74,10 @@ metadata:
       add_header X-Frame-Options "SAMEORIGIN" always;
       add_header X-Content-Type-Options "nosniff" always;
       add_header Referrer-Policy "same-origin" always;
+      # COOP: puts this site in its own browsing-context group, so a
+      # cross-origin opener (e.g. a popup) cannot reach back into it.
+      # Safe here - the blog opens no cross-origin windows that need it.
+      add_header Cross-Origin-Opener-Policy "same-origin" always;
       add_header X-Permitted-Cross-Domain-Policies "none" always;
       add_header Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()" always;
       # Deprecated/ignored by modern browsers (superseded by CSP); kept only

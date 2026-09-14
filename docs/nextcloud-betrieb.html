@@ -1731,13 +1731,13 @@ rm -f ~/.ansible/cp/*</code></pre>
     <td><code>common_k3s</code> → nginx-ingress Helm-Values (<code>keepalive: "32"</code>)</td>
   </tr>
   <tr>
-    <td>TLS – OCSP Stapling</td>
+    <td>TLS – Session Tickets</td>
     <td>nginx cached den Revocation-Status beim CA und liefert ihn im TLS-Handshake mit → Browser spart ~50–100 ms CA-Round-Trip pro neuer Session. <code>ssl_session_tickets off</code> erzwingt Forward Secrecy.</td>
     <td><code>common_k3s</code> → nginx-ingress Helm-Values (<code>http-snippets</code>)</td>
   </tr>
   <tr>
-    <td>Brotli</td>
-    <td>Brotli-Kompression (Level 6) für Text/JS/CSS/Fonts – 15–25 % kleiner als gzip; gzip bleibt als Fallback aktiv</td>
+    <td>gzip</td>
+    <td>gzip-Kompression (Level 6) für Text/JS/CSS/Fonts/JSON. Brotli ist NICHT aktiv: das F5-nginx-ingress-OSS-Image enthält kein ngx_brotli-Modul (geprüft 2026-09-14).</td>
     <td><code>common_k3s</code> → nginx-ingress Helm-Values ConfigMap</td>
   </tr>
   <tr>
@@ -1762,22 +1762,14 @@ rm -f ~/.ansible/cp/*</code></pre>
   </tr>
 </table>
 
-<h3>Brotli &amp; OCSP Stapling</h3>
+<h3>Kompression &amp; TLS-Tuning</h3>
 <p>
-  Brotli und OCSP Stapling sind auf der nginx-ingress-Ebene konfiguriert und wirken für
-  alle Domains (Nextcloud und WordPress). Brotli liefert bei typischen Nextcloud-Antworten
-  (JSON, HTML, JS) 15–25 % kleinere Responses als gzip bei gleichem Qualitätsniveau.
-  OCSP Stapling reduziert die TLS-Verbindungszeit um ~50–100 ms, da der Browser keinen
-  eigenen OCSP-Request an Let's Encrypt stellen muss.
+  gzip-Kompression ist auf der nginx-ingress-Ebene konfiguriert und wirkt für alle Domains (Nextcloud und WordPress). Brotli ist <strong>nicht</strong> verfügbar — das F5-nginx-ingress-OSS-Image enthält kein ngx_brotli-Modul — und OCSP Stapling wird nicht genutzt, da Let's Encrypt OCSP eingestellt hat (aktuelle Zertifikate tragen keine OCSP-URI). gzip (Level 6) deckt Text, HTML, JSON, JS, CSS und SVG ab.
 </p>
-<pre><code># Brotli prüfen (br-Encoding in Accept-Encoding senden)
+<pre><code># Kompression prüfen (Brotli auf diesem Ingress nicht verfügbar)
 curl -sk --resolve nextcloud.example.com:443:127.0.0.1 \
   -H "Accept-Encoding: br, gzip" -I \
-  "https://nextcloud.example.com/" | grep -i content-encoding
-
-# OCSP Stapling prüfen
-openssl s_client -connect nextcloud.example.com:443 -status 2>/dev/null | \
-  grep -A5 "OCSP Response"</code></pre>
+  "https://nextcloud.example.com/" | grep -i content-encoding</code></pre>
 
 <h3>/tmp im RAM</h3>
 <p>
@@ -1792,6 +1784,15 @@ openssl s_client -connect nextcloud.example.com:443 -status 2>/dev/null | \
   Nextcloud legt keine persistenten Daten dort ab – unvollständige Uploads
   werden automatisch abgebrochen und müssen neu gestartet werden.
 </div>
+
+<h3>Bewusst nicht aktiviert — wäre gut, ist hier aber nicht möglich</h3>
+<p>Festgehalten, damit ein späterer Durchgang (Mensch oder KI) das nicht neu recherchiert
+oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
+<table>
+  <tr><th>Funktion</th><th>Status</th><th>Grund &amp; Gegenprobe</th></tr>
+  <tr><td>OCSP Stapling</td><td>Nicht möglich</td><td>Let's Encrypt hat OCSP eingestellt; Zertifikate der aktuellen LE-Intermediates tragen keine OCSP-URI, es gibt also nichts zu stapeln. Gegenprobe: <code>echo | openssl s_client -connect &lt;host&gt;:443 2&gt;/dev/null | openssl x509 -noout -ocsp_uri</code> (leer = weiterhin keine). <code>ssl_stapling</code> <strong>nicht</strong> wieder in die Ingress-Config aufnehmen.</td></tr>
+  <tr><td>Brotli-Kompression</td><td>Nicht verfügbar</td><td>Das F5-NGINX-OSS-Ingress-Image enthält kein <code>ngx_brotli</code>-Modul, die <code>brotli</code>-ConfigMap-Schlüssel sind daher wirkungslos; es wird auf gzip zurückgefallen. Gegenprobe: <code>kubectl exec -n ingress-nginx &lt;pod&gt; -- nginx -V 2&gt;&amp;1 | grep -i brotli</code> (leer = weiterhin nicht vorhanden). Aktivieren ginge nur mit eigenem Controller-Image; gzip (Level 6) ist die aktive Kompression.</td></tr>
+</table>
 </section>
 
 <!-- ─────────────────────────── SICHERHEIT ───────────────────────────── -->
@@ -1825,7 +1826,7 @@ openssl s_client -connect nextcloud.example.com:443 -status 2>/dev/null | \
   </tr>
   <tr>
     <td>HTTP – TLS</td>
-    <td>TLS 1.2/1.3; OCSP Stapling mit Resolver (1.1.1.1/8.8.8.8); <code>ssl_session_tickets off</code> (Forward Secrecy erzwungen); <code>ssl-prefer-server-ciphers: false</code>; ECDSA-P-256-Leaf-Zertifikat (statt RSA 2048 &ndash; g&uuml;nstigerer Handshake bei gleicher Sicherheit)</td>
+    <td>TLS 1.2/1.3; <code>ssl_session_tickets off</code> (Forward Secrecy erzwungen); <code>ssl-prefer-server-ciphers: false</code>; ECDSA-P-256-Leaf-Zertifikat (statt RSA 2048 &ndash; g&uuml;nstigerer Handshake bei gleicher Sicherheit)</td>
     <td><code>common_k3s</code> → nginx-ingress Helm-Values</td>
   </tr>
   <tr>

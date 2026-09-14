@@ -48,13 +48,15 @@ controller:
 
       # --- Compression ---
       gzip: "on"
-      # Brotli: 15-25 % smaller than gzip for text/JS/CSS on modern browsers.
-      brotli: "true"
-      brotli-level: "6"
-      brotli-types: "text/plain text/css text/xml text/javascript application/javascript application/json application/xml image/svg+xml font/woff font/woff2"
+      # Brotli intentionally NOT configured: the F5 NGINX OSS ingress image does
+      # not ship the ngx_brotli module (confirmed 2026-09-14 via `nginx -V` in the
+      # controller pod), so these keys were inert - HTML and assets fell back to
+      # gzip regardless. Enabling Brotli would need a custom controller image with
+      # the module built in, which is not worth the 15-25 % for this site. gzip
+      # (above, tuned below) is the active, working compression.
 
       # --- Custom http-context directives ---
-      # ssl_session_tickets, OCSP stapling, gzip/brotli tuning, rate-limit zones.
+      # ssl_session_tickets, gzip tuning, rate-limit zones.
       # F5 NGINX exposes these via http-snippets rather than individual entries.
       http-snippets: |
         ssl_session_cache shared:SSL:10m;
@@ -63,13 +65,11 @@ controller:
         # preserving Perfect Forward Secrecy even if a ticket key is compromised.
         ssl_session_tickets off;
 
-        # OCSP stapling: nginx fetches and caches the CA's revocation response,
-        # attaching it to the TLS handshake so browsers need no extra round-trip.
-        # resolver is required so nginx can look up the OCSP responder hostname.
-        ssl_stapling on;
-        ssl_stapling_verify on;
-        resolver 1.1.1.1 8.8.8.8 valid=60s;
-        resolver_timeout 5s;
+        # OCSP stapling intentionally NOT enabled: Let's Encrypt has retired
+        # OCSP. Certificates from the current LE intermediates carry no OCSP
+        # URI (confirmed 2026-09-14 with `openssl x509 -noout -ocsp_uri` -
+        # empty), so there is no responder to staple from. LE revocation now
+        # relies on short certificate lifetimes plus CRLs instead of OCSP.
 
         gzip_comp_level 6;
         gzip_types text/plain text/css text/xml text/javascript application/javascript application/json application/xml image/svg+xml;
