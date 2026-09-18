@@ -169,3 +169,31 @@ mysqld_exporter_version:      "0.20.0"
 blog_image_mysqld_exporter:   "prom/mysqld-exporter:v0.20.0"
 blog_image_fpm_exporter:      "hipages/php-fpm_exporter:2.2.0"
 nextcloud_image_fpm_exporter: "hipages/php-fpm_exporter:2.2.0"
+
+# =============================================================================
+# Per-host resource sizing (K3s requests/limits + Collabora concurrency)
+# =============================================================================
+# These were hardcoded in the deployment templates and sized for the original
+# ~8 GB production hosts. They are variables now so each host can size to its
+# own hardware - override in inventory/host_vars/<host>/vars.yml. A roomy host
+# (cvjm: 8 vCPU / 24 GB) keeps/raises them; a smaller host (e.g. sofie) lowers
+# them. The defaults below reproduce the previous hardcoded values, so any host
+# that overrides nothing behaves exactly as before.
+#
+# Nextcloud PHP-FPM container (worker counts are separate: nextcloud_fpm_max_children etc.)
+nextcloud_fpm_mem_request: "512Mi"
+nextcloud_fpm_cpu_request: "250m"
+nextcloud_fpm_mem_limit:   "4Gi"
+nextcloud_fpm_cpu_limit:   "1500m"
+#
+# Collabora container. Concurrent-document capacity is bounded mainly by memory
+# (~150-200 MB per open document): the 3Gi default comfortably serves ~12
+# simultaneous editors, the realistic ceiling here (151 users total, far fewer
+# editing at once). num_prealloc_children pre-forks kit processes for faster
+# first opens; max_concurrency is CPU threads per open document.
+collabora_mem_request:    "1Gi"
+collabora_cpu_request:    "500m"
+collabora_mem_limit:      "3Gi"
+collabora_cpu_limit:      "2000m"
+collabora_num_prealloc:    4
+collabora_max_concurrency: 4

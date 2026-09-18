@@ -59,3 +59,29 @@ mail_domain:       "CHANGE_ME"           # e.g. example.de
 mail_smtphost:     "CHANGE_ME"           # e.g. smtp.strato.de
 mail_smtpport:     "587"
 mail_smtpauth:     true
+
+# ===========================================================================
+# RESOURCE SIZING (optional per-host overrides; defaults in group_vars/all.yml)
+# ===========================================================================
+# Sized for this host: 6 vCPU / 12 GB, NO swap. sofie also serves far fewer
+# users and much less data than cvjm, so this lower sizing is comfortable, not
+# just a hardware constraint. The default container limits
+# (nextcloud 4Gi + collabora 3Gi = 7Gi) plus host MariaDB (~2.5 GB) and the
+# system/k3s (~2 GB) would be too tight together on 12 GB, so the memory limits
+# are lowered here. Sum of container mem limits is kept modest on purpose.
+
+# MariaDB buffer pool (role default 256M; the DB is well under 1 GB - 1G holds
+# it entirely with headroom, still tiny against 12 GB).
+mariadb_innodb_buffer_pool_size: "1G"
+
+# PHP-FPM worker pool (defaults: 12 / 4 / 2 / 8). 12 children fits 6 cores and
+# stays within the 3Gi container limit (12 x ~150 MB ~= 1.8 GB).
+nextcloud_fpm_max_children: 12
+nextcloud_fpm_start_servers: 4
+nextcloud_fpm_min_spare:    2
+nextcloud_fpm_max_spare:    8
+
+# K3s container requests/limits - memory lowered from the defaults for 12 GB.
+nextcloud_fpm_mem_limit: "3Gi"     # default 4Gi
+collabora_mem_limit:     "2Gi"     # default 3Gi; ~8 concurrent Collabora editors
+collabora_num_prealloc:   2

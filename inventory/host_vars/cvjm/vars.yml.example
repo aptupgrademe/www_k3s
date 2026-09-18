@@ -61,3 +61,32 @@ mail_domain:       "CHANGE_ME"           # e.g. example.de
 mail_smtphost:     "CHANGE_ME"           # e.g. smtp.strato.de
 mail_smtpport:     "587"
 mail_smtpauth:     true
+
+# ===========================================================================
+# RESOURCE SIZING (optional per-host overrides; defaults in group_vars/all.yml)
+# ===========================================================================
+# Example values for a roomy host (8 vCPU / 24 GB). A smaller host lowers these
+# instead (see inventory/host_vars/sofie/vars.yml.example).
+
+# MariaDB buffer pool - hold the whole DB in RAM with headroom (role default 256M).
+mariadb_innodb_buffer_pool_size: "2G"
+
+# PHP-FPM worker pool (defaults: 12 / 4 / 2 / 8).
+nextcloud_fpm_max_children: 20
+nextcloud_fpm_start_servers: 6
+nextcloud_fpm_min_spare:    4
+nextcloud_fpm_max_spare:    12
+
+# K3s container requests/limits (defaults in group_vars/all.yml reproduce the
+# previous hardcoded values). This host is roomy enough to keep the defaults, so
+# they are left commented; uncomment and adjust to override:
+# nextcloud_fpm_mem_request: "512Mi"
+# nextcloud_fpm_cpu_request: "250m"
+# nextcloud_fpm_mem_limit:   "4Gi"
+# nextcloud_fpm_cpu_limit:   "1500m"
+# collabora_mem_request:    "1Gi"
+# collabora_cpu_request:    "500m"
+# collabora_mem_limit:      "3Gi"    # ~12 concurrent Collabora editors
+# collabora_cpu_limit:      "2000m"
+# collabora_num_prealloc:    4
+# collabora_max_concurrency: 4

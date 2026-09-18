@@ -48,19 +48,22 @@ spec:
           value: "https://{{ nextcloud_hostname }}"
         # TLS terminated by F5 nginx-ingress, not by Collabora itself
         - name: extra_params
-          value: "--o:ssl.enable=false --o:ssl.termination=true"
+          value: "--o:ssl.enable=false --o:ssl.termination=true --o:num_prealloc_children={{ collabora_num_prealloc }} --o:per_document.max_concurrency={{ collabora_max_concurrency }}"
         - name: DONT_GEN_SSL_CERT
           value: "true"
         ports:
         - containerPort: 9980
           name: http
         resources:
+          # Per-host overridable; defaults in group_vars/all.yml. Concurrent-doc
+          # capacity scales with the memory limit (~150-200 MB per open document);
+          # the 3Gi default serves ~12 simultaneous editors.
           requests:
-            memory: "1Gi"     # Collabora idle ~600-800 MB; 1 GB reflects real startup cost
-            cpu: "500m"
+            memory: "{{ collabora_mem_request }}"
+            cpu: "{{ collabora_cpu_request }}"
           limits:
-            memory: "3Gi"     # 8 GB host: 3 GB gives comfortable headroom for multi-user editing
-            cpu: "2000m"
+            memory: "{{ collabora_mem_limit }}"
+            cpu: "{{ collabora_cpu_limit }}"
         readinessProbe:
           httpGet:
             path: /hosting/discovery

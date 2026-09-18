@@ -190,18 +190,16 @@ spec:
         - name: tmp
           mountPath: /tmp
         resources:
+          # Per-host overridable; defaults in group_vars/all.yml. PHP_MEMORY_LIMIT
+          # is 3G (needed for 2G uploads), so the mem limit must let the container
+          # actually reach it - on a small host check this alongside Collabora's
+          # limit so both cannot exhaust RAM at once.
           requests:
-            memory: "512Mi"   # real idle ~200-300 MB; 512 gives scheduler headroom
-            cpu: "250m"
+            memory: "{{ nextcloud_fpm_mem_request }}"
+            cpu: "{{ nextcloud_fpm_cpu_request }}"
           limits:
-            # Raised from 2Gi: PHP_MEMORY_LIMIT is now 3G (needed for 2G
-            # uploads), so the container must be allowed to actually reach
-            # that. On the current 3.5Gi test host this is tight if Collabora
-            # (up to 3Gi) is also under load simultaneously – fine on the
-            # 8Gi production hosts this was originally sized for, but worth
-            # a real-world check on smaller hosts.
-            memory: "4Gi"
-            cpu: "1500m"
+            memory: "{{ nextcloud_fpm_mem_limit }}"
+            cpu: "{{ nextcloud_fpm_cpu_limit }}"
         readinessProbe:
           tcpSocket:
             port: 9000
