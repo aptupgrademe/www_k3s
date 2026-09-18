@@ -126,6 +126,13 @@ metadata:
   namespace: nextcloud
   annotations:
     nginx.org/mergeable-ingress-type: "minion"
+    # Regex path matching for the Grafana sub-path. Without this the path is a
+    # plain-prefix location (location /grafana/), which nginx ranks BELOW the
+    # nextcloud-routes catch-all regex (location ~ "^/") - so every /grafana/
+    # request was captured by Nextcloud and returned its 404 page. A regex
+    # location (location ~ "^/grafana(/|$)"), emitted before the nextcloud
+    # regex, wins the match. Mirrors the working blog ingress.
+    nginx.org/path-regex: "case_sensitive"
     nginx.org/location-snippets: |
       add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
       add_header Referrer-Policy "no-referrer" always;
@@ -137,8 +144,8 @@ spec:
   - host: {{ nextcloud_hostname }}
     http:
       paths:
-      - path: /grafana/
-        pathType: Prefix
+      - path: /grafana(/|$)
+        pathType: ImplementationSpecific
         backend:
           service:
             name: grafana
