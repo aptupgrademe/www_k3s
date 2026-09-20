@@ -127,7 +127,7 @@ nextcloud_image_collabora: "collabora/code:26.04.3.1.1"   # checked 2026-08-20, 
 nextcloud_image_busybox:   "busybox:1"
 blog_image_busybox:        "busybox:1"
 
-blog_image_wordpress:      "wordpress:7.1.0-php8.4-fpm"  # 7.1.1 core released 2026-09-17 (11 security fixes) BUT the official -php8.4-fpm image is not on Docker Hub yet (pull "not found" / ImagePullBackOff on 2026-09-18) - re-bump to 7.1.1-php8.4-fpm once that tag publishes
+blog_image_wordpress:      "wordpress:7.1.1-php8.4-fpm"  # bumped 2026-09-20, was 7.1.0 (7.1.1 = maintenance+security, 11 security fixes; image confirmed present on Docker Hub 2026-09-20 after a 2-day lag)
 # MariaDB 10.11 LTS, pinned to the exact patch for the same reason as nginx
 # above: the floating 10.11 tag left the node on a stale cached layer under
 # imagePullPolicy IfNotPresent (verified 2026-08-16 – node had digest
