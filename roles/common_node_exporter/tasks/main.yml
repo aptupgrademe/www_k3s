@@ -96,7 +96,11 @@
       ProtectSystem=strict
       NoNewPrivileges=yes
       CapabilityBoundingSet=
-      RestrictAddressFamilies=AF_INET AF_INET6
+      # AF_NETLINK is required: the netdev and arp collectors read network
+      # stats over a netlink socket. Without it both fail at runtime ("address
+      # family not supported by protocol"), node_network_*_bytes metrics are
+      # never exported, and Grafana's Network Traffic panels stay empty.
+      RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK
       RestrictRealtime=yes
       RestrictSUIDSGID=yes
       LockPersonality=yes
