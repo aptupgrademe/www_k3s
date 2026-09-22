@@ -13,6 +13,15 @@ data:
     server {
         listen 80;
         server_tokens off;
+        # TLS is terminated at the F5 ingress, so this sidecar always sees
+        # plain http. With absolute_redirect on (nginx default) a relative
+        # redirect like the .well-known/caldav "return 301 /remote.php/dav/"
+        # gets expanded to an absolute Location using this server's scheme —
+        # i.e. http:// — which then relies on HSTS to get upgraded. Turning it
+        # off keeps the Location header relative, so the browser preserves the
+        # original https scheme. Fixes the http:// caldav/carddav/security.txt
+        # redirects seen in the external review.
+        absolute_redirect off;
 
         root /var/www/html;
         index index.php index.html;
