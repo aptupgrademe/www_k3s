@@ -68,9 +68,18 @@ Internet
 - **Calico (policy-only mode)** – NetworkPolicy enforcement for Nextcloud;
   Collabora is restricted from ever reaching MariaDB/Redis directly, since
   K3s's default Flannel CNI does not enforce NetworkPolicy objects at all
-- **WordPress 7.1.0** with PHP-FPM, nginx sidecar, MariaDB pod and **Redis Object Cache** pod
+- **WordPress 7.1.1** with PHP-FPM, nginx sidecar, MariaDB pod and **Redis Object Cache** pod
 - Automatic installation on first pod start via container env vars and WP-CLI
 - WordPress WP-Cron as Kubernetes CronJob (no HTTP trigger)
+- **Container health probes** – startup + readiness + liveness (tcpSocket) on
+  every FPM, nginx and Collabora container, so a *wedged* (not crashed) container
+  is restarted automatically while a slow `occ upgrade` or preview burst never
+  trips a restart loop
+- **Reproducible app layout** – playbook-driven enable/disable reconcile
+  (`nextcloud_apps_enabled` / `_disabled`) that tolerates apps with no version
+  compatible with the running major (they simply stay disabled)
+- **notify_push (High Performance Backend)** – optional WebSocket push that
+  replaces ~30 s client polling, gated behind `nextcloud_notify_push_enabled`
 - **Pre-flight version check** (`common_version_check`) shows installed vs. latest versions
 - **Ansible pipelining**, fact caching (1 h), SSH ControlPersist 600 s
 
@@ -138,6 +147,9 @@ issuance succeeds.
 #### System Hardening
 
 - **SELinux enforcing**
+- **Container hardening** – dropped Linux capabilities (`drop: [ALL]` + only the
+  few each image needs), `seccompProfile: RuntimeDefault`, `allowPrivilegeEscalation:
+  false`, and **read-only root filesystems** on the nginx/exporter sidecars
 - **auditd** with security-relevant rules
 - **rkhunter** daily scan with email alerts
 - **ClamAV** nightly scan of Nextcloud user data / WordPress uploads, email alerts
