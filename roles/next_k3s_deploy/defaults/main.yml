@@ -1,0 +1,21 @@
+---
+# =============================================================================
+# Defaults: next_k3s_deploy
+# =============================================================================
+
+# --- App reconcile (see tasks/apps.yml) -------------------------------------
+# Make the enabled/disabled app layout reproducible from the playbook instead
+# of only living in the running instance. Empty by default so a plain deploy is
+# a no-op; the real per-host lists live in host_vars (they differ per instance).
+nextcloud_apps_manage: true          # enforce the two lists below
+nextcloud_apps_update: false         # also run `occ app:update --all` (network, opt-in)
+
+# Non-default apps to ensure ENABLED -- but only if a version compatible with
+# the running major exists. If an app was dropped or not yet ported to a new
+# major, enabling is tolerated to fail and the app simply stays disabled (the
+# same thing Nextcloud's own upgrader does). Never list bundled default apps
+# here (files, dav, settings, theming, …) -- those are owned by the image.
+nextcloud_apps_enabled: []
+
+# Apps to force DISABLED and keep off across upgrades.
+nextcloud_apps_disabled: []

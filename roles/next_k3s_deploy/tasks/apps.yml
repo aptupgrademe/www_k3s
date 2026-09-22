@@ -1,0 +1,81 @@
+---
+# =============================================================================
+# App reconcile – make the enabled/disabled app layout reproducible from the
+# playbook instead of only living in the running instance.
+#
+# Only deliberate DELTAS are codified, never the full bundled set (that is owned
+# by the image + `occ upgrade` and shifts across majors):
+#   nextcloud_apps_disabled -> forced off, and kept off across upgrades
+#   nextcloud_apps_enabled  -> ensured on, but ONLY if a version compatible with
+#                              the running major exists. If an app was dropped or
+#                              is not yet ported to a new major, enabling is
+#                              tolerated to fail and the app simply stays disabled
+#                              -- the same thing Nextcloud's own upgrader does.
+# =============================================================================
+
+- name: Apps | Wait for the nextcloud deployment to be ready
+  ansible.builtin.command: >-
+    k3s kubectl rollout status deployment/nextcloud -n nextcloud --timeout=600s
+  changed_when: false
+  when: nextcloud_apps_manage | bool
+
+- name: Apps | Resolve the nextcloud pod name
+  ansible.builtin.command: >-
+    k3s kubectl get pod -n nextcloud -l app=nextcloud
+    -o jsonpath={.items[0].metadata.name}
+  register: nc_pod
+  changed_when: false
+  when: nextcloud_apps_manage | bool
+
+# app:update pulls newer app-store versions; it only ever installs a release
+# compatible with the running major, so it will not break a fresh upgrade.
+# Opt-in (network side effects) via nextcloud_apps_update.
+- name: Apps | Update all app-store apps to their latest compatible version
+  ansible.builtin.command: >-
+    k3s kubectl exec -n nextcloud {{ nc_pod.stdout }} -c nextcloud-fpm --
+    php occ app:update --all
+  register: nc_app_update
+  changed_when: nc_app_update.stdout | trim | length > 0
+  when:
+    - nextcloud_apps_manage | bool
+    - nextcloud_apps_update | bool
+
+- name: Apps | Force-disable apps we deliberately keep off
+  ansible.builtin.command: >-
+    k3s kubectl exec -n nextcloud {{ nc_pod.stdout }} -c nextcloud-fpm --
+    php occ app:disable {{ item }}
+  loop: "{{ nextcloud_apps_disabled }}"
+  register: nc_app_disable
+  # Disabling an already-off or not-installed app prints a notice and exits 0;
+  # only a real error is a change worth flagging. Never fatal.
+  changed_when:
+    - "'disabled' in (nc_app_disable.stdout | lower)"
+    - "'no such app' not in (nc_app_disable.stdout | lower)"
+  failed_when: false
+  when: nextcloud_apps_manage | bool
+
+- name: Apps | Ensure required apps are enabled (only if compatible with this major)
+  ansible.builtin.command: >-
+    k3s kubectl exec -n nextcloud {{ nc_pod.stdout }} -c nextcloud-fpm --
+    php occ app:enable {{ item }}
+  loop: "{{ nextcloud_apps_enabled }}"
+  register: nc_app_enable
+  changed_when: "'already enabled' not in (nc_app_enable.stdout | lower)"
+  # An app with no version compatible with the running major cannot be enabled.
+  # Tolerate it: a major upgrade then leaves the app disabled instead of failing
+  # the whole run. The report task below surfaces exactly which ones.
+  failed_when: false
+  when: nextcloud_apps_manage | bool
+
+- name: Apps | Report apps left disabled (no version compatible with this major)
+  ansible.builtin.debug:
+    msg: >-
+      App '{{ item.item }}' could not be enabled and stays disabled
+      (no release compatible with the running Nextcloud major, or unavailable).
+  loop: "{{ nc_app_enable.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - nextcloud_apps_manage | bool
+    - item.rc is defined
+    - item.rc != 0

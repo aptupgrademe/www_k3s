@@ -18,3 +18,4 @@
 - ansible.builtin.import_tasks: ingress.yml
 - ansible.builtin.import_tasks: cronjob.yml
 - ansible.builtin.import_tasks: exporters.yml
+- ansible.builtin.import_tasks: apps.yml
