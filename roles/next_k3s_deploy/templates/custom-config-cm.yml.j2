@@ -39,7 +39,11 @@ data:
       'preview_max_x'   => 4096,
 
       // --- Logging (written into data dir → /data/nextcloud.log on host) ---
-      'loglevel'        => 4,
+      // loglevel 2 = WARNING: logs warnings + errors + fatals (0=debug, 1=info,
+      // 2=warning, 3=error, 4=fatal). Level 4 hid everything below fatal, so
+      // operational warnings/errors never surfaced. Safe on disk regardless:
+      // log_rotate_size caps the file at 100 MB and keeps one rotation.
+      'loglevel'        => 2,
       'logtimezone'     => 'Europe/Berlin',
       'log_rotate_size' => 104857600,
       'syslog_tag'      => 'Nextcloud',
