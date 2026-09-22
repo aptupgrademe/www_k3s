@@ -152,6 +152,38 @@ spec:
             port:
               number: 3000
 
+{% if nextcloud_notify_push_enabled | default(false) %}
+# ============================================================
+# notify_push – MINION (/push, WebSocket) – gated
+# ============================================================
+# Own minion: the push endpoint needs WebSocket upgrade + long read timeout for
+# the persistent connection, different from the Nextcloud routes' header set.
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: notify-push-routes
+  namespace: nextcloud
+  annotations:
+    nginx.org/mergeable-ingress-type: "minion"
+    nginx.org/websocket-services: "notify-push"
+    nginx.org/proxy-read-timeout: "3600s"
+    nginx.org/proxy-send-timeout: "3600s"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: {{ nextcloud_hostname }}
+    http:
+      paths:
+      - path: /push
+        pathType: Prefix
+        backend:
+          service:
+            name: notify-push
+            port:
+              number: {{ notify_push_port | default(7867) }}
+{% endif %}
+
 # ============================================================
 # Collabora – MASTER (TLS + server config, no paths)
 # ============================================================

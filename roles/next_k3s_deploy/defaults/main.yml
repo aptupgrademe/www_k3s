@@ -19,3 +19,11 @@ nextcloud_apps_enabled: []
 
 # Apps to force DISABLED and keep off across upgrades.
 nextcloud_apps_disabled: []
+
+# --- notify_push / High Performance Backend (see tasks/notify_push.yml) ------
+# WebSocket push instead of ~30s client polling. OFF by default: it adds a
+# Deployment + /push ingress route and needs a live-verified rollout (binary
+# path, bind address, `occ notify_push:setup` self-test). Flip to true on cvjm
+# via host_vars once verified.
+nextcloud_notify_push_enabled: false
+notify_push_port: 7867

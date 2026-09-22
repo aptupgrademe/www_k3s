@@ -1,0 +1,82 @@
+---
+# =============================================================================
+# notify_push (High Performance Backend)
+# Gated by nextcloud_notify_push_enabled. Order: install the app (binary lands
+# in the shared code volume) -> deploy the notify-push Deployment/Service (its
+# init-wait picks up the binary) -> run `occ notify_push:setup` self-test.
+# All occ steps are tolerant so a first, not-yet-verified run cannot hard-fail
+# the whole playbook.
+# =============================================================================
+
+- name: notify_push | Resolve the nextcloud pod name
+  ansible.builtin.command: >-
+    k3s kubectl get pod -n nextcloud -l app=nextcloud
+    -o jsonpath={.items[0].metadata.name}
+  register: np_pod
+  changed_when: false
+  when: nextcloud_notify_push_enabled | bool
+
+- name: notify_push | Install + enable the notify_push app
+  ansible.builtin.command: >-
+    k3s kubectl exec -n nextcloud {{ np_pod.stdout }} -c nextcloud-fpm --
+    php occ app:install notify_push
+  register: np_install
+  # app:install fails if it is already installed; that is fine. Enable covers it.
+  changed_when: "'installed' in (np_install.stdout | lower)"
+  failed_when: false
+  when: nextcloud_notify_push_enabled | bool
+
+- name: notify_push | Ensure the app is enabled
+  ansible.builtin.command: >-
+    k3s kubectl exec -n nextcloud {{ np_pod.stdout }} -c nextcloud-fpm --
+    php occ app:enable notify_push
+  register: np_enable
+  changed_when: "'already enabled' not in (np_enable.stdout | lower)"
+  failed_when: false
+  when: nextcloud_notify_push_enabled | bool
+
+- name: notify_push | Template the Deployment + Service manifest
+  ansible.builtin.template:
+    src: notify-push-deployment.yml.j2
+    dest: /tmp/k8s-notify-push.yml
+    mode: "0644"
+  when: nextcloud_notify_push_enabled | bool
+
+- name: notify_push | Apply the Deployment + Service
+  ansible.builtin.command: k3s kubectl apply -f /tmp/k8s-notify-push.yml
+  register: np_apply
+  changed_when: "'unchanged' not in np_apply.stdout"
+  when: nextcloud_notify_push_enabled | bool
+
+- name: notify_push | Remove the temporary manifest
+  ansible.builtin.file:
+    path: /tmp/k8s-notify-push.yml
+    state: absent
+  when: nextcloud_notify_push_enabled | bool
+
+- name: notify_push | Wait for the notify-push deployment to be ready
+  ansible.builtin.command: >-
+    k3s kubectl rollout status deployment/notify-push -n nextcloud --timeout=300s
+  changed_when: false
+  # First rollout waits on the app being installed; tolerate a timeout rather
+  # than failing the play, and surface it in the setup step below.
+  failed_when: false
+  when: nextcloud_notify_push_enabled | bool
+
+- name: notify_push | Configure + self-test (occ notify_push:setup)
+  ansible.builtin.command: >-
+    k3s kubectl exec -n nextcloud {{ np_pod.stdout }} -c nextcloud-fpm --
+    php occ notify_push:setup https://{{ nextcloud_hostname }}/push
+  register: np_setup
+  changed_when: "'saved' in (np_setup.stdout | lower) or 'configuration saved' in (np_setup.stdout | lower)"
+  # Self-test needs the /push ingress route reachable; on a first/unverified run
+  # it may not pass yet. Do not fail the play -- report the output instead.
+  failed_when: false
+  when: nextcloud_notify_push_enabled | bool
+
+- name: notify_push | Report setup result
+  ansible.builtin.debug:
+    msg: "{{ np_setup.stdout_lines | default([]) }} {{ np_setup.stderr_lines | default([]) }}"
+  when:
+    - nextcloud_notify_push_enabled | bool
+    - np_setup is defined

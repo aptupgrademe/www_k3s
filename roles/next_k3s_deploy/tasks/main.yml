@@ -19,3 +19,4 @@
 - ansible.builtin.import_tasks: cronjob.yml
 - ansible.builtin.import_tasks: exporters.yml
 - ansible.builtin.import_tasks: apps.yml
+- ansible.builtin.import_tasks: notify_push.yml

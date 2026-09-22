@@ -1,0 +1,110 @@
+# notify_push (High Performance Backend) – managed by Ansible (next_k3s_deploy).
+# Runs the notify_push binary that ships INSIDE the app, as its own Deployment so
+# its readiness never gates the Nextcloud pod. It reads DB + Redis creds from the
+# shared code volume's config.php and pushes change events to clients over a
+# WebSocket, replacing the ~30s polling every desktop/mobile client does.
+#
+# NOTE: gated by nextcloud_notify_push_enabled. Not yet verified live -- on the
+# first rollout confirm: (1) the binary path/arch below matches the image, (2) it
+# binds 0.0.0.0 (add `--bind 0.0.0.0` if the Service cannot reach it), and (3)
+# `occ notify_push:setup` self-test passes (tasks/notify_push.yml).
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notify-push
+  namespace: nextcloud
+  labels:
+    app: notify-push
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notify-push
+  template:
+    metadata:
+      labels:
+        app: notify-push
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - name: notify-push
+        image: {{ nextcloud_image_fpm }}
+        # The binary only exists after the notify_push app is installed into the
+        # shared code volume (tasks/notify_push.yml does that). On first start it
+        # may not be there yet, so wait for it, then exec. Handles both apps/ and
+        # custom_apps/ and whatever arch subdir the image ships.
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            echo "notify-push: waiting for the binary in the shared code volume ..."
+            while :; do
+              BIN=$(ls /var/www/html/apps/notify_push/bin/*/notify_push \
+                       /var/www/html/custom_apps/notify_push/bin/*/notify_push \
+                       2>/dev/null | head -1)
+              [ -n "$BIN" ] && [ -x "$BIN" ] && break
+              sleep 10
+            done
+            echo "notify-push: starting $BIN"
+            exec "$BIN" --port {{ notify_push_port | default(7867) }} /var/www/html/config/config.php
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+          seccompProfile:
+            type: RuntimeDefault
+        ports:
+        - containerPort: {{ notify_push_port | default(7867) }}
+          name: push
+        volumeMounts:
+        - name: nextcloud-www
+          mountPath: /var/www/html
+          readOnly: true
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "25m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        # Startup gate: the binary-wait above can take a while on first install.
+        startupProbe:
+          tcpSocket:
+            port: {{ notify_push_port | default(7867) }}
+          periodSeconds: 10
+          failureThreshold: 60
+        readinessProbe:
+          tcpSocket:
+            port: {{ notify_push_port | default(7867) }}
+          periodSeconds: 15
+          failureThreshold: 3
+        livenessProbe:
+          tcpSocket:
+            port: {{ notify_push_port | default(7867) }}
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+      volumes:
+      # Same host path as the Nextcloud code volume (single node): notify_push
+      # reads config.php and its own binary from here, read-only.
+      - name: nextcloud-www
+        hostPath:
+          path: {{ nextcloud_k3s_www_dir }}
+          type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notify-push
+  namespace: nextcloud
+  labels:
+    app: notify-push
+spec:
+  selector:
+    app: notify-push
+  ports:
+  - name: push
+    port: {{ notify_push_port | default(7867) }}
+    targetPort: {{ notify_push_port | default(7867) }}
+    protocol: TCP
+  type: ClusterIP
