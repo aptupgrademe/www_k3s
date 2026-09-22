@@ -64,19 +64,27 @@ spec:
           limits:
             memory: "{{ collabora_mem_limit }}"
             cpu: "{{ collabora_cpu_limit }}"
+        # Startup gate for slow starts; holds liveness/readiness off until
+        # Collabora answers discovery (up to ~5 min: 30 x 10s).
+        startupProbe:
+          httpGet:
+            path: /hosting/discovery
+            port: 9980
+          periodSeconds: 10
+          failureThreshold: 30
         readinessProbe:
           httpGet:
             path: /hosting/discovery
             port: 9980
-          initialDelaySeconds: 20
           periodSeconds: 15
-          failureThreshold: 5
+          failureThreshold: 3
+        # Liveness restarts a wedged Collabora (discovery no longer answering).
         livenessProbe:
           httpGet:
             path: /hosting/discovery
             port: 9980
-          initialDelaySeconds: 60
           periodSeconds: 30
+          timeoutSeconds: 5
           failureThreshold: 3
 ---
 apiVersion: v1
