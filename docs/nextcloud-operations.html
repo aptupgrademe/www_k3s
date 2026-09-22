@@ -694,7 +694,7 @@ kubectl exec -n nextcloud deployment/collabora -- nc -z -w4 &lt;mariadb-host-ip&
   <tr>
     <td><code>nextcloud-deployment.yml.j2</code></td>
     <td>Deployment + Service</td>
-    <td>Image tags, volumes, readiness probes, environment variables</td>
+    <td>Image tags, volumes, startup/readiness/liveness probes, environment variables</td>
   </tr>
   <tr>
     <td><code>custom-config-cm.yml.j2</code></td>
@@ -1350,8 +1350,14 @@ k3s kubectl rollout status  deployment/nextcloud -n nextcloud --timeout=300s</co
 <ul>
   <li>
     The container's own startup <code>occ upgrade</code> only starts serving
-    traffic (readiness probe on port 9000) once it finishes – for an instance
-    with 150+ users this took over a minute per major step. A manual
+    traffic once it finishes – for an instance with 150+ users this took over a
+    minute per major step. Three probes cover this, all <code>tcpSocket</code>
+    on port 9000: a <code>startupProbe</code> gives the boot up to ~10&nbsp;min
+    grace (60&nbsp;×&nbsp;10&nbsp;s) and holds both the readiness <em>and</em>
+    liveness probes off until FPM actually listens, so a slow upgrade never
+    trips a restart loop; the <code>readinessProbe</code> then brings the pod
+    into rotation; and a tight <code>livenessProbe</code> (period&nbsp;30&nbsp;s,
+    3 failures) restarts it only if FPM later wedges. A manual
     <code>occ upgrade</code> via <code>kubectl exec</code> right after
     changing the tag races the container's own one; harmless, but redundant –
     just wait for the pod to go Ready.

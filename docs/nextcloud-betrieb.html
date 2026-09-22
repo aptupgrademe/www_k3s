@@ -699,7 +699,7 @@ kubectl exec -n nextcloud deployment/collabora -- nc -z -w4 &lt;mariadb-host-ip&
   <tr>
     <td><code>nextcloud-deployment.yml.j2</code></td>
     <td>Deployment + Service</td>
-    <td>Image-Tags, Volumes, Readiness-Probes, Env-Variablen</td>
+    <td>Image-Tags, Volumes, Startup-/Readiness-/Liveness-Probes, Env-Variablen</td>
   </tr>
   <tr>
     <td><code>custom-config-cm.yml.j2</code></td>
@@ -1363,12 +1363,18 @@ k3s kubectl rollout status  deployment/nextcloud -n nextcloud --timeout=300s</co
 <ul>
   <li>
     Das eigene Start-<code>occ upgrade</code> des Containers muss erst fertig
-    sein, bevor er überhaupt Traffic annimmt (Readiness-Probe auf Port 9000)
-    – bei über 150 Nutzern hat das pro Major-Schritt über eine Minute
-    gedauert. Ein manuelles <code>occ upgrade</code> per
-    <code>kubectl exec</code> direkt nach dem Tag-Wechsel läuft parallel zum
-    eigenen des Containers – unschädlich, aber überflüssig; einfach warten,
-    bis der Pod Ready ist.
+    sein, bevor er überhaupt Traffic annimmt – bei über 150 Nutzern hat das
+    pro Major-Schritt über eine Minute gedauert. Drei Probes decken das ab,
+    alle <code>tcpSocket</code> auf Port 9000: eine <code>startupProbe</code>
+    gibt dem Start bis zu ~10&nbsp;min Zeit (60&nbsp;×&nbsp;10&nbsp;s) und hält
+    sowohl Readiness- <em>als auch</em> Liveness-Probe zurück, bis FPM
+    tatsächlich lauscht – ein langsames Upgrade löst so nie eine Neustart-
+    Schleife aus; die <code>readinessProbe</code> nimmt den Pod danach in die
+    Rotation; und eine straffe <code>livenessProbe</code> (Periode&nbsp;30&nbsp;s,
+    3 Fehlversuche) startet ihn nur neu, falls FPM später hängt. Ein manuelles
+    <code>occ upgrade</code> per <code>kubectl exec</code> direkt nach dem
+    Tag-Wechsel läuft parallel zum eigenen des Containers – unschädlich, aber
+    überflüssig; einfach warten, bis der Pod Ready ist.
   </li>
   <li>
     Manche Apps werden nur <em>deaktiviert</em>, wenn der Nextcloud-Upgrader

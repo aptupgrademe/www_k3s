@@ -645,10 +645,11 @@ real_ip_recursive on;</code></pre>
   Der allererste ausgehende Verbindungsversuch eines brandneuen Pods (in
   etwa der ersten Sekunde nach Containerstart) kann mit "Connection refused"
   fehlschlagen, wenn Calicos Felix die Policy-Regeln für diesen Pod noch
-  nicht fertig programmiert hat. Lang laufende Pods bemerken das nie – ihre
-  <code>readinessProbe</code> mit <code>initialDelaySeconds</code> (20s+)
-  deckt das ab – aber kurzlebige Jobs, die sofort verbinden, können das
-  reproduzierbar treffen. Deshalb startet der Command im
+  nicht fertig programmiert hat. Lang laufende Pods bemerken das nie – sie
+  werden durch <code>startupProbe</code>/<code>readinessProbe</code> erst in
+  die Rotation genommen, wenn die Anwendung wirklich lauscht (FPM auf 9000,
+  nginx auf 80), also lange nachdem Felix die Regeln programmiert hat – aber
+  kurzlebige Jobs, die sofort verbinden, können das reproduzierbar treffen. Deshalb startet der Command im
   <code>wordpress-cron</code>-Container mit <code>sleep 5 &amp;&amp;</code> –
   siehe WP-Cron unten. Bei jeder künftigen NetworkPolicy für einen weiteren
   kurzlebigen Workload dran denken (Nextclouds <code>nextcloud-cron</code>

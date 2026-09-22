@@ -646,9 +646,10 @@ real_ip_recursive on;</code></pre>
   A brand-new pod's very first outbound connection attempt (within roughly
   the first second of container start) can fail with "Connection refused"
   if Calico's Felix hasn't finished programming that pod's policy rules
-  yet. Long-lived pods never notice – their <code>readinessProbe</code>'s
-  <code>initialDelaySeconds</code> (20s+) covers it – but short-lived Jobs
-  that connect immediately can hit it reliably. This is why
+  yet. Long-lived pods never notice – they are kept out of rotation by their
+  <code>startupProbe</code>/<code>readinessProbe</code> until the app actually
+  listens (FPM on 9000, nginx on 80), well after Felix has programmed the
+  rules – but short-lived Jobs that connect immediately can hit it reliably. This is why
   <code>wordpress-cron</code>'s container command starts with
   <code>sleep 5 &amp;&amp;</code> – see WP-Cron below. Keep this in mind
   before adding a NetworkPolicy for any other short-lived workload

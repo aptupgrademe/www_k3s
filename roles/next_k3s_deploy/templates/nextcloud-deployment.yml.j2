@@ -242,6 +242,9 @@ spec:
             drop: [ALL]
           seccompProfile:
             type: RuntimeDefault
+          # Stateless scraper, writes nothing to disk (parity with the blog's
+          # identical php-fpm-exporter sidecar, which has run read-only live).
+          readOnlyRootFilesystem: true
         env:
         - name: PHP_FPM_SCRAPE_URI
           value: "tcp://127.0.0.1:9000/fpm-status"

@@ -200,17 +200,31 @@ spec:
             # the pool rather than the other way round (node has 7.6 GB).
             memory: "1Gi"
             cpu: "2000m"
+        # Startup gate: holds liveness AND readiness off until FPM actually
+        # listens on 9000, so a slow boot (e.g. DB not ready yet, or a
+        # plugin/cron burst at startup) never trips a restart. WordPress has no
+        # multi-minute occ-style upgrade, so the grace is shorter than Nextcloud's
+        # - up to ~5 min (30 x 10s).
+        startupProbe:
+          tcpSocket:
+            port: 9000
+          periodSeconds: 10
+          failureThreshold: 30
         readinessProbe:
           tcpSocket:
             port: 9000
-          initialDelaySeconds: 20
           periodSeconds: 15
-          failureThreshold: 5
+          failureThreshold: 3
+        # Liveness restarts a wedged FPM (master no longer accepting on 9000) -
+        # a real responsiveness check, stronger than the old "kill -0 1" which
+        # only caught PID-1 death (which already exits the container). Matters for
+        # this single-replica pod, where a wedge otherwise stays stuck until a
+        # human intervenes. startupProbe covers slow starts, so this stays tight.
         livenessProbe:
-          exec:
-            command: ["sh", "-c", "kill -0 1"]
-          initialDelaySeconds: 60
+          tcpSocket:
+            port: 9000
           periodSeconds: 30
+          timeoutSeconds: 5
           failureThreshold: 3
 
       # -------------------------------------------------------------------
@@ -290,12 +304,25 @@ spec:
           limits:
             memory: "128Mi"
             cpu: "500m"
+        startupProbe:
+          tcpSocket:
+            port: 80
+          periodSeconds: 5
+          failureThreshold: 30
         readinessProbe:
           tcpSocket:
             port: 80
-          initialDelaySeconds: 20
           periodSeconds: 15
-          failureThreshold: 5
+          failureThreshold: 3
+        # Liveness restarts the nginx sidecar if it stops accepting on :80.
+        # tcpSocket (not httpGet) on purpose: an httpGet would proxy to FPM and
+        # could report nginx as unhealthy when only FPM is down.
+        livenessProbe:
+          tcpSocket:
+            port: 80
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
 
       # -------------------------------------------------------------------
       # Volumes
