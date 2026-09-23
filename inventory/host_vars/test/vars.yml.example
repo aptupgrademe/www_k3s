@@ -14,6 +14,7 @@
 # --- Connection ---
 ansible_user: root
 ansible_port: 22
+ansible_host: "{{ server_ipv4 }}"   # single source of truth, see --- Network --- below
 
 # --- Network ---
 server_ipv4: "CHANGE_ME"    # e.g. 1.2.3.4

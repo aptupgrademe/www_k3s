@@ -24,6 +24,10 @@ monit_loadavg_max: 8             # alert when 5-min load average exceeds this
 # to report the outage after the fact.
 monit_cert_min_days: 21
 
+# Nextcloud hosts: alert when the last successful (pulled) backup is older
+# than this many days - see checks.conf.j2 (nc_backup).
+monit_backup_max_days: 3
+
 # --- Services checked via `systemctl is-active` (alert on state change) ---
 # Only those that actually exist on the host are templated in (see tasks), so
 # the same role is safe on both blog and nextcloud hosts. fail2ban is handled

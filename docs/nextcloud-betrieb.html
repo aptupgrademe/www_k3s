@@ -1383,7 +1383,7 @@ k3s kubectl rollout status  deployment/nextcloud -n nextcloud --timeout=300s</co
 <div class="callout callout-danger">
   <strong>Backup vor jedem Versionssprung!</strong>
   Ein fehlgeschlagenes DB-Schema-Upgrade kann die Installation beschädigen.
-  Immer zuerst <code>nextcloud-backup.sh</code> ausführen.
+  Immer zuerst ein Backup ausführen (<code>/data/backup/nextcloud/&lt;env&gt;_backup.sh</code> auf dem Backup-Rechner).
 </div>
 
 <ol class="steps">
@@ -1477,26 +1477,39 @@ k3s kubectl rollout status  deployment/nextcloud -n nextcloud --timeout=300s</co
 <section id="backup">
 <h2>Backup &amp; Restore</h2>
 
-<h3>Was gesichert wird</h3>
+<h3>Was wird gesichert</h3>
+<p>
+  Ein <strong>Backup-Rechner</strong> holt jede Instanz per SSH als root ab
+  (<code>scripts/nextcloud-backup/</code>, siehe dortige <code>README.md</code>).
+  Die Skripte laufen dort aus <code>/data/backup/nextcloud/</code>, per cron
+  beim Start und täglich. Alles landet unter
+  <code>/data/backup/nextcloud-data/&lt;env&gt;/</code>:
+</p>
 <table>
-  <tr><th>Was</th><th>Pfad (Server)</th><th>Ziel (lokal)</th><th>Methode</th></tr>
-  <tr>
-    <td>Benutzerdaten</td>
-    <td><code>/data</code></td>
-    <td><code>/data/nextcloud/&lt;env&gt;/data/</code></td>
-    <td>rsync</td>
-  </tr>
-  <tr>
-    <td>App-Dateien</td>
-    <td><code>/srv/nextcloud-www</code></td>
-    <td><code>/data/nextcloud/&lt;env&gt;/nextcloud/</code></td>
-    <td>rsync (data/ ausgeschlossen)</td>
-  </tr>
+  <tr><th>Was</th><th>Pfad (Server)</th><th>Ziel (Backup-Rechner)</th><th>Methode</th></tr>
   <tr>
     <td>Datenbank</td>
     <td>MariaDB <code>&lt;env&gt;_nextcloud</code> (Host)</td>
-    <td><code>/data/nextcloud/&lt;env&gt;/db.sql</code></td>
-    <td>mysqldump --single-transaction</td>
+    <td><code>db/&lt;db&gt;_&lt;Datum&gt;_&lt;Zeit&gt;.sql.gz</code> (letzte 14)</td>
+    <td>mysqldump --single-transaction, gzip, geprüft</td>
+  </tr>
+  <tr>
+    <td>App-Dateien + Config</td>
+    <td><code>/srv/nextcloud-www</code></td>
+    <td><code>www/</code></td>
+    <td>rsync</td>
+  </tr>
+  <tr>
+    <td>Nutzerdaten inkl. Previews</td>
+    <td><code>/data</code></td>
+    <td><code>data/</code></td>
+    <td>rsync</td>
+  </tr>
+  <tr>
+    <td>Historie (30 Tage)</td>
+    <td>–</td>
+    <td><code>/data/backup/nextcloud-rdiff/</code></td>
+    <td>rdiff-backup aller Instanzen, nach den Backups</td>
   </tr>
 </table>
 
@@ -1508,73 +1521,68 @@ k3s kubectl rollout status  deployment/nextcloud -n nextcloud --timeout=300s</co
   Das Backup-Skript nutzt diese Verbindung automatisch.
 </div>
 
-<h3>Backup ausführen</h3>
-<p>
-  Das Skript erwartet den Instanz-Namen als Argument.
-  Die Instanz steuert welcher Server kontaktiert wird und wohin lokal gesichert wird.
-</p>
-<table>
-  <tr><th>Instanz</th><th>Befehl</th><th>Lokales Ziel</th></tr>
-  <tr><td>Test-Server</td>
-      <td><code>./scripts/nextcloud-backup.sh test</code></td>
-      <td><code>/data/nextcloud/test/</code></td></tr>
-  <tr><td>Sofie</td>
-      <td><code>./scripts/nextcloud-backup.sh sofie</code></td>
-      <td><code>/data/nextcloud/sofie/</code></td></tr>
-  <tr><td>CVJM</td>
-      <td><code>./scripts/nextcloud-backup.sh cvjm</code></td>
-      <td><code>/data/nextcloud/cvjm/</code></td></tr>
-</table>
-<pre><code># Beispiel: Test-Instanz sichern
-cd ~/www_k3s
-./scripts/nextcloud-backup.sh test
+<div class="callout callout-warn">
+  <strong>Bewusst ohne Wartungsmodus: so läuft ein Durchgang stattdessen</strong>
+  Die Sicherung läuft, wann immer der Backup-Rechner startet, und täglich, oft
+  also tagsüber. Ein Wartungsmodus würde dann Nutzer aussperren. Jeder Lauf macht:
+  (1) rsync www + data, der fast alles überträgt;
+  (2) den DB-Dump (<code>--single-transaction</code>, keine Sperre, behalten nur nach
+  <code>gzip -t</code> und dem Check auf "Dump completed");
+  (3) nochmal rsync www + data, der nur überträgt, was sich seit Schritt 1 geändert hat.
+  Dump und Dateien liegen damit nur Sekunden bis wenige Minuten auseinander,
+  das Log nennt den Abstand. Was sich in diesem Fenster ändert, gleicht nach
+  einem Restore <code>occ files:scan --all</code> ab, das Restore-Skript führt ihn aus.
+  Schlimmstenfalls fehlen Metadaten aus diesen Minuten, etwa eine neue Freigabe.
+</div>
 
-# Ablauf (gilt für alle Instanzen):
-# 1. Maintenance-Modus an  (kubectl exec occ maintenance:mode --on)
-# 2. mysqldump --single-transaction → /data/nextcloud/&lt;env&gt;/db.sql
-# 3. rsync /srv/nextcloud-www/      → /data/nextcloud/&lt;env&gt;/nextcloud/
-# 4. rsync /data/                   → /data/nextcloud/&lt;env&gt;/data/
-# 5. Maintenance-Modus aus</code></pre>
+<h3>Backup ausführen</h3>
+<pre><code># Auf dem Backup-Rechner (normalerweise per cron)
+/data/backup/nextcloud/cvjm_backup.sh        # eine Instanz
+/data/backup/nextcloud/nc_rdiff.sh           # alle Instanzen versionieren
+
+# Logs, eine Datei pro Lauf
+ls -t /data/backup/nextcloud/logs/ | head
+cat /data/backup/nextcloud-data/cvjm/last-success</code></pre>
 <p style="font-size:13px;color:var(--muted)">
-  Das Skript liegt im Repository-Verzeichnis <code>scripts/nextcloud-backup.sh</code>.
-  Sofie und CVJM sind erst nutzbar sobald IP und Hostname in
-  <code>inventory/host_vars/&lt;env&gt;/vars.yml</code> eingetragen sind –
-  das Skript prüft das und bricht mit einer Fehlermeldung ab falls noch <code>changeme</code> drin steht.
+  Die ausgefüllten <code>&lt;env&gt;_backup.sh</code> enthalten echte Hostnamen und
+  sind per <code>.gitignore</code> ausgeschlossen, im Repository liegt nur
+  <code>example_backup.sh.example</code>. Nach jedem erfolgreichen Lauf bekommt
+  die Instanz <code>/var/lib/nextcloud-backup/last-success</code>. Monit
+  (<code>nc_backup</code>) mailt, wenn die Datei älter als
+  <code>monit_backup_max_days</code> (3) ist. Das deckt ein scheiterndes Backup
+  und einen Backup-Rechner, der aus bleibt, gleichermaßen ab.
 </p>
 
 <h3>Restore-Workflow</h3>
-<p>Auch das Restore-Skript erwartet den Instanz-Namen als Argument:</p>
-<table>
-  <tr><th>Instanz</th><th>Befehl</th><th>Quelle</th></tr>
-  <tr><td>Test-Server</td>
-      <td><code>./scripts/nextcloud-restore.sh test</code></td>
-      <td><code>/data/nextcloud/test/</code></td></tr>
-  <tr><td>Sofie</td>
-      <td><code>./scripts/nextcloud-restore.sh sofie</code></td>
-      <td><code>/data/nextcloud/sofie/</code></td></tr>
-  <tr><td>CVJM</td>
-      <td><code>./scripts/nextcloud-restore.sh cvjm</code></td>
-      <td><code>/data/nextcloud/cvjm/</code></td></tr>
-</table>
+<p>
+  <code>scripts/nextcloud-restore.sh &lt;env&gt;</code> spielt aus
+  <code>/data/backup/nextcloud-data/&lt;env&gt;/</code> mit dem neuesten Dump zurück.
+  Vorher muss man den Namen der Instanz eintippen, und Hosts ohne K3s lehnt das
+  Skript ab. Für einen älteren Stand diesen zuerst aus rdiff wiederherstellen und
+  <code>BACKUP_DIR</code> darauf zeigen lassen.
+</p>
 <ol class="steps">
   <li>
-    Server neu aufsetzen (Infrastructure) – <code>test</code> durch Instanz-Namen ersetzen:
-    <pre><code>ansible-playbook nextcloud-k3s.yml --limit test --ask-vault-pass</code></pre>
+    Server aufsetzen (Infrastruktur) – <code>cvjm</code> durch den Instanznamen ersetzen:
+    <pre><code>ansible-playbook nextcloud-k3s.yml --limit cvjm --ask-vault-pass</code></pre>
   </li>
   <li>
     Restore-Skript ausführen (überschreibt die frische Installation):
     <pre><code>cd ~/www_k3s
-./scripts/nextcloud-restore.sh test</code></pre>
+./scripts/nextcloud-restore.sh cvjm
+# älterer Stand, z. B. von vor 3 Tagen:
+rdiff-backup --api-version 201 restore --at 3D /data/backup/nextcloud-rdiff/cvjm /tmp/cvjm-3d
+BACKUP_DIR=/tmp/cvjm-3d ./scripts/nextcloud-restore.sh cvjm</code></pre>
     <p style="font-size:13px;color:var(--muted)">
-      Ablauf: Maintenance an → Pod stoppen → rsync App-Dateien → rsync User-Daten →
-      SQL-Import → Ownership fix → Pod starten → files:scan → Maintenance aus
+      Ablauf: Wartungsmodus an → Pod stoppen → App-Dateien per rsync → Nutzerdaten per rsync →
+      SQL-Import → Besitzrechte korrigieren → Pod starten → data-fingerprint → files:scan → Wartungsmodus aus
     </p>
   </li>
   <li>
     Ansible erneut ausführen (stellt occ-Config sicher: trusted_domains, WOPI, Apps):
-    <pre><code>ansible-playbook nextcloud-k3s.yml --limit test --ask-vault-pass</code></pre>
+    <pre><code>ansible-playbook nextcloud-k3s.yml --limit cvjm --ask-vault-pass</code></pre>
     <p style="font-size:13px;color:var(--muted)">
-      Dieser Schritt ist bei einem Hostname-Wechsel zwingend, sonst empfohlen.
+      Bei geändertem Hostnamen Pflicht, sonst empfohlen.
     </p>
   </li>
 </ol>

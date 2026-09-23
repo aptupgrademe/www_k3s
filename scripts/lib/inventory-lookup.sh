@@ -19,8 +19,10 @@ inventory_lookup() {
     local repo_root
     repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-    read -r REMOTE_HOST REMOTE_SSH_PORT <<<"$(python3 - "$repo_root" "$want" <<'PY'
-import sys, os, yaml
+    # Host and port on separate lines: with "read -r A B" an empty host let the
+    # port slide into REMOTE_HOST ("10022") instead of triggering the error below.
+    { read -r REMOTE_HOST; read -r REMOTE_SSH_PORT; } <<<"$(python3 - "$repo_root" "$want" <<'PY'
+import sys, os, re, yaml
 
 repo, want = sys.argv[1], sys.argv[2]
 
@@ -36,26 +38,38 @@ def find_host(node):
             return found
     return None
 
-host = port = ""
-try:
-    with open(os.path.join(repo, "inventory", "hosts.yml")) as fh:
-        host = find_host(yaml.safe_load(fh)) or ""
-except Exception:
-    pass
+hostvars = {}
 try:
     with open(os.path.join(repo, "inventory", "host_vars", want, "vars.yml")) as fh:
-        port = (yaml.safe_load(fh) or {}).get("ansible_port", "")
+        hostvars = yaml.safe_load(fh) or {}
 except Exception:
     pass
 
-print(host, port)
+# ansible_host lives in host_vars/<host>/vars.yml (usually "{{ server_ipv4 }}",
+# the single source of truth); inventory/hosts.yml is only a fallback for
+# setups that still keep it there.
+host = hostvars.get("ansible_host") or ""
+if not host:
+    try:
+        with open(os.path.join(repo, "inventory", "hosts.yml")) as fh:
+            host = find_host(yaml.safe_load(fh)) or ""
+    except Exception:
+        pass
+m = re.fullmatch(r"\{\{\s*(\w+)\s*\}\}", str(host).strip())
+if m:
+    host = hostvars.get(m.group(1), "")
+if "{{" in str(host):
+    host = ""   # a more complex template this helper can't evaluate
+
+print(host)
+print(hostvars.get("ansible_port", ""))
 PY
 )"
 
     if [[ -z "$REMOTE_HOST" ]]; then
-        echo "Error: no ansible_host for '$want' in inventory/hosts.yml." >&2
-        echo "Copy inventory/hosts.yml.example -> hosts.yml and fill in the real" >&2
-        echo "address, and host_vars/$want/vars.yml.example -> vars.yml for the port." >&2
+        echo "Error: no ansible_host for '$want' in host_vars/$want/vars.yml or inventory/hosts.yml." >&2
+        echo "Copy host_vars/$want/vars.yml.example -> vars.yml and set server_ipv4" >&2
+        echo "(ansible_host points to it) and ansible_port; list the host in inventory/hosts.yml." >&2
         exit 1
     fi
 

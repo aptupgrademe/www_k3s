@@ -133,7 +133,14 @@ metadata:
     # location (location ~ "^/grafana(/|$)"), emitted before the nextcloud
     # regex, wins the match. Mirrors the working blog ingress.
     nginx.org/path-regex: "case_sensitive"
+    # Grafana Live (/grafana/api/live/ws) is a WebSocket. Without the Upgrade/
+    # Connection headers nginx drops them as hop-by-hop and Grafana answers the
+    # handshake with 400 - seen 348x in one day from a single open dashboard
+    # (2026-09-23). Dashboards still work without it, only live updates don't.
+    nginx.org/proxy-read-timeout: "3600s"
     nginx.org/location-snippets: |
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
       add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
       add_header Referrer-Policy "no-referrer" always;
       add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
@@ -243,6 +250,12 @@ metadata:
   namespace: nextcloud
   annotations:
     nginx.org/mergeable-ingress-type: "minion"
+    # Without this the nginx default of 1m applies. Nextcloud POSTs every office
+    # file to /cool/convert-to/png for its preview, so every file > 1 MB got a
+    # 413 (~5000 in one preview-job night, 2026-09-23) and never had a
+    # thumbnail. The same limit hits images pasted into a document. Kept equal
+    # to nextcloud-routes.
+    nginx.org/client-max-body-size: "2g"
     # WebSocket support required for /cool endpoint (document editing)
     nginx.org/proxy-read-timeout: "36000s"
     nginx.org/proxy-send-timeout: "36000s"

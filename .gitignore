@@ -36,3 +36,7 @@ blog-draft-*
 # Internal notes: kept out of main (and thus GitHub). Backed up to the
 # internal GitLab only, via the "internal" branch (git add -f on that branch).
 notes/
+
+# Filled-in Nextcloud backup scripts (real hostnames) stay local.
+# Copy scripts/nextcloud-backup/example_backup.sh.example -> <name>_backup.sh.
+scripts/nextcloud-backup/*_backup.sh

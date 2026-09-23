@@ -13,6 +13,7 @@
 # --- Connection ---
 ansible_user: root
 ansible_port: 10022                      # 22 on first run, 10022 after SSH hardening
+ansible_host: "{{ server_ipv4 }}"   # single source of truth, see --- Network --- below
 
 # --- Network ---
 server_ipv4: "CHANGE_ME"    # e.g. 1.2.3.4

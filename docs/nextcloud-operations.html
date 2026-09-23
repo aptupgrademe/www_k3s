@@ -1367,7 +1367,7 @@ k3s kubectl rollout status  deployment/nextcloud -n nextcloud --timeout=300s</co
 <div class="callout callout-danger">
   <strong>Backup before every version bump!</strong>
   A failed DB schema upgrade can damage the installation.
-  Always run <code>nextcloud-backup.sh</code> first.
+  Always run a backup first (<code>/data/backup/nextcloud/&lt;env&gt;_backup.sh</code> on the backup machine).
 </div>
 
 <ol class="steps">
@@ -1458,25 +1458,38 @@ k3s kubectl rollout status  deployment/nextcloud -n nextcloud --timeout=300s</co
 <h2>Backup &amp; Restore</h2>
 
 <h3>What Is Backed Up</h3>
+<p>
+  A <strong>backup machine</strong> pulls each instance over SSH as root
+  (<code>scripts/nextcloud-backup/</code>, see its <code>README.md</code>). The
+  scripts run from <code>/data/backup/nextcloud/</code> on that machine,
+  triggered by cron at boot and daily. Everything lands under
+  <code>/data/backup/nextcloud-data/&lt;env&gt;/</code>:
+</p>
 <table>
-  <tr><th>What</th><th>Path (server)</th><th>Destination (local)</th><th>Method</th></tr>
-  <tr>
-    <td>User data</td>
-    <td><code>/data</code></td>
-    <td><code>/data/nextcloud/&lt;env&gt;/data/</code></td>
-    <td>rsync</td>
-  </tr>
-  <tr>
-    <td>App files</td>
-    <td><code>/srv/nextcloud-www</code></td>
-    <td><code>/data/nextcloud/&lt;env&gt;/nextcloud/</code></td>
-    <td>rsync (data/ excluded)</td>
-  </tr>
+  <tr><th>What</th><th>Path (server)</th><th>Destination (backup machine)</th><th>Method</th></tr>
   <tr>
     <td>Database</td>
     <td>MariaDB <code>&lt;env&gt;_nextcloud</code> (host)</td>
-    <td><code>/data/nextcloud/&lt;env&gt;/db.sql</code></td>
-    <td>mysqldump --single-transaction</td>
+    <td><code>db/&lt;db&gt;_&lt;date&gt;_&lt;time&gt;.sql.gz</code> (last 14)</td>
+    <td>mysqldump --single-transaction, gzip, verified</td>
+  </tr>
+  <tr>
+    <td>App files + config</td>
+    <td><code>/srv/nextcloud-www</code></td>
+    <td><code>www/</code></td>
+    <td>rsync</td>
+  </tr>
+  <tr>
+    <td>User data incl. previews</td>
+    <td><code>/data</code></td>
+    <td><code>data/</code></td>
+    <td>rsync</td>
+  </tr>
+  <tr>
+    <td>History (30 days)</td>
+    <td>–</td>
+    <td><code>/data/backup/nextcloud-rdiff/</code></td>
+    <td>rdiff-backup of all instances, after the backups</td>
   </tr>
 </table>
 
@@ -1488,71 +1501,66 @@ k3s kubectl rollout status  deployment/nextcloud -n nextcloud --timeout=300s</co
   The backup script uses this connection automatically.
 </div>
 
-<h3>Run Backup</h3>
-<p>
-  The script expects the instance name as an argument.
-  The instance controls which server is contacted and where the backup is stored locally.
-</p>
-<table>
-  <tr><th>Instance</th><th>Command</th><th>Local destination</th></tr>
-  <tr><td>Test server</td>
-      <td><code>./scripts/nextcloud-backup.sh test</code></td>
-      <td><code>/data/nextcloud/test/</code></td></tr>
-  <tr><td>Sofie</td>
-      <td><code>./scripts/nextcloud-backup.sh sofie</code></td>
-      <td><code>/data/nextcloud/sofie/</code></td></tr>
-  <tr><td>CVJM</td>
-      <td><code>./scripts/nextcloud-backup.sh cvjm</code></td>
-      <td><code>/data/nextcloud/cvjm/</code></td></tr>
-</table>
-<pre><code># Example: back up test instance
-cd ~/www_k3s
-./scripts/nextcloud-backup.sh test
+<div class="callout callout-warn">
+  <strong>No maintenance mode, on purpose: how a run works instead</strong>
+  The backup runs whenever the backup machine boots, and daily, often during
+  the day, so a maintenance mode would lock users out. Each run does:
+  (1) rsync www + data, which moves almost everything;
+  (2) the DB dump (<code>--single-transaction</code>, no lock, kept only after
+  <code>gzip -t</code> and the "Dump completed" check);
+  (3) rsync www + data again, which moves only what changed since step 1.
+  The dump and the files therefore end up only seconds to a few minutes apart;
+  the log reports the gap. Anything that changed inside it is reconciled after a
+  restore by <code>occ files:scan --all</code>, which the restore script runs.
+  At worst, metadata created in those minutes (e.g. a new share) is missing.
+</div>
 
-# Process (applies to all instances):
-# 1. Enable maintenance mode  (kubectl exec occ maintenance:mode --on)
-# 2. mysqldump --single-transaction → /data/nextcloud/&lt;env&gt;/db.sql
-# 3. rsync /srv/nextcloud-www/      → /data/nextcloud/&lt;env&gt;/nextcloud/
-# 4. rsync /data/                   → /data/nextcloud/&lt;env&gt;/data/
-# 5. Disable maintenance mode</code></pre>
+<h3>Run Backup</h3>
+<pre><code># On the backup machine (normally started by cron)
+/data/backup/nextcloud/cvjm_backup.sh        # one instance
+/data/backup/nextcloud/nc_rdiff.sh           # version all instances
+
+# Logs, one file per run
+ls -t /data/backup/nextcloud/logs/ | head
+cat /data/backup/nextcloud-data/cvjm/last-success</code></pre>
 <p style="font-size:13px;color:var(--muted)">
-  The script is located in the repository directory <code>scripts/nextcloud-backup.sh</code>.
-  Sofie and CVJM are only usable once IP and hostname are entered in
-  <code>inventory/host_vars/&lt;env&gt;/vars.yml</code> –
-  the script checks this and aborts with an error message if <code>changeme</code> is still present.
+  The filled-in <code>&lt;env&gt;_backup.sh</code> files contain real hostnames
+  and are gitignored; the repository only carries
+  <code>example_backup.sh.example</code>. After every successful run the
+  instance gets <code>/var/lib/nextcloud-backup/last-success</code>. Monit
+  (<code>nc_backup</code>) mails when it is older than
+  <code>monit_backup_max_days</code> (3), which catches both a failing backup
+  and a backup machine that stayed off.
 </p>
 
 <h3>Restore Workflow</h3>
-<p>The restore script also expects the instance name as an argument:</p>
-<table>
-  <tr><th>Instance</th><th>Command</th><th>Source</th></tr>
-  <tr><td>Test server</td>
-      <td><code>./scripts/nextcloud-restore.sh test</code></td>
-      <td><code>/data/nextcloud/test/</code></td></tr>
-  <tr><td>Sofie</td>
-      <td><code>./scripts/nextcloud-restore.sh sofie</code></td>
-      <td><code>/data/nextcloud/sofie/</code></td></tr>
-  <tr><td>CVJM</td>
-      <td><code>./scripts/nextcloud-restore.sh cvjm</code></td>
-      <td><code>/data/nextcloud/cvjm/</code></td></tr>
-</table>
+<p>
+  <code>scripts/nextcloud-restore.sh &lt;env&gt;</code> restores from
+  <code>/data/backup/nextcloud-data/&lt;env&gt;/</code> with the newest dump.
+  It asks you to type the instance name first and refuses hosts without K3s.
+  For an older state, restore it from rdiff first and point
+  <code>BACKUP_DIR</code> there.
+</p>
 <ol class="steps">
   <li>
-    Set up server (infrastructure) – replace <code>test</code> with instance name:
-    <pre><code>ansible-playbook nextcloud-k3s.yml --limit test --ask-vault-pass</code></pre>
+    Set up server (infrastructure) – replace <code>cvjm</code> with the instance name:
+    <pre><code>ansible-playbook nextcloud-k3s.yml --limit cvjm --ask-vault-pass</code></pre>
   </li>
   <li>
     Run restore script (overwrites the fresh installation):
     <pre><code>cd ~/www_k3s
-./scripts/nextcloud-restore.sh test</code></pre>
+./scripts/nextcloud-restore.sh cvjm
+# older state, e.g. 3 days ago:
+rdiff-backup --api-version 201 restore --at 3D /data/backup/nextcloud-rdiff/cvjm /tmp/cvjm-3d
+BACKUP_DIR=/tmp/cvjm-3d ./scripts/nextcloud-restore.sh cvjm</code></pre>
     <p style="font-size:13px;color:var(--muted)">
       Process: enable maintenance → stop pod → rsync app files → rsync user data →
-      SQL import → fix ownership → start pod → files:scan → disable maintenance
+      SQL import → fix ownership → start pod → data-fingerprint → files:scan → disable maintenance
     </p>
   </li>
   <li>
     Run Ansible again (ensures occ config: trusted_domains, WOPI, apps):
-    <pre><code>ansible-playbook nextcloud-k3s.yml --limit test --ask-vault-pass</code></pre>
+    <pre><code>ansible-playbook nextcloud-k3s.yml --limit cvjm --ask-vault-pass</code></pre>
     <p style="font-size:13px;color:var(--muted)">
       This step is mandatory on a hostname change, otherwise recommended.
     </p>

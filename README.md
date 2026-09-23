@@ -259,8 +259,8 @@ www_k3s/
 │   └── blog_*/                # WordPress-specific roles
 │
 ├── scripts/
-│   ├── nextcloud-backup.sh    # Nextcloud backup: nextcloud-backup.sh <env>
-│   ├── nextcloud-restore.sh   # Nextcloud restore
+│   ├── nextcloud-backup/      # Pull backup (rsync + rdiff-backup) for a backup machine, see its README
+│   ├── nextcloud-restore.sh   # Nextcloud restore from /data/backup/nextcloud-data/<env>
 │   ├── wordpress-backup.sh    # WordPress backup via kubectl exec
 │   └── wordpress-restore.sh   # WordPress restore including MariaDB re-init
 │

@@ -1,0 +1,10 @@
+#!/bin/bash
+# Nextcloud backup for ONE instance -> /data/backup/nextcloud-data/<NAME>
+# Copy to <name>_backup.sh (gitignored), fill in the values, chmod 750.
+# Logic: nc_backup_lib.sh. Log: /data/backup/nextcloud/logs/<NAME>_*.log
+NAME=example                        # folder under /data/backup/nextcloud-data/
+REMOTE_HOST=cloud.example.de        # SSH as root, key ~/.ssh/id_rsa, port 10022
+DB_NAME=example_nextcloud           # dumped via /root/.my.cnf on the instance
+REMOTE_WWW=/srv/nextcloud-www       # K3s: /srv/nextcloud-www | native: /var/www/html/nextcloud
+REMOTE_DATA=/data                   # Nextcloud data directory on the instance
+. "$(dirname "$(readlink -f "$0")")/nc_backup_lib.sh"

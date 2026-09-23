@@ -53,3 +53,15 @@ check program certs with path "/usr/local/sbin/monit-check-certs.sh {{ monit_cer
     every 30 cycles
     if status != 0 then alert
 {% endif %}
+{% if 'nextcloud' in group_names %}
+
+# --- Nextcloud backup freshness ---
+# The backup is PULLED by a machine that is not always on (cron @reboot + daily
+# on the backup PC, /data/backup/nextcloud/<instance>_backup.sh), which touches
+# this file after every successful run. If that PC stays off, or the backup
+# keeps failing, nobody would notice without this check. A missing file (no
+# backup yet) alerts too.
+check file nc_backup with path /var/lib/nextcloud-backup/last-success
+    every "17 * * * *"
+    if timestamp > {{ monit_backup_max_days }} days then alert
+{% endif %}
