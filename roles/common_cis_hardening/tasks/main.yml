@@ -262,10 +262,22 @@
     state: stopped
   failed_when: false  # unit may not exist on all kernels/images
 
-- name: CIS | Remove rsync package (unused on this host, verified 2026-08-20)
+# Verified unused on the blog host (2026-08-20), but this role also runs on
+# the Nextcloud hosts, where MariaDB-server requires rsync. dnf then erased
+# MariaDB-server along with it and stopped the database until a later role
+# reinstalled it: 2-3 min Nextcloud outage on every playbook run (found
+# 2026-09-23 on cvjm). Remove it only when no installed package depends on it.
+- name: CIS | Check whether rsync can be removed without taking other packages
+  ansible.builtin.command: rpm -e --test rsync
+  register: cis_rsync_removable
+  changed_when: false
+  failed_when: false
+
+- name: CIS | Remove rsync package (only when nothing depends on it)
   ansible.builtin.dnf:
     name: rsync
     state: absent
+  when: cis_rsync_removable.rc == 0
 
 # NFS/RPC/Samba-client stack pulled in by the base cloud image, not used by
 # anything in this repo (no NFS mounts, no Samba shares) - verified via
