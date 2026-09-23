@@ -28,6 +28,8 @@ REMOTE_PORT=${REMOTE_PORT:-10022}
 SSH_KEY=${SSH_KEY:-$HOME/.ssh/id_rsa}
 KEEP_DUMPS=${KEEP_DUMPS:-14}
 KEEP_LOGS=${KEEP_LOGS:-30}
+# REMOTE_STAMP=0: nichts auf die Instanz schreiben (rein lesender Lauf, z. B. ohne Monit dort).
+REMOTE_STAMP=${REMOTE_STAMP:-1}
 
 BASE=/data/backup/nextcloud-data/$NAME
 LOGDIR=/data/backup/nextcloud/logs
@@ -95,8 +97,10 @@ sync_dir "$REMOTE_DATA" "$BASE/data"
 log "Abstand Dump-Start -> Dateien final: $((SECONDS - DUMP_START)) s"
 
 # --- 4. Erfolg festhalten ----------------------------------------------------
-$SSH "$TARGET" "mkdir -p /var/lib/nextcloud-backup && date '+%F %T' > /var/lib/nextcloud-backup/last-success" \
-    || log "Hinweis: Zeitstempel auf $REMOTE_HOST nicht geschrieben"
+if [ "$REMOTE_STAMP" = 1 ]; then
+    $SSH "$TARGET" "mkdir -p /var/lib/nextcloud-backup && date '+%F %T' > /var/lib/nextcloud-backup/last-success" \
+        || log "Hinweis: Zeitstempel auf $REMOTE_HOST nicht geschrieben"
+fi
 date '+%F %T' > "$BASE/last-success"
 ls -1t "$LOGDIR/${NAME}_"*.log | tail -n +$((KEEP_LOGS + 1)) | xargs -r rm -f
 log "=== Backup $NAME erfolgreich (${SECONDS}s) ==="

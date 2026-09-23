@@ -1,7 +1,7 @@
 #!/bin/bash
 # =============================================================================
 # Versionierung aller Nextcloud-Sicherungen mit rdiff-backup.
-#   Quelle: /data/backup/nextcloud-data/<instanz>  (nur die in INSTANCES, derzeit cvjm)
+#   Quelle: /data/backup/nextcloud-data/<instanz>  (nur die in INSTANCES, derzeit cvjm + sofie)
 #   Ziel:   /data/backup/nextcloud-rdiff/  (Spiegel + rückwärts gespeicherte Diffs)
 #
 # Läuft per cron nach den Instanz-Backups. Wartet, bis keines davon mehr läuft
@@ -18,7 +18,7 @@ set -o pipefail
 SRC=/data/backup/nextcloud-data
 DST=/data/backup/nextcloud-rdiff
 KEEP=${KEEP:-30D}
-INSTANCES=${INSTANCES:-"cvjm"}
+INSTANCES=${INSTANCES:-"cvjm sofie"}
 LOGDIR=/data/backup/nextcloud/logs
 KEEP_LOGS=30
 RDIFF="rdiff-backup --api-version 201"
@@ -46,7 +46,12 @@ INCLUDES=()
 for inst in $INSTANCES; do INCLUDES+=(--include "$SRC/$inst"); done
 $RDIFF backup "${INCLUDES[@]}" --exclude "**" "$SRC" "$DST" || fail "rdiff-backup backup"
 log "Versionen älter als $KEEP entfernen ..."
-$RDIFF remove increments --older-than "$KEEP" "$DST" || log "Hinweis: remove increments meldete einen Fehler"
+# Solange es keine Version älter als $KEEP gibt (die ersten $KEEP nach dem Start), endet
+# "remove increments" mit Warnung und Exit != 0 – das ist kein Fehler.
+if ! OUT=$($RDIFF remove increments --older-than "$KEEP" "$DST" 2>&1); then
+    if grep -q "No increment is older" <<<"$OUT"; then log "Keine Versionen älter als $KEEP – nichts zu entfernen"
+    else echo "$OUT"; log "Hinweis: remove increments meldete einen Fehler"; fi
+else [ -n "$OUT" ] && echo "$OUT"; fi
 $RDIFF list increments "$DST" | tail -n 3
 ls -1t "$LOGDIR"/rdiff_*.log | tail -n +$((KEEP_LOGS + 1)) | xargs -r rm -f
 log "=== rdiff erfolgreich (${SECONDS}s) ==="

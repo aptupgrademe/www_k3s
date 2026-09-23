@@ -45,6 +45,8 @@ Known limits - read before quoting any number:
     drift as providers get new allocations.
   * No cookies, no JS beacon - this is server-log analysis. It cannot tell a
     returning reader from a new one beyond the IP.
+  * Rotated logs ("N.log.<timestamp>", optionally .gz) are read too; the
+    "Period" line shows the span actually covered - check it before quoting.
   * Log retention is the real constraint: k3s rotates container logs at 10 MB
     and keeps very few, so in practice only ~4 days are on disk at any time.
     For genuine weekly numbers, ship the logs somewhere persistent first.
@@ -54,13 +56,17 @@ import argparse
 import collections
 import datetime
 import glob
+import gzip
 import ipaddress
 import re
 import socket
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 
-DEFAULT_LOGS = "/var/log/pods/ingress-nginx_*/*/*.log"
+# "*.log*", not "*.log": k3s/kubelet renames rotated files to "N.log.<YYYYMMDD-HHMMSS>"
+# (and may gzip older ones). A plain "*.log" silently read only the live file,
+# i.e. the few hours since the last rotation instead of the whole window.
+DEFAULT_LOGS = "/var/log/pods/ingress-nginx_*/*/*.log*"
 DEFAULT_MMDB = "/usr/share/GeoIP/GeoLite2-Country.mmdb"
 
 # CRI log line wrapping the standard nginx combined format:
@@ -138,7 +144,8 @@ def parse_args():
 def read_log(pattern):
     rows = []
     for path in sorted(glob.glob(pattern)):
-        with open(path, errors="replace") as fh:
+        opener = gzip.open if path.endswith(".gz") else open
+        with opener(path, "rt", errors="replace") as fh:
             for line in fh:
                 m = LINE_RE.match(line)
                 if not m:
