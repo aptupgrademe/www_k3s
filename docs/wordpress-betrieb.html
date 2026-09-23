@@ -1274,6 +1274,16 @@ k3s kubectl logs -n wordpress deployment/wordpress -c wordpress-fpm -f | grep -i
   Benachrichtigungen gehen an die in <code>vault.yml</code> hinterlegte Adresse (<code>email</code>)
   über den Kontaktpunkt <code>email-admin</code>.
 </p>
+<div class="callout callout-warn">
+  <strong>Eine Regel ohne Condition löst nie aus</strong>
+  Jede Regel hat zwei Abfragen: A (der Messwert) und B (der Schwellwert-Check),
+  und das Provisioning muss B als <code>"condition"</code> angeben. Fehlt das,
+  loggt Grafana bei jeder Auswertung <code>condition must not be empty</code> und
+  alarmiert nie. Weil die Regeln <code>execErrState: OK</code> nutzen, zeigt die
+  Oberfläche sie trotzdem als gesund an. So war es bis 23.09.2026. Prüfen:
+  <code>journalctl -u grafana-server --since -10min | grep -c "condition must not be empty"</code>
+  muss <code>0</code> ausgeben.
+</div>
 
 <h3>Prometheus Scrape-Ziele</h3>
 <pre><code># Aktive Scrape-Ziele prüfen (im Browser oder curl)
@@ -1811,7 +1821,11 @@ ss -tin dst www.apt-upgrade.me | grep bbr</code></pre>
   nach manuellen Plugin-Updates im WordPress-Admin muss der Pod neu gestartet werden,
   damit PHP den neuen Code sieht.
   <pre style="margin-top:8px"><code>k3s kubectl rollout restart deployment/wordpress -n wordpress</code></pre>
-  Das Ansible-Playbook macht diesen Restart automatisch bei jedem Run.
+  Das Ansible-Playbook startet den Pod automatisch neu, aber nur, wenn es wirklich
+  PHP-Code geändert hat: ein Kern-, Plugin- oder Theme-Update oder neuer Inhalt in
+  einem seiner mu-Plugins. Ein Lauf ohne Änderungen startet nichts neu und erzeugt
+  kein 502. (Bis 23.09.2026 startete jeder Lauf neu, weil der mu-Plugin-Task immer
+  eine Änderung meldete. Mit der Strategie <code>Recreate</code> hieß das ~30–60 s 502 pro Lauf.)
 </div>
 
 <h3>Redis Object Cache</h3>
@@ -1898,7 +1912,13 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
       <code>nginx-k3s-grafana-login</code>: Grafana-Login-Brute-Force (5 fehlgeschlagene Logins/HTTP&nbsp;401 in 600&nbsp;s);
       <code>recidive</code>: Wiederholungstäter – 3× gebannt in 24 h → 30-Tage-Ban.
       Alle Verify-Tasks laufen per <code>curl --resolve hostname:443:127.0.0.1</code> (Quell-IP 127.0.0.1 ∈ ignoreip → kein Selbst-Ban).
-      Logpfad: <code>/var/log/pods/ingress-nginx_*/nginx-ingress/*.log</code>
+      Logpfad: <code>/var/log/pods/ingress-nginx_*/nginx-ingress/*.log</code>.
+      fail2ban löst diesen Platzhalter nur beim Start eines Jails auf. Jeder
+      Neustart des Ingress-Containers (und jeder Reboot, bei dem fail2ban zuerst
+      startet) legt aber eine neue <code>N.log</code> an. Der Timer
+      <code>fail2ban-ingress-logwatch</code> (alle 2 min) lädt die HTTP-Jails neu,
+      sobald sich die Menge der Log-Dateien ändert. Ohne ihn haben die Jails
+      unbemerkt weiter eine tote Datei beobachtet.
     </td>
     <td><code>common_fail2ban</code></td>
   </tr>
@@ -2280,12 +2300,22 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
 
 <h3>Firewall im Detail</h3>
 <p>
-  Das Regelwerk (<code>/etc/nftables.conf</code>) wird von Ansible aus dem Template
-  <code>common_firewall/templates/fw.nft.j2</code> gerendert und vom
-  <code>nftables</code>-Systemd-Dienst beim Booten geladen. K3s verwaltet seine
-  eigenen <code>KUBE-*</code>-Chains in iptables (getrenntes Subsystem) – es gibt
-  keine Lock-Konflikte mit nftables.
+  Das Regelwerk (<code>/etc/sysconfig/nftables.conf</code> auf AlmaLinux 9) wird
+  von Ansible aus dem Template <code>common_firewall/templates/fw.nft.j2</code>
+  gerendert, vor dem Ersetzen der Live-Datei mit <code>nft -c</code> geprüft und
+  vom <code>nftables</code>-Systemd-Dienst beim Booten geladen.
 </p>
+<div class="callout callout-danger">
+  <strong>Niemals <code>flush ruleset</code>: K3s-Regeln können in nftables liegen</strong>
+  Ob kube-proxy, flannel und Calico ihre <code>KUBE-*</code>-Chains in
+  iptables-legacy oder in nftables schreiben, hängt vom Host ab. Auf dem Blog-Host
+  liegen sie in iptables-legacy, auf dem Nextcloud-Host in nftables. Dort hat das
+  Reload des mitgelieferten <code>nftables.service</code> (<code>flush ruleset</code>)
+  sie mitgelöscht und den Service-Verkehr für 30–90 s unterbrochen. Das Regelwerk
+  ersetzt deshalb nur <code>table inet filter</code>, atomar. Das Drop-in
+  <code>/etc/systemd/system/nftables.service.d/10-own-table-only.conf</code> begrenzt
+  <code>reload</code>/<code>stop</code> genauso. Das ist auf beiden Host-Arten sicher.
+</div>
 <table>
   <tr><th>Feature</th><th>Detail</th></tr>
   <tr>
@@ -2298,6 +2328,17 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
     <td>Native nftables Sets (<code>banned4</code> / <code>banned6</code>) mit
         24h Auto-Expiry. fail2ban schreibt erkannte Angreifer direkt in diese Sets.
         Prüfen: <code>nft list set inet filter banned4</code></td>
+  </tr>
+  <tr>
+    <td>Portscan-Sperre</td>
+    <td>fail2ban sieht keine Portscans, weil es nur Logs liest und das Drop-Log
+        absichtlich gedrosselt ist. Die letzte Regel vor dem Policy-Drop zählt
+        Verbindungs-SYNs pro Quelle (<code>portscan4</code>/<code>portscan6</code>).
+        Dort kommen nur Pakete an, die ohnehin verworfen würden, also solche an
+        geschlossene Ports. Eine Quelle über der Schwelle landet in
+        <code>scanban4</code>/<code>scanban6</code> und wird 1 h auf <em>allen</em> Ports
+        verworfen. Schwelle und Ausnahmen stehen im Template. Langsame, stark verteilte
+        Scans bleiben bewusst darunter.</td>
   </tr>
   <tr>
     <td>Malformed-Packet-Drop</td>
@@ -2344,8 +2385,13 @@ nft list ruleset
 # Blocklists anzeigen
 nft list set inet filter banned4
 nft list set inet filter banned6
+nft list set inet filter scanban4      # Portscan-Sperren (1 h)
 
-# Firewall-Regelwerk neu laden
+# Portscan-Sperre aufheben (z. B. nach einem Test von der eigenen IP)
+nft delete element inet filter scanban4 { 1.2.3.4 }
+nft flush set inet filter scanban4
+
+# Firewall-Regelwerk neu laden (ersetzt nur table inet filter, K3s-Tabellen bleiben)
 systemctl reload nftables</code></pre>
 
 <h3>Wichtige Sicherheitshinweise</h3>

@@ -610,6 +610,50 @@ wopi_allowed_hosts:
   - "10.43.0.0/16"   # Service-CIDR
   - "collabora.inspired-as-code.de"</code></pre>
 
+<h3>notify_push (Client Push / High Performance Backend)</h3>
+<p>
+  Ohne notify_push fragen Desktop-Sync-Clients und die Weboberfläche etwa alle
+  30 s beim Server, ob sich etwas geändert hat. Die App <code>notify_push</code>
+  startet einen kleinen Dienst, der eine WebSocket-Verbindung offen hält und
+  Änderungen sofort meldet. Mit Push-Benachrichtigungen auf dem Handy hat das
+  nichts zu tun, die laufen über den Push-Proxy von Nextcloud und funktionieren
+  in beiden Fällen. Standardmäßig aus, pro Host einschalten mit
+  <code>nextcloud_notify_push_enabled: true</code>
+  (<code>next_k3s_deploy/tasks/notify_push.yml</code>).
+</p>
+<table>
+  <tr><th>Teil</th><th>Umsetzung hier</th></tr>
+  <tr><td>App</td><td><code>occ app:install notify_push</code>, als www-data (occ verweigert root)</td></tr>
+  <tr><td>Dienst</td><td>Eigenes Deployment <code>notify-push</code>, gleiches Image. Es startet das
+      Programm, das die App im gemeinsamen Code-Volume mitbringt:
+      <code>bin/$(uname -m)/notify_push</code> (die App liefert aarch64, armv7 und x86_64;
+      ein Platzhalter würde aarch64 nehmen). Läuft als uid/gid 33, weil es
+      <code>config.php</code> (Modus 0640) lesen muss, mit schreibgeschütztem Root-Dateisystem
+      und <code>--bind 0.0.0.0</code>. Die App-Version steht als Pod-Annotation im
+      Template, ein App-Update startet den Pod also neu, und Programm und App bleiben
+      auf demselben Stand.</td></tr>
+  <tr><td>Route</td><td>Ingress-Minion <code>nextcloud-push-routes</code>, Pfad <code>/push/</code>,
+      WebSocket, Präfix wird abgeschnitten per <code>rewrite ^/push/(.*)$ /$1 break;</code>
+      (der Dienst erwartet <code>/ws</code> und <code>/test/…</code> ohne Präfix).</td></tr>
+</table>
+<div class="callout callout-warn">
+  <strong>Warum die Route ein Regex ist und ihr Name wichtig ist</strong>
+  Der Minion <code>nextcloud-routes</code> ist ein Regex, der alles abfängt
+  (<code>location ~ "^/"</code>), und in nginx gewinnt eine Regex-Location gegen
+  eine normale Präfix-Location. Eine einfache <code>/push/</code>-Route griff
+  deshalb nie, und Anfragen bekamen die 404-Seite von Nextcloud. Die Push-Route
+  ist deshalb auch ein Regex. Der F5-Controller schreibt die Regex-Locations der
+  Minions <strong>alphabetisch nach Ingress-Namen</strong> in die Konfiguration,
+  und nginx nimmt den ersten Treffer. <code>notify-push-routes</code> stand hinter
+  <code>nextcloud-routes</code> und verlor, <code>nextcloud-push-routes</code>
+  ("p" &lt; "r") gewinnt. Aus demselben Grund funktioniert die Grafana-Route.
+</div>
+<pre><code>OCC="k3s kubectl exec deployment/nextcloud -n nextcloud -c nextcloud-fpm -- runuser -u www-data -- php /var/www/html/occ"
+$OCC notify_push:self-test     # 6 grüne Checks erwartet
+$OCC notify_push:metrics       # "Active connection count" &gt; 0, sobald Clients verbunden sind
+# Clients bemerken Push erst, wenn sie ihre Server-Fähigkeiten neu abfragen
+# (Browser neu laden, Desktop-Client neu starten). Rückweg: $OCC app:disable notify_push</code></pre>
+
 <h3>NetworkPolicy (Calico)</h3>
 <p>
   K3s's Standard-CNI (Flannel) setzt Kubernetes-<code>NetworkPolicy</code>-Objekte
@@ -1025,7 +1069,9 @@ redis-cli FLUSHALL</code></pre>
   installiert – eine feuernde Regel ist ausschließlich in der
   Prometheus-Weboberfläche sichtbar, <em>niemand wird benachrichtigt</em>.
   Das ist für ein Single-Node-Setup bewusst so: Monit deckt dasselbe ab und
-  mailt darüber. Verlasse dich also nicht darauf, dass die Prometheus-Regeln
+  mailt darüber. (Die fünf eigenen Alert-Rules von Grafana, siehe unten
+  <em>Grafana Alerting</em>, sind ein dritter, unabhängiger Mail-Weg.)
+  Verlasse dich also nicht darauf, dass die Prometheus-Regeln
   jemanden erreichen – und falls doch einmal ein Alertmanager dazukommt, die
   überlappenden Monit-Checks entfernen, statt doppelt alarmiert zu werden.
 </div>
@@ -1231,6 +1277,20 @@ k3s kubectl logs -n nextcloud deployment/nextcloud -c nextcloud-fpm -f | grep -i
   Benachrichtigungen gehen an die in <code>vault.yml</code> hinterlegte Adresse (<code>email</code>)
   über den Kontaktpunkt <code>email-admin</code>.
 </p>
+<div class="callout callout-warn">
+  <strong>Eine Regel ohne Condition löst nie aus</strong>
+  Jede Regel hat zwei Abfragen: A (der Messwert) und B (der Schwellwert-Check).
+  Das Provisioning muss B als <code>"condition"</code> angeben. Fehlt das, loggt
+  Grafana bei jeder Auswertung <code>condition must not be empty</code> und
+  alarmiert nie. Weil die Regeln <code>execErrState: OK</code> nutzen, zeigt die
+  Oberfläche sie trotzdem als gesund an. So war es bis 23.09.2026.
+  Schnelltest:
+  <code>journalctl -u grafana-server --since -10min | grep -c "condition must not be empty"</code>
+  muss <code>0</code> ausgeben.<br>
+  Außerdem: Die Regel "Daten-Partition" beobachtet die Mountpoints
+  <code>/srv</code> und <code>/var</code>. Wo das keine eigenen Partitionen sind,
+  greift sie nie, und die Root-Regel deckt die Platte ab.
+</div>
 
 <h3>mysqld_exporter – Status prüfen</h3>
 <pre><code># Service-Status
@@ -1613,6 +1673,34 @@ k3s kubectl describe clusterissuer letsencrypt-prod</code></pre>
   cert-manager benötigt Port 80 für den HTTP-01-Challenge.
 </p>
 
+<h3>Nextcloud zeigt bei jedem Playbook-Lauf kurz Fehler</h3>
+<p>
+  Ein Playbook-Lauf sollte für Nutzer unsichtbar sein. Liefert
+  <code>status.php</code> mitten im Lauf ein paar Minuten lang 500/503, sucht man
+  nach einem Task, der einen anderen rückgängig macht. Zwei solche Fälle sind
+  inzwischen behoben:
+</p>
+<table>
+  <tr><th>Symptom</th><th>Ursache (behoben)</th><th>Erkennen, falls es wiederkommt</th></tr>
+  <tr>
+    <td>MariaDB stoppt für 2–3 min</td>
+    <td>Die CIS-Rolle entfernte <code>rsync</code>. <code>MariaDB-server</code> hängt davon ab
+        (Galera-SST-Skript <code>wsrep_sst_rsync</code>), also entfernte dnf den
+        Datenbank-Server mit. Jetzt wird rsync nur noch entfernt, wenn
+        <code>rpm -e --test rsync</code> durchgeht.</td>
+    <td><code>dnf history list</code> zeigt eine <em>Removed</em>-Transaktion im Lauf;
+        <code>systemctl show mariadb -p ActiveEnterTimestamp</code> ändert sich</td>
+  </tr>
+  <tr>
+    <td>"data_dir_writability … Permission denied" im <code>nextcloud.log</code></td>
+    <td><code>next_selinux</code> legte <code>/data</code> und das Code-Verzeichnis als
+        root:root an, <code>dirs.yml</code> setzte später im Lauf wieder 33:33. Beide Rollen
+        setzen jetzt identische Besitzer und Rechte.</td>
+    <td><code>journalctl | grep "ansible-.*path=/data "</code> zeigt innerhalb eines
+        Laufs verschiedene Besitzer</td>
+  </tr>
+</table>
+
 <h3>CronJob läuft nicht</h3>
 <pre><code># Status der letzten Jobs:
 k3s kubectl get cronjob nextcloud-cron -n nextcloud
@@ -1826,7 +1914,13 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
       <code>nginx-k3s-grafana-login</code>: Grafana-Login-Brute-Force (5 fehlgeschlagene Logins/HTTP&nbsp;401 in 600&nbsp;s);
       <code>recidive</code>: Wiederholungstäter – 3× gebannt in 24 h → 30-Tage-Ban.
       Alle Verify-Tasks laufen per <code>curl --resolve hostname:443:127.0.0.1</code> (Quell-IP 127.0.0.1 ∈ ignoreip → kein Selbst-Ban).
-      Logpfad: <code>/var/log/pods/ingress-nginx_*/nginx-ingress/*.log</code>
+      Logpfad: <code>/var/log/pods/ingress-nginx_*/nginx-ingress/*.log</code>.
+      fail2ban löst diesen Platzhalter nur beim Start eines Jails auf. Jeder
+      Neustart des Ingress-Containers (und jeder Reboot, bei dem fail2ban zuerst
+      startet) legt aber eine neue <code>N.log</code> an. Der Timer
+      <code>fail2ban-ingress-logwatch</code> (alle 2 min) lädt die HTTP-Jails neu,
+      sobald sich die Menge der Log-Dateien ändert. Ohne ihn haben die Jails
+      unbemerkt weiter eine tote Datei beobachtet.
     </td>
     <td><code>common_fail2ban</code></td>
   </tr>
@@ -2011,12 +2105,26 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
 
 <h3>Firewall im Detail</h3>
 <p>
-  Das Regelwerk (<code>/etc/nftables.conf</code>) wird von Ansible aus dem Template
-  <code>common_firewall/templates/fw.nft.j2</code> gerendert und vom
-  <code>nftables</code>-Systemd-Dienst beim Booten geladen. K3s verwaltet seine
-  eigenen <code>KUBE-*</code>-Chains in iptables (getrenntes Subsystem) – es gibt
-  keine Lock-Konflikte mit nftables.
+  Das Regelwerk (<code>/etc/sysconfig/nftables.conf</code> auf AlmaLinux 9) wird
+  von Ansible aus dem Template <code>common_firewall/templates/fw.nft.j2</code>
+  gerendert, vor dem Ersetzen der Live-Datei mit <code>nft -c</code> geprüft und
+  vom <code>nftables</code>-Systemd-Dienst beim Booten geladen.
 </p>
+<div class="callout callout-danger">
+  <strong>K3s-Regeln können auch in nftables liegen: niemals <code>flush ruleset</code></strong>
+  Ob kube-proxy, flannel und Calico ihre <code>KUBE-*</code>-Chains in
+  iptables-legacy oder in nftables schreiben, hängt vom Host ab. Auf dem
+  Nextcloud-Host liegen sie in nftables (<code>nft list tables</code> zeigt
+  <code>ip nat</code>, <code>ip filter</code>, <code>calico-arp</code>, …). Der
+  mitgelieferte <code>nftables.service</code> lädt mit <code>flush ruleset</code>
+  neu und hat diese Tabellen mitgelöscht. Bei jeder Firewall-Änderung brach
+  dadurch der Service-Verkehr (Nextcloud → MariaDB/Redis) für 30–90 s ab, bis die
+  Regeln neu geschrieben waren. Das Regelwerk ersetzt jetzt nur noch
+  <code>table inet filter</code>, in einer einzigen atomaren Transaktion. Das
+  Drop-in <code>/etc/systemd/system/nftables.service.d/10-own-table-only.conf</code>
+  begrenzt <code>reload</code>/<code>stop</code> genauso, also ist
+  <code>systemctl reload nftables</code> gefahrlos.
+</div>
 <table>
   <tr><th>Feature</th><th>Detail</th></tr>
   <tr>
@@ -2029,6 +2137,17 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
     <td>Native nftables Sets (<code>banned4</code> / <code>banned6</code>) mit
         24h Auto-Expiry. fail2ban schreibt erkannte Angreifer direkt in diese Sets.
         Prüfen: <code>nft list set inet filter banned4</code></td>
+  </tr>
+  <tr>
+    <td>Portscan-Sperre</td>
+    <td>fail2ban sieht keine Portscans, weil es nur Logs liest und das Drop-Log
+        absichtlich gedrosselt ist. Die letzte Regel vor dem Policy-Drop zählt
+        Verbindungs-SYNs pro Quelle (<code>portscan4</code>/<code>portscan6</code>,
+        dynamische Sets). Dort kommen nur Pakete an, die ohnehin verworfen würden,
+        also solche an geschlossene Ports. Eine Quelle über der Schwelle landet in
+        <code>scanban4</code>/<code>scanban6</code> und wird 1 h auf <em>allen</em>
+        Ports verworfen. Schwelle und Ausnahmen stehen im Template. Stark verteilte,
+        langsame Scans bleiben bewusst darunter.</td>
   </tr>
   <tr>
     <td>Malformed-Packet-Drop</td>
@@ -2075,8 +2194,13 @@ nft list ruleset
 # Blocklists anzeigen
 nft list set inet filter banned4
 nft list set inet filter banned6
+nft list set inet filter scanban4      # Portscan-Sperren (1 h)
 
-# Firewall-Regelwerk neu laden
+# Portscan-Sperre aufheben (z. B. nach einem Test von der eigenen IP)
+nft delete element inet filter scanban4 { 1.2.3.4 }
+nft flush set inet filter scanban4
+
+# Firewall-Regelwerk neu laden (ersetzt nur table inet filter, K3s-Tabellen bleiben)
 systemctl reload nftables</code></pre>
 
 <h3>Wichtige Sicherheitshinweise</h3>

@@ -609,6 +609,47 @@ wopi_allowed_hosts:
   - "10.43.0.0/16"   # Service CIDR
   - "collabora.inspired-as-code.de"</code></pre>
 
+<h3>notify_push (Client Push / High Performance Backend)</h3>
+<p>
+  Without notify_push, desktop sync clients and the web UI ask the server
+  every ~30 s whether anything changed. The <code>notify_push</code> app runs a
+  small daemon that keeps a WebSocket open and announces changes the moment
+  they happen. Push notifications on phones have nothing to do with it; they
+  go through Nextcloud's push proxy and work either way. The feature is off by
+  default and enabled per host with <code>nextcloud_notify_push_enabled: true</code>
+  (<code>next_k3s_deploy/tasks/notify_push.yml</code>).
+</p>
+<table>
+  <tr><th>Piece</th><th>How it is built here</th></tr>
+  <tr><td>App</td><td><code>occ app:install notify_push</code>, run as www-data (occ refuses root)</td></tr>
+  <tr><td>Daemon</td><td>Own Deployment <code>notify-push</code>, same image, runs the binary that ships
+      inside the app from the shared code volume: <code>bin/$(uname -m)/notify_push</code>
+      (the app ships aarch64, armv7 and x86_64; a glob would pick aarch64).
+      Runs as uid/gid 33 (it must read <code>config.php</code>, mode 0640), read-only
+      root filesystem, <code>--bind 0.0.0.0</code>. The app version is a pod
+      annotation, so an app update rolls the pod and binary and app stay in step.</td></tr>
+  <tr><td>Route</td><td>Ingress minion <code>nextcloud-push-routes</code>, path <code>/push/</code>,
+      WebSocket, prefix stripped by <code>rewrite ^/push/(.*)$ /$1 break;</code>
+      (the daemon serves <code>/ws</code> and <code>/test/…</code> at its root).</td></tr>
+</table>
+<div class="callout callout-warn">
+  <strong>Why the route is a regex and why its name matters</strong>
+  The <code>nextcloud-routes</code> minion is a catch-all regex
+  (<code>location ~ "^/"</code>), and in nginx a regex location beats a plain
+  prefix location. A normal <code>/push/</code> prefix route therefore never
+  matched, and requests got Nextcloud's own 404 page. The push route is a regex
+  too, and the F5 controller emits the regex locations of minions in
+  <strong>alphabetical order of the Ingress name</strong>; nginx takes the first
+  match. <code>notify-push-routes</code> sorted after <code>nextcloud-routes</code>
+  and lost. <code>nextcloud-push-routes</code> ("p" &lt; "r") wins. Grafana's
+  route works for the same reason.
+</div>
+<pre><code>OCC="k3s kubectl exec deployment/nextcloud -n nextcloud -c nextcloud-fpm -- runuser -u www-data -- php /var/www/html/occ"
+$OCC notify_push:self-test     # expect 6 green checks
+$OCC notify_push:metrics       # "Active connection count" &gt; 0 once clients connect
+# Clients only notice push when they re-fetch capabilities (browser reload,
+# desktop client restart). Rollback: $OCC app:disable notify_push</code></pre>
+
 <h3>NetworkPolicy (Calico)</h3>
 <p>
   K3s's default CNI (Flannel) does not enforce Kubernetes <code>NetworkPolicy</code>
@@ -1019,7 +1060,9 @@ redis-cli FLUSHALL</code></pre>
   <code>NodeExporterDown</code>), but no Alertmanager is deployed, so a firing
   rule is only visible in the Prometheus web UI – <em>nobody is notified</em>.
   That is deliberate for a single-node setup: Monit already covers the same
-  ground and mails about it. Don't rely on the Prometheus rules to wake anyone
+  ground and mails about it. (Grafana's own five alert rules, see
+  <em>Grafana Alerting</em> below, are a third, independent mail path.)
+  Don't rely on the Prometheus rules to wake anyone
   up, and if you ever add an Alertmanager, remove the overlapping Monit checks
   rather than getting paged twice.
 </div>
@@ -1225,6 +1268,19 @@ k3s kubectl logs -n nextcloud deployment/nextcloud -c nextcloud-fpm -f | grep -i
   Notifications are sent to the address stored in <code>vault.yml</code> (<code>email</code>)
   via the contact point <code>email-admin</code>.
 </p>
+<div class="callout callout-warn">
+  <strong>A rule without a condition never fires</strong>
+  Each rule has two queries: A (the metric) and B (the threshold check). The
+  provisioning must name B as <code>"condition"</code>. Without it, Grafana logs
+  <code>condition must not be empty</code> on every evaluation and never alerts.
+  Because the rules use <code>execErrState: OK</code>, the UI still shows them
+  as healthy. This happened until 2026-09-23. Quick check:
+  <code>journalctl -u grafana-server --since -10min | grep -c "condition must not be empty"</code>
+  must print <code>0</code>.<br>
+  Also note: the "data partition" rule watches the <code>/srv</code> and
+  <code>/var</code> mount points. On a host where these are not separate
+  partitions it never matches, and the root rule covers the disk instead.
+</div>
 
 <h3>mysqld_exporter – Check Status</h3>
 <pre><code># Service status
@@ -1597,6 +1653,32 @@ k3s kubectl describe clusterissuer letsencrypt-prod</code></pre>
   cert-manager requires port 80 for the HTTP-01 challenge.
 </p>
 
+<h3>Nextcloud Errors Briefly During Every Playbook Run</h3>
+<p>
+  A playbook run should be invisible to users. If <code>status.php</code> returns
+  500/503 for a few minutes mid-run, look for a task that undoes another one.
+  Two such cases are fixed now:
+</p>
+<table>
+  <tr><th>Symptom</th><th>Cause (fixed)</th><th>How to spot a regression</th></tr>
+  <tr>
+    <td>MariaDB stops for 2–3 min</td>
+    <td>The CIS role removed <code>rsync</code>. <code>MariaDB-server</code> depends on it
+        (Galera SST script <code>wsrep_sst_rsync</code>), so dnf removed the database
+        server too. It now removes rsync only if <code>rpm -e --test rsync</code> passes.</td>
+    <td><code>dnf history list</code> shows a <em>Removed</em> transaction during the run;
+        <code>systemctl show mariadb -p ActiveEnterTimestamp</code> changes</td>
+  </tr>
+  <tr>
+    <td>"data_dir_writability … Permission denied" in <code>nextcloud.log</code></td>
+    <td><code>next_selinux</code> created <code>/data</code> and the code dir as root:root,
+        and <code>dirs.yml</code> set them back to 33:33 later in the run. Both roles now
+        set identical owner/mode.</td>
+    <td><code>journalctl | grep "ansible-.*path=/data "</code> shows different owners
+        within one run</td>
+  </tr>
+</table>
+
 <h3>CronJob Is Not Running</h3>
 <pre><code># Status of recent jobs:
 k3s kubectl get cronjob nextcloud-cron -n nextcloud
@@ -1806,7 +1888,12 @@ Both verified 2026-09-14.</p>
       <code>nginx-k3s-grafana-login</code>: Grafana login brute-force (5 failed logins/HTTP&nbsp;401 in 600&nbsp;s);
       <code>recidive</code>: repeat offenders – banned 3× in 24 h → 30-day ban.
       All verify tasks run via <code>curl --resolve hostname:443:127.0.0.1</code> (source IP 127.0.0.1 ∈ ignoreip → no self-ban).
-      Log path: <code>/var/log/pods/ingress-nginx_*/nginx-ingress/*.log</code>
+      Log path: <code>/var/log/pods/ingress-nginx_*/nginx-ingress/*.log</code>.
+      fail2ban expands that glob only when a jail starts, but each ingress
+      container restart (and each reboot, where fail2ban starts first) writes a
+      new <code>N.log</code>. The <code>fail2ban-ingress-logwatch</code> timer
+      (every 2 min) reloads the HTTP jails when the set of log files changes.
+      Without it the jails silently kept watching a dead file.
     </td>
     <td><code>common_fail2ban</code></td>
   </tr>
@@ -1990,12 +2077,26 @@ Both verified 2026-09-14.</p>
 
 <h3>Firewall in Detail</h3>
 <p>
-  The ruleset (<code>/etc/nftables.conf</code>) is rendered by Ansible from the template
-  <code>common_firewall/templates/fw.nft.j2</code> and loaded by the
-  <code>nftables</code> systemd service at boot. K3s manages its own
-  <code>KUBE-*</code> chains in iptables (a separate subsystem) — there is no
-  lock contention with nftables.
+  The ruleset (<code>/etc/sysconfig/nftables.conf</code> on AlmaLinux 9) is
+  rendered by Ansible from the template
+  <code>common_firewall/templates/fw.nft.j2</code>, checked with
+  <code>nft -c</code> before it replaces the live file, and loaded by the
+  <code>nftables</code> systemd service at boot.
 </p>
+<div class="callout callout-danger">
+  <strong>K3s rules can live in nftables too: never <code>flush ruleset</code></strong>
+  Whether kube-proxy, flannel and Calico write their <code>KUBE-*</code> chains
+  to iptables-legacy or to nftables depends on the host. On the Nextcloud host
+  they are in nftables (<code>nft list tables</code> shows <code>ip nat</code>,
+  <code>ip filter</code>, <code>calico-arp</code>, …). The stock
+  <code>nftables.service</code> reloads with <code>flush ruleset</code>, which
+  wiped those tables as well. Service traffic (Nextcloud → MariaDB/Redis) broke
+  for 30–90 s until they re-synced, on every firewall change. The ruleset now
+  replaces only <code>table inet filter</code> in one atomic transaction, and the
+  drop-in <code>/etc/systemd/system/nftables.service.d/10-own-table-only.conf</code>
+  scopes <code>reload</code>/<code>stop</code> the same way, so
+  <code>systemctl reload nftables</code> is safe.
+</div>
 <table>
   <tr><th>Feature</th><th>Detail</th></tr>
   <tr>
@@ -2008,6 +2109,17 @@ Both verified 2026-09-14.</p>
     <td>Native nftables sets (<code>banned4</code> / <code>banned6</code>) with
         24h auto-expiry. fail2ban writes detected attackers directly into these sets.
         Check: <code>nft list set inet filter banned4</code></td>
+  </tr>
+  <tr>
+    <td>Port-scan ban</td>
+    <td>fail2ban can't see port scans, because it only reads logs and the drop
+        log is deliberately rate-limited. The last rule before the policy drop
+        counts new-connection SYNs per source (<code>portscan4</code>/<code>portscan6</code>,
+        dynamic sets). Only packets that are about to be dropped anyway reach
+        that rule, i.e. closed ports. A source above the threshold lands in
+        <code>scanban4</code>/<code>scanban6</code> and is dropped on
+        <em>all</em> ports for 1 h. The threshold and exceptions are documented
+        in the template. Heavily distributed, slow scans stay below it by design.</td>
   </tr>
   <tr>
     <td>Malformed packet drop</td>
@@ -2053,8 +2165,13 @@ nft list ruleset
 # Show blocklists
 nft list set inet filter banned4
 nft list set inet filter banned6
+nft list set inet filter scanban4      # port-scan bans (1 h)
 
-# Reload firewall ruleset
+# Lift a port-scan ban (e.g. after testing from your own IP)
+nft delete element inet filter scanban4 { 1.2.3.4 }
+nft flush set inet filter scanban4
+
+# Reload firewall ruleset (only replaces table inet filter, K3s tables stay)
 systemctl reload nftables</code></pre>
 
 <h3>Important Security Notes</h3>

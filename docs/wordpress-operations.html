@@ -1271,6 +1271,16 @@ k3s kubectl logs -n wordpress deployment/wordpress -c wordpress-fpm -f | grep -i
   Notifications are sent to the address stored in <code>vault.yml</code> (<code>email</code>)
   via the contact point <code>email-admin</code>.
 </p>
+<div class="callout callout-warn">
+  <strong>A rule without a condition never fires</strong>
+  Each rule has two queries: A (the metric) and B (the threshold check), and the
+  provisioning must name B as <code>"condition"</code>. Without it Grafana logs
+  <code>condition must not be empty</code> on every evaluation and never alerts.
+  Because the rules use <code>execErrState: OK</code>, the UI still shows them as
+  healthy. This happened until 2026-09-23. Check:
+  <code>journalctl -u grafana-server --since -10min | grep -c "condition must not be empty"</code>
+  must print <code>0</code>.
+</div>
 
 <h3>Prometheus Scrape Targets</h3>
 <pre><code># Check active scrape targets (in browser or curl)
@@ -1793,7 +1803,11 @@ sysctl net.ipv4.tcp_congestion_control</code></pre>
   plugin updates via the WordPress admin panel, the pod must be restarted for PHP to
   pick up the new code.
   <pre style="margin-top:8px"><code>k3s kubectl rollout restart deployment/wordpress -n wordpress</code></pre>
-  The Ansible playbook performs this restart automatically on every run.
+  The Ansible playbook restarts the pod automatically, but only when it actually
+  changed PHP code: a core, plugin or theme update, or new content in one of its
+  mu-plugins. A run without changes causes no restart and no 502. (Until
+  2026-09-23 every run restarted it, because the mu-plugin task always reported
+  a change. With the <code>Recreate</code> strategy that meant ~30–60 s of 502 per run.)
 </div>
 
 <h3>Redis Object Cache</h3>
@@ -1873,7 +1887,12 @@ Both verified 2026-09-14.</p>
       <code>nginx-k3s-grafana-login</code>: Grafana login brute-force (5 failed logins/HTTP&nbsp;401 in 600&nbsp;s);
       <code>recidive</code>: repeat offenders – banned 3× in 24 h → 30-day ban.
       All verify tasks run via <code>curl --resolve hostname:443:127.0.0.1</code> (source IP 127.0.0.1 ∈ ignoreip → no self-ban).
-      Log path: <code>/var/log/pods/ingress-nginx_*/nginx-ingress/*.log</code>
+      Log path: <code>/var/log/pods/ingress-nginx_*/nginx-ingress/*.log</code>.
+      fail2ban expands that glob only when a jail starts, but each ingress
+      container restart (and each reboot, where fail2ban starts first) writes a
+      new <code>N.log</code>. The <code>fail2ban-ingress-logwatch</code> timer
+      (every 2 min) reloads the HTTP jails when the set of log files changes.
+      Without it they silently kept watching a dead file.
     </td>
     <td><code>common_fail2ban</code></td>
   </tr>
@@ -2248,12 +2267,23 @@ Both verified 2026-09-14.</p>
 
 <h3>Firewall in Detail</h3>
 <p>
-  The ruleset (<code>/etc/nftables.conf</code>) is rendered by Ansible from the template
-  <code>common_firewall/templates/fw.nft.j2</code> and loaded by the
-  <code>nftables</code> systemd service at boot. K3s manages its own
-  <code>KUBE-*</code> chains in iptables (a separate subsystem) — there is no
-  lock contention with nftables.
+  The ruleset (<code>/etc/sysconfig/nftables.conf</code> on AlmaLinux 9) is
+  rendered by Ansible from the template
+  <code>common_firewall/templates/fw.nft.j2</code>, checked with
+  <code>nft -c</code> before it replaces the live file, and loaded by the
+  <code>nftables</code> systemd service at boot.
 </p>
+<div class="callout callout-danger">
+  <strong>Never <code>flush ruleset</code>: K3s rules may live in nftables</strong>
+  Whether kube-proxy/flannel/Calico write their <code>KUBE-*</code> chains to
+  iptables-legacy or to nftables depends on the host. On the blog host they are
+  in iptables-legacy, on the Nextcloud host in nftables. There the stock
+  <code>nftables.service</code> reload (<code>flush ruleset</code>) wiped them and broke
+  Service traffic for 30–90 s. The ruleset therefore replaces only
+  <code>table inet filter</code> atomically, and the drop-in
+  <code>/etc/systemd/system/nftables.service.d/10-own-table-only.conf</code> scopes
+  <code>reload</code>/<code>stop</code> the same way. Safe on both kinds of host.
+</div>
 <table>
   <tr><th>Feature</th><th>Detail</th></tr>
   <tr>
@@ -2266,6 +2296,16 @@ Both verified 2026-09-14.</p>
     <td>Native nftables sets (<code>banned4</code> / <code>banned6</code>) with
         24h auto-expiry. fail2ban writes detected attackers directly into these sets.
         Check: <code>nft list set inet filter banned4</code></td>
+  </tr>
+  <tr>
+    <td>Port-scan ban</td>
+    <td>fail2ban can't see port scans, because it only reads logs and the drop
+        log is deliberately rate-limited. The last rule before the policy drop
+        counts new-connection SYNs per source (<code>portscan4</code>/<code>portscan6</code>).
+        Only packets that are about to be dropped anyway reach it, i.e. closed ports.
+        A source above the threshold lands in <code>scanban4</code>/<code>scanban6</code>
+        and is dropped on <em>all</em> ports for 1 h. Threshold and exceptions are
+        in the template. Slow, heavily distributed scans stay below it by design.</td>
   </tr>
   <tr>
     <td>Malformed packet drop</td>
@@ -2311,8 +2351,13 @@ nft list ruleset
 # Show blocklists
 nft list set inet filter banned4
 nft list set inet filter banned6
+nft list set inet filter scanban4      # port-scan bans (1 h)
 
-# Reload firewall ruleset
+# Lift a port-scan ban (e.g. after testing from your own IP)
+nft delete element inet filter scanban4 { 1.2.3.4 }
+nft flush set inet filter scanban4
+
+# Reload firewall ruleset (only replaces table inet filter, K3s tables stay)
 systemctl reload nftables</code></pre>
 
 <h3>Important Security Notes</h3>

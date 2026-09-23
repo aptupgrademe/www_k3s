@@ -78,8 +78,12 @@ Internet
 - **Reproducible app layout** – playbook-driven enable/disable reconcile
   (`nextcloud_apps_enabled` / `_disabled`) that tolerates apps with no version
   compatible with the running major (they simply stay disabled)
-- **notify_push (High Performance Backend)** – optional WebSocket push that
-  replaces ~30 s client polling, gated behind `nextcloud_notify_push_enabled`
+- **notify_push (High Performance Backend)** – WebSocket push that replaces the
+  ~30 s polling of desktop sync clients and the web UI (phone notifications are
+  unrelated, they go through Nextcloud's push proxy). Runs as its own Deployment
+  behind a `/push/` ingress route; off by default, enabled per host via
+  `nextcloud_notify_push_enabled` (live on the production Nextcloud host,
+  `occ notify_push:self-test` 6/6)
 - **Pre-flight version check** (`common_version_check`) shows installed vs. latest versions
 - **Ansible pipelining**, fact caching (1 h), SSH ControlPersist 600 s
 
@@ -104,7 +108,17 @@ Internet
 - `table inet` ruleset covering IPv4 and IPv6 in one ruleset
 - Default **DROP policy** on INPUT and FORWARD
 - Whitelist-only: SSH (port 10022), HTTP (80), HTTPS (443), ICMP rate-limited
-- `banned4` / `banned6` nftables sets with native timeout
+- `banned4` / `banned6` nftables sets with native timeout (filled by Fail2Ban)
+- **Port-scan ban** in the kernel: a source that keeps knocking on closed ports
+  lands in `scanban4` / `scanban6` and is dropped on *all* ports for a while.
+  Fail2Ban can't do this, because it only sees logs and the drop log is
+  deliberately rate-limited
+- **Reload touches only `table inet filter`**: the ruleset replaces its own
+  table atomically, and a systemd drop-in scopes `reload`/`stop` the same way.
+  kube-proxy, flannel and Calico keep their rules in nftables too (iptables-nft),
+  and the stock `flush ruleset` wiped them, breaking Service traffic for up to
+  90 s on every firewall change
+- The template is checked with `nft -c` before it replaces the live file
 
 #### NetworkPolicy – Calico (Nextcloud)
 
@@ -124,6 +138,12 @@ Internet
 | `nginx-k3s-scanner` | 403/404 storm (20× / 60 s) | 1 h |
 | `nginx-k3s-bad-paths` | Known-malicious paths | 24 h |
 | `recidive` | Banned 3× in one day | **30 days** |
+
+The HTTP jails read the ingress controller's container log. fail2ban expands
+that log path only when a jail starts, but every container restart (and every
+reboot, where fail2ban comes up first) creates a new log file. A 2-minute timer
+(`fail2ban-ingress-logwatch`) reloads the HTTP jails whenever that happens.
+Without it they silently kept watching a dead file.
 
 #### TLS / HTTPS
 
@@ -287,24 +307,27 @@ ansible-vault encrypt inventory/host_vars/<host>/vault.yml
 | `common_version_check` | Pre-flight: K3s, Helm, chart and image versions vs. latest |
 | `common_k3s` | K3s, Helm, cert-manager, F5 nginx-ingress (HTTP/2, Brotli, OCSP) |
 | `common_calico` | Calico policy-only mode: NetworkPolicy enforcement (Nextcloud) |
-| `common_firewall` | nftables (table inet, banned4/banned6 sets, K3s exceptions) |
+| `common_firewall` | nftables (table inet, banned/scan-ban sets, port-scan detection, K3s exceptions, table-scoped reload) |
 | `common_ssh` | SSH hardening (port 10022, key-only, PermitRootLogin without-password) |
 | `common_prometheus` | Prometheus metrics collector (dashboards/history only – see note below) |
 | `common_grafana` | Grafana dashboards |
 | `common_node_exporter` | Host metrics exporter |
 | `common_mysqld_exporter` | MariaDB metrics exporter |
 | `common_monit` | Watchdog and **the actual alerting path** – e-mails on resource/service/firewall/pod/TLS-certificate problems, auto-restarts fail2ban |
-| `common_fail2ban` | Brute-force protection; writes to nftables banned sets |
+| `common_fail2ban` | Brute-force protection; writes to nftables banned sets; log-watch timer keeps the HTTP jails on the current ingress log |
 | `common_auditd` | Linux audit daemon |
 | `common_rkhunter` | Rootkit detection with daily scan |
 | `common_cis_hardening` | CIS AlmaLinux 9 Benchmark: AIDE, kernel modules, cron/sudo, mount options |
 | `common_aide_refresh` | Refreshes the AIDE baseline after approved changes, so the nightly check isn't a false alarm |
 
-> **Alerting:** Monit sends the mail, Prometheus does not. Prometheus evaluates
-> the rules in `alert.rules.yml`, but no Alertmanager is deployed – a firing rule
-> is only visible in its web UI. That is deliberate for a single-node setup:
-> Monit already covers the same ground (load, memory, disk, services, firewall,
-> K3s pods, TLS expiry) and mails about it.
+> **Alerting:** Monit is the main mail path. Prometheus evaluates the rules in
+> `alert.rules.yml`, but no Alertmanager is deployed, so a firing rule is only
+> visible in its web UI. That is deliberate for a single-node setup: Monit
+> already covers the same ground (load, memory, disk, services, firewall, K3s
+> pods, TLS expiry) and mails about it. Grafana adds five mail alerts of its own
+> (disk, RAM, CPU, node down) via the `email-admin` contact point. Each rule
+> needs `"condition": "B"`; without it Grafana logs "condition must not be
+> empty" on every evaluation and never fires.
 
 ### Nextcloud & WordPress
 
