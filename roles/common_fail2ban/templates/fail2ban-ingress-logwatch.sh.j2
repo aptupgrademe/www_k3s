@@ -1,0 +1,28 @@
+#!/bin/sh
+# {{ ansible_managed }}
+#
+# fail2ban expands the logpath glob of the nginx-k3s-* jails only when a jail
+# starts. The ingress controller writes a new N.log after every container
+# restart (and a new pod directory after a pod is recreated), and after a
+# reboot fail2ban starts before the ingress container. The jails then kept
+# tailing a dead file and banned nothing for days (found 2026-09-23 on both
+# hosts). Reload those jails whenever the set of ingress log files changes.
+# The state lives in /run, so the first check after every boot always reloads.
+
+GLOB='/var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/*.log'
+STATE=/run/fail2ban-ingress-logs.list
+
+# shellcheck disable=SC2086  # $GLOB must be expanded
+CURRENT=$(ls -1 $GLOB 2>/dev/null | sort)
+[ -n "$CURRENT" ] || exit 0
+[ "$CURRENT" = "$(cat "$STATE" 2>/dev/null)" ] && exit 0
+fail2ban-client ping >/dev/null 2>&1 || exit 0
+
+for jail in $(fail2ban-client status | sed -n 's/.*Jail list:[[:space:]]*//p' | tr ',' ' '); do
+    case "$jail" in
+        nginx-k3s-*) fail2ban-client reload "$jail" >/dev/null || exit 1 ;;
+    esac
+done
+
+printf '%s\n' "$CURRENT" > "$STATE"
+logger -t fail2ban-ingress-logwatch "reloaded nginx-k3s jails; watching: $(echo $CURRENT | tr '\n' ' ')"

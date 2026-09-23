@@ -79,3 +79,66 @@
     enabled: true
     state: started
     daemon_reload: true
+
+
+# -----------------------------------------------------------------------------
+# Keep the nginx-k3s jails on the CURRENT ingress log file
+# -----------------------------------------------------------------------------
+# The logpath glob is only expanded when a jail starts, but the ingress
+# container writes a new N.log after every restart/reboot, so the jails
+# silently went blind (see the script). A timer reloads them when the
+# set of log files changes.
+- name: Fail2Ban | Deploy ingress log watcher script
+  ansible.builtin.template:
+    src: fail2ban-ingress-logwatch.sh.j2
+    dest: /usr/local/sbin/fail2ban-ingress-logwatch
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Fail2Ban | Deploy ingress log watcher service + timer
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}"
+    owner: root
+    group: root
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: fail2ban-ingress-logwatch.service
+      content: |
+        # Managed by Ansible (role common_fail2ban) - do not edit
+        [Unit]
+        Description=Reload fail2ban nginx-k3s jails when the ingress log file changes
+        After=fail2ban.service
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/local/sbin/fail2ban-ingress-logwatch
+    - name: fail2ban-ingress-logwatch.timer
+      content: |
+        # Managed by Ansible (role common_fail2ban) - do not edit
+        [Unit]
+        Description=Check every 2 minutes whether the ingress log file changed
+
+        [Timer]
+        OnBootSec=3min
+        OnUnitActiveSec=2min
+
+        [Install]
+        WantedBy=timers.target
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Fail2Ban | Enable and start ingress log watcher timer
+  ansible.builtin.systemd:
+    name: fail2ban-ingress-logwatch.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+
+# Fix a blind jail immediately instead of waiting for the first timer tick.
+- name: Fail2Ban | Run ingress log watcher once now
+  ansible.builtin.systemd:
+    name: fail2ban-ingress-logwatch.service
+    state: started
+  changed_when: false
