@@ -34,21 +34,26 @@
 # -----------------------------------------------------------------------------
 # HostPath volume directories
 # -----------------------------------------------------------------------------
+# Owner/mode MUST match next_k3s_deploy/tasks/dirs.yml. With root:root here the
+# two roles flipped ownership on every playbook run, and for the few minutes
+# in between www-data could not write to the top of the data dir (Nextcloud's
+# writability check failed, status.php errored). Found 2026-09-23 on cvjm; the
+# same pattern hit the blog's www dir on 2026-08-26 (see dirs.yml).
 - name: SELinux | Ensure Nextcloud www directory exists
   ansible.builtin.file:
     path: "{{ nextcloud_k3s_www_dir }}"
     state: directory
-    owner: root
-    group: root
+    owner: 33
+    group: 33
     mode: "0755"
 
 - name: SELinux | Ensure Nextcloud data directory exists
   ansible.builtin.file:
     path: "{{ nextcloud_data_dir }}"
     state: directory
-    owner: root
-    group: root
-    mode: "0775"
+    owner: 33
+    group: 33
+    mode: "0770"
 
 
 # -----------------------------------------------------------------------------

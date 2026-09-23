@@ -33,12 +33,16 @@
 # -----------------------------------------------------------------------------
 # HostPath volume directories
 # -----------------------------------------------------------------------------
+# Owner/mode MUST match blog_k3s_deploy/tasks/dirs.yml, otherwise the two roles
+# flip them on every playbook run (www dir briefly root-owned = the 2026-08-26
+# TranslatePress "Permission denied"; DB dir briefly world-listable). Aligned
+# 2026-09-23 after the same bug was found on the Nextcloud host.
 - name: SELinux | Ensure WordPress www HostPath directory exists
   ansible.builtin.file:
     path: "{{ blog_k3s_www_dir }}"
     state: directory
-    owner: root
-    group: root
+    owner: 33
+    group: 33
     mode: "0755"
 
 - name: SELinux | Ensure MariaDB data HostPath directory exists
@@ -47,7 +51,7 @@
     state: directory
     owner: "999"   # mysql user inside the mariadb container
     group: "999"
-    mode: "0755"
+    mode: "0750"
 
 
 # -----------------------------------------------------------------------------
