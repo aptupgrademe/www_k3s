@@ -1,7 +1,14 @@
 #!/usr/sbin/nft -f
 # Managed by Ansible (common_firewall) – do not edit manually.
 
-flush ruleset
+# Replace ONLY our own table. kube-proxy, flannel and Calico keep their rules
+# in nftables too (ip nat/filter/mangle, calico-arp, ...); the old
+# "flush ruleset" wiped those on every firewall reload, breaking Service
+# ClusterIP traffic (Nextcloud -> MariaDB/Redis) for 30-90 s until they
+# re-synced. Declaring the table first makes the delete safe on a fresh boot.
+# nft -f runs the whole file as one atomic transaction: no gap without rules.
+table inet filter
+delete table inet filter
 
 # =============================================================================
 # table inet filter – covers IPv4 and IPv6 in a single ruleset
@@ -26,6 +33,40 @@ table inet filter {
     flags timeout
     timeout 1d
     comment "attacker / port-scanner blocklist (IPv6)"
+  }
+
+  # ---------------------------------------------------------------------------
+  # Port-scan detection (see the end of the input chain). portscanN holds
+  # per-source SYN-rate counters for closed ports, scanbanN the 1-hour bans.
+  # Lift a ban: nft delete element inet filter scanban4 { 1.2.3.4 }
+  # Lift all:   nft flush set inet filter scanban4
+  # ---------------------------------------------------------------------------
+  set portscan4 {
+    type ipv4_addr
+    flags dynamic, timeout
+    timeout 1m
+    size 65536
+  }
+
+  set portscan6 {
+    type ipv6_addr
+    flags dynamic, timeout
+    timeout 1m
+    size 65536
+  }
+
+  set scanban4 {
+    type ipv4_addr
+    flags timeout
+    timeout 1h
+    comment "port scanners, auto-detected (IPv4)"
+  }
+
+  set scanban6 {
+    type ipv6_addr
+    flags timeout
+    timeout 1h
+    comment "port scanners, auto-detected (IPv6)"
   }
 
   # ===========================================================================
@@ -59,6 +100,8 @@ table inet filter {
     # Blocklist check (before K3s ACCEPT rules so banned IPs are always dropped)
     ip  saddr @banned4 drop
     ip6 saddr @banned6 drop
+    ip  saddr @scanban4 drop
+    ip6 saddr @scanban6 drop
 
     # -------------------------------------------------------------------------
     # K3s / Kubernetes CNI exceptions
@@ -139,6 +182,20 @@ table inet filter {
     # DHCPv4-Antworten (UDP 68) sind durch ct state established,related abgedeckt.
     ip6 saddr fe80::/10 udp dport 546 accept comment "DHCPv6 response – PFLICHT fuer IPv6"
 
+    # -------------------------------------------------------------------------
+    # Port-scan detection. Everything that reaches this point is about to be
+    # dropped by policy (a closed port), and private/pod sources were already
+    # handled above, so normal traffic is never counted. A source sending more
+    # than 30 new-connection SYNs per minute to closed ports lands in scanbanN
+    # for 1 h, checked at the top of this chain, i.e. for ALL ports incl. web
+    # and SSH. nmap sends hundreds per minute; a human mistyping a port sends a
+    # handful. Port 22 is not counted, so forgetting "-p 10022" a few times
+    # never locks the admin out. fail2ban can't do this: it only reads logs,
+    # and the drop log below is rate-limited to 2/minute on purpose.
+    # -------------------------------------------------------------------------
+    meta nfproto ipv4 tcp flags & (fin|syn|rst|ack) == syn tcp dport != 22 update @portscan4 { ip saddr limit rate over 30/minute burst 30 packets } add @scanban4 { ip saddr } drop
+    meta nfproto ipv6 tcp flags & (fin|syn|rst|ack) == syn tcp dport != 22 update @portscan6 { ip6 saddr limit rate over 30/minute burst 30 packets } add @scanban6 { ip6 saddr } drop
+
     # Log everything else before the policy drop (rate-limited)
     limit rate 2/minute log prefix "nftables DROP IN:  " level warn flags all
   }
@@ -177,6 +234,8 @@ table inet filter {
     # Blocklist check on forwarded traffic
     ip  saddr @banned4 drop
     ip6 saddr @banned6 drop
+    ip  saddr @scanban4 drop
+    ip6 saddr @scanban6 drop
 
     # K3s pod traffic (both directions)
     ip saddr {{ k3s_pod_cidr }} accept

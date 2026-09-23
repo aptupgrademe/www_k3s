@@ -28,6 +28,8 @@
 # Deploy ruleset to the file the nftables systemd service actually reads.
 # AlmaLinux 9: ExecStart=/sbin/nft -f /etc/sysconfig/nftables.conf
 # -----------------------------------------------------------------------------
+# validate: a syntax error must never reach the live file (the service would
+# fail to load it on the next boot). `nft -c` only checks, nothing is applied.
 - name: Firewall | Upload nftables ruleset (templated)
   ansible.builtin.template:
     src: fw.nft.j2
@@ -35,7 +37,41 @@
     owner: root
     group: root
     mode: "0640"
+    validate: nft -c -f %s
   notify: Reload nftables
+
+# The stock unit reloads with 'flush ruleset; include ...' and stops with
+# 'flush ruleset'. That also wipes kube-proxy's / flannel's / Calico's tables,
+# which live in nftables too, and breaks Service traffic until they re-sync.
+# Scope reload/stop to our own table. It must be in place before the reload
+# handler fires at the end of the play.
+- name: Firewall | Create nftables drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/nftables.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Firewall | Scope nftables reload/stop to our own table (keep K3s tables)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/nftables.service.d/10-own-table-only.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (role common_firewall) - do not edit
+      [Service]
+      ExecReload=
+      ExecReload=/sbin/nft -f /etc/sysconfig/nftables.conf
+      ExecStop=
+      ExecStop=/sbin/nft delete table inet filter
+  register: _nft_dropin
+
+- name: Firewall | Reload systemd after the nftables drop-in changed
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: _nft_dropin.changed
 
 # On AlmaLinux 9 the active config is /etc/sysconfig/nftables.conf.
 # /etc/nftables.conf is a distro default stub that is NOT loaded by the
