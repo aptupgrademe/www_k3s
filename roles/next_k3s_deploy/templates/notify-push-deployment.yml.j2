@@ -4,10 +4,10 @@
 # shared code volume's config.php and pushes change events to clients over a
 # WebSocket, replacing the ~30s polling every desktop/mobile client does.
 #
-# NOTE: gated by nextcloud_notify_push_enabled. Not yet verified live -- on the
-# first rollout confirm: (1) the binary path/arch below matches the image, (2) it
-# binds 0.0.0.0 (add `--bind 0.0.0.0` if the Service cannot reach it), and (3)
-# `occ notify_push:setup` self-test passes (tasks/notify_push.yml).
+# Gated by nextcloud_notify_push_enabled. The app ships binaries for aarch64,
+# armv7 and x86_64; pick by `uname -m` (a glob would take aarch64 first).
+# Only config.php is parsed (no --glob-config): the *.config.php files on the
+# hostPath are empty mount-point stubs, and redis is configured in config.php.
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -25,30 +25,41 @@ spec:
     metadata:
       labels:
         app: notify-push
+      annotations:
+        # Changes with the app version -> rolls the pod so the running binary
+        # matches the installed app (tasks/notify_push.yml).
+        notify-push/app-version: "{{ notify_push_app_version | default('unknown') }}"
     spec:
       automountServiceAccountToken: false
+      # config.php is 0640 owned by www-data (33). Root with all capabilities
+      # dropped has no DAC override and could not read it.
+      securityContext:
+        runAsUser: 33
+        runAsGroup: 33
+        runAsNonRoot: true
       containers:
       - name: notify-push
         image: {{ nextcloud_image_fpm }}
         # The binary only exists after the notify_push app is installed into the
-        # shared code volume (tasks/notify_push.yml does that). On first start it
-        # may not be there yet, so wait for it, then exec. Handles both apps/ and
-        # custom_apps/ and whatever arch subdir the image ships.
+        # shared code volume (tasks/notify_push.yml does that before applying
+        # this manifest). Wait for it rather than crash-loop, then exec.
         command: ["/bin/sh", "-c"]
         args:
           - |
-            echo "notify-push: waiting for the binary in the shared code volume ..."
+            ARCH=$(uname -m)
+            echo "notify-push: waiting for the $ARCH binary in the shared code volume ..."
             while :; do
-              BIN=$(ls /var/www/html/apps/notify_push/bin/*/notify_push \
-                       /var/www/html/custom_apps/notify_push/bin/*/notify_push \
-                       2>/dev/null | head -1)
-              [ -n "$BIN" ] && [ -x "$BIN" ] && break
+              for d in apps custom_apps; do
+                BIN=/var/www/html/$d/notify_push/bin/$ARCH/notify_push
+                [ -x "$BIN" ] && break 2
+              done
               sleep 10
             done
             echo "notify-push: starting $BIN"
-            exec "$BIN" --port {{ notify_push_port | default(7867) }} /var/www/html/config/config.php
+            exec "$BIN" --bind 0.0.0.0 --port {{ notify_push_port | default(7867) }} /var/www/html/config/config.php
         securityContext:
           allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
           capabilities:
             drop: [ALL]
           seccompProfile:

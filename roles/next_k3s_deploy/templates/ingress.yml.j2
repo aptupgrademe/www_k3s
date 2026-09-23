@@ -158,25 +158,39 @@ spec:
 # ============================================================
 # Own minion: the push endpoint needs WebSocket upgrade + long read timeout for
 # the persistent connection, different from the Nextcloud routes' header set.
+# notify_push serves /ws and /test/... at its root, so /push/ is stripped
+# (upstream nginx example: `location ^~ /push/ { proxy_pass http://...:7867/; }`).
+# Must be a regex path for the same reason as grafana-routes above: a plain
+# prefix location loses against the nextcloud-routes catch-all `~ "^/"` (the
+# first rollout 2026-09-23 got Nextcloud's 404 for /push/test/cookie). In a
+# regex location nginx forbids proxy_pass with a URI, so nginx.org/rewrites
+# can't strip the prefix -- an explicit rewrite ... break does it instead.
+# The NAME matters too: the controller emits minion regex locations in
+# alphabetical order of the Ingress name and nginx takes the first matching
+# regex. "nextcloud-push-routes" sorts before "nextcloud-routes" (p < r);
+# "notify-push-routes" sorted after it and was still swallowed by `~ "^/"`.
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: notify-push-routes
+  name: nextcloud-push-routes
   namespace: nextcloud
   annotations:
     nginx.org/mergeable-ingress-type: "minion"
+    nginx.org/path-regex: "case_sensitive"
     nginx.org/websocket-services: "notify-push"
     nginx.org/proxy-read-timeout: "3600s"
     nginx.org/proxy-send-timeout: "3600s"
+    nginx.org/location-snippets: |
+      rewrite ^/push/(.*)$ /$1 break;
 spec:
   ingressClassName: nginx
   rules:
   - host: {{ nextcloud_hostname }}
     http:
       paths:
-      - path: /push
-        pathType: Prefix
+      - path: /push/
+        pathType: ImplementationSpecific
         backend:
           service:
             name: notify-push
