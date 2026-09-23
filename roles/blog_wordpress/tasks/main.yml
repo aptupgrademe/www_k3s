@@ -96,7 +96,8 @@
       - sh
       - -c
       - |
-        cat > /var/www/html/wp-content/mu-plugins/security-hardening.php << 'PHPEOF'
+        F=/var/www/html/wp-content/mu-plugins/security-hardening.php
+        cat > "$F.new" << 'PHPEOF'
         <?php
         /**
          * Security hardening – managed by Ansible (blog_wordpress).
@@ -135,8 +136,17 @@
             return $endpoints;
         });
         PHPEOF
-        chown www-data:www-data /var/www/html/wp-content/mu-plugins/security-hardening.php
-  changed_when: true
+        # Replace (and restart via the handler) only on a real content change.
+        # With a plain overwrite + changed_when: true, EVERY run restarted
+        # WordPress (Recreate strategy -> ~30-60 s of 502), found 2026-09-23.
+        # The .new file doesn't end in .php, so WordPress never loads it.
+        if [ -f "$F" ] && [ "$(md5sum < "$F.new")" = "$(md5sum < "$F")" ]; then
+          rm -f "$F.new"
+        else
+          mv "$F.new" "$F" && chown www-data:www-data "$F" && echo CHANGED
+        fi
+  register: wp_mu_hardening
+  changed_when: "'CHANGED' in wp_mu_hardening.stdout"
   notify: Restart wordpress deployment (OPcache picks up changed PHP files)
 
 # A breadcrumb-fix.php mu-plugin used to live here, working around a
@@ -448,7 +458,8 @@
       - sh
       - -c
       - |
-        cat > /var/www/html/wp-content/mu-plugins/ai-disclosure.php << 'PHPEOF'
+        F=/var/www/html/wp-content/mu-plugins/ai-disclosure.php
+        cat > "$F.new" << 'PHPEOF'
         <?php
         /**
          * AI usage disclosure – managed by Ansible (blog_wordpress).
@@ -468,8 +479,16 @@
             );
         });
         PHPEOF
-        chown www-data:www-data /var/www/html/wp-content/mu-plugins/ai-disclosure.php
-  changed_when: true
+        # Same change-only pattern as security-hardening.php above.
+        if [ -f "$F" ] && [ "$(md5sum < "$F.new")" = "$(md5sum < "$F")" ]; then
+          rm -f "$F.new"
+        else
+          mv "$F.new" "$F" && chown www-data:www-data "$F" && echo CHANGED
+        fi
+  register: wp_mu_ai_disclosure
+  changed_when: "'CHANGED' in wp_mu_ai_disclosure.stdout"
+  # A PHP file: OPcache (validate_timestamps=0) needs a restart to see changes.
+  notify: Restart wordpress deployment (OPcache picks up changed PHP files)
 
 
 # -----------------------------------------------------------------------------
