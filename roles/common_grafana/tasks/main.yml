@@ -463,21 +463,24 @@
       ds_uid = api(f"/api/datasources/name/{DS_NAME}")["uid"]
 
       def make_rule(uid, title, expr, threshold, threshold_op, summary, threshold_label):
-          # expr must NOT contain a PromQL threshold filter (no "> N" at end).
-          # The threshold belongs in the evaluator so classic_conditions always
-          # receives data and never throws "condition must not be empty".
+          # expr must NOT contain a PromQL threshold filter (no "> N" at end);
+          # the threshold belongs in the evaluator of query B.
+          # "condition" names the refId that decides the alert. Without it
+          # Grafana logs "condition must not be empty" on every evaluation and
+          # never fires; execErrState OK hid that (found 2026-09-23 on cvjm).
           return {
               "uid": uid,
               "title": title,
+              "condition": "B",
               "ruleGroup": "homelab",
               "folderUID": FOLDER_UID,
               "noDataState": "OK",
               "execErrState": "OK",
               "for": "5m",
+              # No empty __dashboardUid__/__panelId__: Grafana tries to parse
+              # them on every state change ("Error parsing panelUID").
               "annotations": {
                   "summary": summary,
-                  "__dashboardUid__": "",
-                  "__panelId__": "",
               },
               "labels": {"severity": "warning"},
               "data": [
