@@ -37,6 +37,26 @@ data:
       // --- Previews ---
       'enable_previews' => true,
       'preview_max_x'   => 4096,
+      // Decoding a 108-MP phone photo (12032 px wide, e.g. Xiaomi Mi Note 10)
+      // needs ~430 MB; the default 256 silently refused those previews (HTTP
+      // 404 for the app, found 2026-09-24). PHP memory_limit is 3G.
+      'preview_max_memory' => 512,
+      // Nextcloud 34 defaults + HEIC (iPhone photos; imagick in the image
+      // supports HEIC). Setting this key REPLACES the default list, so the
+      // defaults are repeated here. Videos would need ffmpeg in the image.
+      'enabledPreviewProviders' => [
+        'OC\\Preview\\MarkDown',
+        'OC\\Preview\\TXT',
+        'OC\\Preview\\OpenDocument',
+        'OC\\Preview\\PNG',
+        'OC\\Preview\\JPEG',
+        'OC\\Preview\\GIF',
+        'OC\\Preview\\BMP',
+        'OC\\Preview\\XBitmap',
+        'OC\\Preview\\Krita',
+        'OC\\Preview\\WebP',
+        'OC\\Preview\\HEIC',
+      ],
 
       // --- Logging (written into data dir → /data/nextcloud.log on host) ---
       // loglevel 2 = WARNING: logs warnings + errors + fatals (0=debug, 1=info,

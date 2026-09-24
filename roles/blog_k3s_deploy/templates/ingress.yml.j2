@@ -84,15 +84,15 @@ metadata:
       # to satisfy scanner checklists, no actual effect.
       add_header X-XSS-Protection "1; mode=block" always;
       # Report-Only: observes violations without blocking anything. Yoast's
-      # inline JSON-LD, WP block-library inline CSS, and the /grafana/ proxy
-      # path all need auditing before this can be promoted to an enforcing
-      # Content-Security-Policy.
+      # inline JSON-LD and WP block-library inline CSS need auditing before
+      # this can be promoted to an enforcing Content-Security-Policy.
       add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' wss: https:; frame-ancestors 'self'; base-uri 'self'; object-src 'none'" always;
     # Upload size
     nginx.org/client-max-body-size: "500m"
     nginx.org/proxy-read-timeout: "300s"
     nginx.org/proxy-send-timeout: "300s"
-    # Regex path matching for Grafana sub-path
+    # Regex path matching: "/" becomes location ~ "^/". Grafana has its own
+    # minion below (grafana-routes), whose regex location sorts first.
     nginx.org/path-regex: "case_sensitive"
 spec:
   ingressClassName: nginx
@@ -100,15 +100,7 @@ spec:
   - host: {{ blog_hostname }}
     http:
       paths:
-      # Grafana is proxied at /grafana/ to the host-side Grafana service.
-      - path: /grafana(/|$)
-        pathType: ImplementationSpecific
-        backend:
-          service:
-            name: grafana
-            port:
-              number: 3000
-      # Everything else goes to WordPress
+      # Everything except /grafana goes to WordPress
       - path: /
         pathType: Prefix
         backend:
@@ -116,6 +108,48 @@ spec:
             name: wordpress
             port:
               number: 80
+
+# ============================================================
+# Grafana – MINION (/grafana/), same pattern as the Nextcloud role
+# ============================================================
+# Split out of wordpress-routes (2026-09-24) for two reasons found in the
+# logs/headers: (1) Grafana Live (/grafana/api/live/ws) is a WebSocket and got
+# HTTP 400 without the Upgrade/Connection headers -- adding those to the shared
+# minion would have sent them with every WordPress request; (2) the shared
+# minion added X-Frame-Options SAMEORIGIN on top of Grafana's own "deny", and
+# browsers may drop conflicting duplicate headers entirely. location-snippets
+# are per Ingress, so Grafana needs its own. Regex locations are ordered by
+# Ingress name: "grafana-routes" sorts before "wordpress-routes" and wins.
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana-routes
+  namespace: wordpress
+  annotations:
+    nginx.org/mergeable-ingress-type: "minion"
+    nginx.org/path-regex: "case_sensitive"
+    nginx.org/proxy-read-timeout: "3600s"
+    nginx.org/location-snippets: |
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+      add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+      add_header Referrer-Policy "no-referrer" always;
+      add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
+      add_header X-Robots-Tag "noindex, nofollow" always;
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: {{ blog_hostname }}
+    http:
+      paths:
+      - path: /grafana(/|$)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: grafana
+            port:
+              number: 3000
 
 # ============================================================
 # Bare/apex domain (e.g. apt-upgrade.me, no "www.") – 301 redirect to

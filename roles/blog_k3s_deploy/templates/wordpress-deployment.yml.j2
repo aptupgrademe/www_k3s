@@ -28,6 +28,13 @@ spec:
     metadata:
       labels:
         app: wordpress
+      annotations:
+        # uploads.ini, the FPM pool and the nginx config are mounted with subPath,
+        # which never updates inside a running pod: a changed ConfigMap only took
+        # effect at the next accidental restart. The checksum of the rendered
+        # ConfigMaps rolls the pod whenever they change (same fix as the
+        # Nextcloud role, 2026-09-24); unchanged config leaves the pod alone.
+        checksum/config: "{{ lookup('ansible.builtin.template', 'nginx-cm.yml.j2') | hash('sha256') }}"
     spec:
       # WordPress/nginx/exporters never talk to the Kubernetes API — no SA token needed.
       automountServiceAccountToken: false

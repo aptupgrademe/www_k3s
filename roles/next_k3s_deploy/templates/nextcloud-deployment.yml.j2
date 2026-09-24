@@ -22,6 +22,17 @@ spec:
     metadata:
       labels:
         app: nextcloud
+      annotations:
+        # The config files are mounted with subPath, and subPath mounts never
+        # update inside a running pod. Without this checksum a changed ConfigMap
+        # only took effect at the next accidental pod restart (found 2026-09-24:
+        # new preview settings were in the ConfigMap, custom.config.php in the
+        # pod was a day old). Any change to the rendered ConfigMaps now changes
+        # this annotation and rolls the pod (Recreate: brief downtime);
+        # unchanged config leaves the pod alone.
+        checksum/config: "{{ (lookup('ansible.builtin.template', 'custom-config-cm.yml.j2')
+                              ~ lookup('ansible.builtin.template', 'fpm-pool-cm.yml.j2')
+                              ~ lookup('ansible.builtin.template', 'nginx-cm.yml.j2')) | hash('sha256') }}"
     spec:
       # Nextcloud/nginx/exporter never talk to the Kubernetes API — no SA token needed.
       automountServiceAccountToken: false
