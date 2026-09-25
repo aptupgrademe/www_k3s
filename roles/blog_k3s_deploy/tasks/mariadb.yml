@@ -36,7 +36,11 @@
 # MariaDB root credentials into a container that only ever needs to read
 # counters. These grants cover everything the default collectors use:
 #   PROCESS            -> SHOW PROCESSLIST, InnoDB engine status
-#   REPLICATION CLIENT -> SHOW SLAVE/MASTER STATUS
+#   REPLICATION CLIENT -> SHOW MASTER STATUS / BINARY LOGS
+#   SLAVE MONITOR      -> SHOW SLAVE STATUS (split out of REPLICATION CLIENT in
+#                         MariaDB 10.5.9; without it the slave_status scraper
+#                         logged "Error 1227 Access denied" every 15 s, found
+#                         2026-09-25). Read-only status, no replication control.
 #   SELECT on performance_schema -> the perf_schema collectors
 # information_schema needs no explicit grant. Deliberately no SELECT on the
 # WordPress schema, so the exporter cannot read post or user tables.
@@ -65,8 +69,8 @@
           IDENTIFIED BY '{{ blog_db_exporter_pass }}';
         CREATE OR REPLACE USER 'exporter'@'127.0.0.1'
           IDENTIFIED BY '{{ blog_db_exporter_pass }}';
-        GRANT PROCESS, REPLICATION CLIENT ON *.* TO 'exporter'@'localhost';
-        GRANT PROCESS, REPLICATION CLIENT ON *.* TO 'exporter'@'127.0.0.1';
+        GRANT PROCESS, REPLICATION CLIENT, SLAVE MONITOR ON *.* TO 'exporter'@'localhost';
+        GRANT PROCESS, REPLICATION CLIENT, SLAVE MONITOR ON *.* TO 'exporter'@'127.0.0.1';
         GRANT SELECT ON performance_schema.* TO 'exporter'@'localhost';
         GRANT SELECT ON performance_schema.* TO 'exporter'@'127.0.0.1';
         FLUSH PRIVILEGES;"

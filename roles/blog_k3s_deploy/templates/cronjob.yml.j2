@@ -9,7 +9,7 @@ metadata:
   name: wordpress-cron
   namespace: wordpress
   labels:
-    app: wordpress
+    app: wordpress-cron
 spec:
   schedule: "*/5 * * * *"
   concurrencyPolicy: Forbid
@@ -19,13 +19,16 @@ spec:
     spec:
       template:
         metadata:
-          # Same "app: wordpress" identity as the main Deployment pod, so the
-          # wordpress-netpol NetworkPolicy (egress to MariaDB/Redis/DNS/HTTPS)
-          # covers cron pods too — wp-cron.php needs the exact same access
-          # (it runs the same WP bootstrap, including the wp_version_check /
-          # wp_update_plugins hooks that call out to wordpress.org).
+          # Deliberately NOT "app: wordpress": the wordpress and
+          # php-fpm-exporter Services select on that label, so cron pods
+          # carrying it became endpoints for their ~10 s lifetime. The ingress
+          # then sent visitor requests to a pod with no web server ("connect()
+          # failed (111)" every 5 min, occasional 502s; found 2026-09-25).
+          # The NetworkPolicies match both labels (app In [wordpress,
+          # wordpress-cron]) -- wp-cron.php needs the same access as the web
+          # pod (MariaDB, Redis, DNS, wordpress.org for update checks).
           labels:
-            app: wordpress
+            app: wordpress-cron
         spec:
           restartPolicy: OnFailure
           # wp-cron.php never talks to the Kubernetes API — no SA token needed.
@@ -142,3 +145,215 @@ spec:
             emptyDir:
               medium: Memory
               sizeLimit: 32Mi
+
+# ============================================================
+# Nightly WordPress updates (core minor, plugins, themes, translations)
+# ============================================================
+# Why this exists (found 2026-09-25): the wp-cron pods above mount the
+# web root read-only, so WordPress' own background auto-updates, which
+# wp_version_check triggers from wp-cron.php, silently skip: WP detects
+# it can't write and gives up without an error. Every plugin, theme
+# and translation update was therefore left for a manual click in wp-admin.
+# Making the 5-minute cron pod writable would fix that too. A separate
+# nightly job is used instead because it gives a fixed time, a DB dump
+# before anything changes, one readable log per night, and a health
+# check afterwards, while the wp-cron pod stays read-only.
+#
+#   init 1 (busybox)  WP-CLI download, pinned version + SHA-512 (same as
+#                     the Deployment's init container)
+#   init 2 (mariadb)  mariadb-dump of the WordPress DB into
+#                     {{ blog_k3s_update_backup_dir | default("/srv/wordpress-update-backups") }} (outside the web root),
+#                     gzip, keep 14 days. The job stops here if the dump fails.
+#   main (wordpress)  runs as www-data (uid 33) so files keep their owner:
+#                     core minor updates, plugins, themes, language packs,
+#                     update-db, object cache flush, then HTTP 200 check.
+#
+# A failed step marks the Job as Failed (kubectl -n wordpress get jobs), but
+# the remaining steps still run, so a single broken plugin doesn't block
+# translations. There is no automatic rollback: restore the dump by hand and
+# pin the plugin version (wp plugin install <slug> --version=X --force).
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: wordpress-autoupdate
+  namespace: wordpress
+  labels:
+    app: wordpress-cron
+spec:
+  schedule: "{{ blog_autoupdate_schedule | default('30 3 * * *') }}"
+  timeZone: "Europe/Berlin"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          # app: wordpress-cron, not app: wordpress: the Services must not
+          # route traffic to this pod. The NetworkPolicies allow both labels
+          # (DB, Redis, DNS, internet 80/443 for wordpress.org downloads).
+          labels:
+            app: wordpress-cron
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          initContainers:
+          - name: wp-cli
+            image: {{ blog_image_busybox }}
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: [ALL]
+              seccompProfile:
+                type: RuntimeDefault
+              readOnlyRootFilesystem: true
+            command:
+            - sh
+            - -c
+            - |
+              set -e
+              sleep 5   # Calico/Felix egress rules, see wp-cron above
+              wget -q -O /wp-cli/wp-cli.phar \
+                https://github.com/wp-cli/wp-cli/releases/download/v{{ blog_wp_cli_version }}/wp-cli-{{ blog_wp_cli_version }}.phar
+              echo "{{ blog_wp_cli_sha512 }}  /wp-cli/wp-cli.phar" | sha512sum -c -
+            volumeMounts:
+            - name: wp-cli
+              mountPath: /wp-cli
+          - name: db-dump
+            image: {{ blog_image_mariadb }}
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: [ALL]
+              seccompProfile:
+                type: RuntimeDefault
+              readOnlyRootFilesystem: true
+            env:
+            - name: DB_HOST
+              valueFrom: {secretKeyRef: {name: wordpress-secrets, key: db-host}}
+            - name: DB_NAME
+              valueFrom: {secretKeyRef: {name: wordpress-secrets, key: db-name}}
+            - name: DB_USER
+              valueFrom: {secretKeyRef: {name: wordpress-secrets, key: db-user}}
+            command:
+            - sh
+            - -c
+            - |
+              set -e
+              f=/backup/wordpress-db-$(date +%Y-%m-%d_%H%M).sql.gz
+              MYSQL_PWD="$(cat /etc/secrets/db-password)" mariadb-dump -h "$DB_HOST" -u "$DB_USER" \
+                --single-transaction --quick --routines "$DB_NAME" | gzip > "$f"
+              # A gzip of an empty dump is ~20 bytes; refuse to continue on that.
+              [ "$(stat -c %s "$f")" -gt 10000 ] || { echo "dump too small: $f"; exit 1; }
+              echo "DB dump: $f ($(stat -c %s "$f") bytes)"
+              find /backup -name 'wordpress-db-*.sql.gz' -mtime +14 -delete
+            volumeMounts:
+            - name: db-credentials
+              mountPath: /etc/secrets
+              readOnly: true
+            - name: update-backup
+              mountPath: /backup
+          containers:
+          - name: wp-update
+            image: {{ blog_image_wordpress }}
+            securityContext:
+              runAsUser: 33
+              runAsGroup: 33
+              runAsNonRoot: true
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: [ALL]
+              seccompProfile:
+                type: RuntimeDefault
+              readOnlyRootFilesystem: true
+            env:
+            - name: WORDPRESS_DB_HOST
+              valueFrom: {secretKeyRef: {name: wordpress-secrets, key: db-host}}
+            - name: WORDPRESS_DB_NAME
+              valueFrom: {secretKeyRef: {name: wordpress-secrets, key: db-name}}
+            - name: WORDPRESS_DB_USER
+              valueFrom: {secretKeyRef: {name: wordpress-secrets, key: db-user}}
+            - name: WORDPRESS_DB_PASSWORD_FILE
+              value: /etc/secrets/db-password
+            - name: HOME
+              value: /tmp
+            - name: WP_CLI_CACHE_DIR
+              value: /tmp/wp-cli-cache
+            # Must stay identical to the wordpress-fpm block in
+            # wordpress-deployment.yml.j2 (see wp-cron above).
+            - name: WORDPRESS_CONFIG_EXTRA
+              value: |
+                define('WP_HOME',    'https://{{ blog_hostname }}');
+                define('WP_SITEURL', 'https://{{ blog_hostname }}');
+                define('WP_REDIS_HOST',     'redis');
+                define('WP_REDIS_PORT',     6379);
+                define('WP_REDIS_DATABASE', 0);
+                define('WP_REDIS_SCHEME',   'tcp');
+                define('WP_REDIS_MAXTTL', 86400);
+                define('WP_CACHE', true);
+                define('WPCACHEHOME', '/var/www/html/wp-content/plugins/wp-super-cache/');
+                define('DISALLOW_FILE_EDIT', true);
+            command:
+            - sh
+            - -c
+            - |
+              wp() { php -d memory_limit=512M /wp-cli/wp-cli.phar --path=/var/www/html "$@"; }
+              rc=0
+              step() { echo "=== $*"; "$@" || { echo "!!! failed: $*"; rc=1; }; }
+              step wp core update --minor
+              step wp plugin update --all
+              step wp theme update --all
+              step wp language core update
+              step wp language plugin update --all
+              step wp language theme update --all
+              step wp core update-db
+              step wp cache flush
+              echo "=== health check"
+              code=$(php -r '$c=stream_context_create(["http"=>["ignore_errors"=>true,"timeout"=>20]]); @file_get_contents("https://{{ blog_hostname }}/",false,$c); preg_match("#HTTP/\S+ (\d+)#",$http_response_header[0]??"",$m); echo $m[1]??0;')
+              echo "https://{{ blog_hostname }}/ -> HTTP $code"
+              [ "$code" = "200" ] || rc=1
+              echo "=== done, rc=$rc"
+              exit $rc
+            volumeMounts:
+            - name: wordpress-www
+              mountPath: /var/www/html
+            - name: wp-cli
+              mountPath: /wp-cli
+              readOnly: true
+            - name: db-credentials
+              mountPath: /etc/secrets
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "50m"
+              limits:
+                memory: "640Mi"
+                cpu: "1"
+          volumes:
+          - name: wordpress-www
+            hostPath:
+              path: {{ blog_k3s_www_dir }}
+              type: Directory
+          - name: update-backup
+            hostPath:
+              path: {{ blog_k3s_update_backup_dir | default('/srv/wordpress-update-backups') }}
+              type: DirectoryOrCreate
+          - name: wp-cli
+            emptyDir:
+              sizeLimit: 16Mi
+          - name: db-credentials
+            secret:
+              secretName: wordpress-secrets
+              items:
+              - key: db-password
+                path: db-password
+              defaultMode: 0444
+          - name: tmp
+            emptyDir:
+              sizeLimit: 256Mi

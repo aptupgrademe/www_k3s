@@ -39,9 +39,11 @@ metadata:
   name: wordpress-netpol
   namespace: wordpress
 spec:
+  # Web pod (app: wordpress) and the wordpress-cron pods (app: wordpress-cron,
+  # own label so the Services don't route traffic to them).
   podSelector:
-    matchLabels:
-      app: wordpress
+    matchExpressions:
+    - {key: app, operator: In, values: [wordpress, wordpress-cron]}
   policyTypes:
   - Ingress
   - Egress
@@ -121,11 +123,11 @@ spec:
   - Ingress
   - Egress
   ingress:
-  # WordPress (Deployment + wordpress-cron pods, both labelled app: wordpress)
+  # WordPress (Deployment: app: wordpress, CronJob pods: app: wordpress-cron)
   - from:
     - podSelector:
-        matchLabels:
-          app: wordpress
+        matchExpressions:
+        - {key: app, operator: In, values: [wordpress, wordpress-cron]}
     ports:
     - protocol: TCP
       port: 3306
@@ -154,8 +156,8 @@ spec:
   ingress:
   - from:
     - podSelector:
-        matchLabels:
-          app: wordpress
+        matchExpressions:
+        - {key: app, operator: In, values: [wordpress, wordpress-cron]}
     ports:
     - protocol: TCP
       port: 6379
