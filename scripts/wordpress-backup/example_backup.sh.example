@@ -1,0 +1,8 @@
+#!/bin/bash
+# WordPress-Backup <name> (K3s) -> /data/backup/wordpress-data/<name>
+# Kopie als <name>_backup.sh anlegen (gitignored), Hostnamen eintragen, chmod 750.
+# Logik: wp_backup_lib.sh. Log: /data/backup/wordpress/logs/<name>_*.log
+NAME=blog
+REMOTE_HOST=www.example.org
+# REMOTE_WWW=/srv/wordpress-www     # blog_k3s_www_dir, falls abweichend
+. "$(dirname "$(readlink -f "$0")")/wp_backup_lib.sh"

@@ -699,6 +699,24 @@ kubectl exec -n nextcloud deployment/collabora -- nc -z -w4 &lt;mariadb-host-ip&
   Pod-Name – unbedingt prüfen, ob der <code>podSelector</code> passt, bevor man
   annimmt, eine Policy greife.
 </div>
+
+<h3>Versteckte Dateien und WebDAV (nginx-Sidecar)</h3>
+<p>
+  Die nginx-Konfiguration sperrt versteckte Dateien (<code>/.htaccess</code>, <code>/.git/</code>, <code>/.env</code>, …)
+  und Editor-Reste (<code>*.bak</code>, <code>*.swp</code>, …) im Code-Verzeichnis, aber <strong>nicht unterhalb von
+  <code>/remote.php/</code> und <code>/public.php/</code></strong>. Dort liegen die Dateien der Benutzer, in denen
+  <code>.obsidian</code>, <code>.BackupManager</code> oder <code>Angebot.bak</code> ganz normal sind, und Nextcloud prüft
+  die Rechte selbst; Nextclouds eigenes nginx-Beispiel hat aus diesem Grund keine allgemeine Regel für versteckte
+  Dateien. Vor dem 2026-09-27 bekam ein Sync-Client 403 auf den Ordner <code>.BackupManager</code> eines Benutzers. Die
+  Ausnahme deckt auch den Abschluss gestückelter Uploads ab (<code>MOVE …/uploads/&lt;user&gt;/&lt;id&gt;/.file</code>),
+  für den es vorher eine eigene <code>.file</code>-Ausnahme gab.
+</p>
+<h3>Upload-Limit für Collabora</h3>
+<p>
+  <code>collabora-routes</code> setzt <code>client-max-body-size: 2g</code>. Nextcloud erzeugt Office-Vorschauen, indem
+  es das Dokument an Collabora hochlädt (<code>convert-to</code>); mit nginx' Standard von 1&nbsp;MB scheiterte die
+  Vorschau jeder Office-Datei über 1&nbsp;MB mit <code>413 Request Entity Too Large</code>.
+</p>
 </section>
 
 <!-- ─────────────────────────── DATEIEN ──────────────────────────────── -->
@@ -931,6 +949,25 @@ k3s kubectl rollout restart deployment/nextcloud -n nextcloud</code></pre>
 
 k3s kubectl exec -n nextcloud deployment/nextcloud -c nextcloud-fpm -- \
   runuser -u www-data -- php /var/www/html/occ setupchecks</code></pre>
+
+<h3>Vorschaubilder</h3>
+<p>
+  <code>custom.config.php</code> setzt <code>preview_max_memory</code> auf 512&nbsp;MB (Standard 256). Ein 108-Megapixel-
+  Handyfoto (12.032&nbsp;px breit) braucht zum Dekodieren etwa 430&nbsp;MB; über dem Limit überspringt Nextcloud die
+  Vorschau stillschweigend, und die Apps bekommen einen 404. <code>enabledPreviewProviders</code> ergänzt HEIC
+  (iPhone-Fotos, über imagick). Dieser Schlüssel <strong>ersetzt</strong> die eingebaute Standardliste, statt sie zu
+  erweitern – deshalb stehen die Standard-Provider von Nextcloud 34 (MarkDown, TXT, OpenDocument, PNG, JPEG, GIF, BMP,
+  XBitmap, Krita, WebP) dort noch einmal. Für Videos bräuchte das Image zusätzlich ffmpeg.
+</p>
+<div class="callout callout-info">
+  <strong>Konfigurationsänderungen starten den Pod einmal neu (Checksum-Annotation)</strong>
+  <code>custom.config.php</code>, der FPM-Pool und die nginx-Konfiguration sind ConfigMaps, die per <code>subPath</code>
+  eingehängt sind – subPath-Mounts werden einmal beim Container-Start kopiert und danach nie aktualisiert. Bis
+  2026-09-24 wirkte eine geänderte ConfigMap erst beim nächsten zufälligen Neustart. Das Pod-Template trägt jetzt
+  <code>checksum/config</code>, einen SHA-256 der drei gerenderten Vorlagen: Ändert sich eine, startet der nächste
+  Playbook-Lauf den Nextcloud-Pod neu (Recreate, etwa eine Minute Ausfall). Unveränderte Konfiguration lässt den Pod in
+  Ruhe. Was der Pod wirklich nutzt, zeigt die Datei im Container, nicht die ConfigMap.
+</div>
 </section>
 
 <!-- ─────────────────────────── PLAYBOOK ─────────────────────────────── -->
@@ -1309,6 +1346,28 @@ curl -s http://127.0.0.1:9104/metrics | grep mysql_up</code></pre>
   auf den Blog-Hostnamen geändert werden – sonst zeigt der /grafana/-Pfad
   auf den falschen Ingress.
 </div>
+
+<h3>Log-Rotation (MariaDB auf dem Host)</h3>
+<p>
+  <code>next_mariadb</code> verwaltet <code>/etc/logrotate.d/mariadb</code> (wöchentlich, 4 Rotationen, 200&nbsp;MB,
+  komprimiert, <code>copytruncate</code>). Das MariaDB-server-Paket liefert dieselbe Datei für
+  <code>/var/log/mariadb/*.log</code>; ein zweites Snippet für <code>slow.log</code> ließ logrotate jede Nacht mit
+  „duplicate log entry“ scheitern. Beide Varianten riefen außerdem <code>mariadb-admin</code> ohne Zugangsdaten auf, was
+  nicht funktionieren kann, weil root und mysql Passwörter nutzen. <code>copytruncate</code> braucht beides nicht. Die
+  Paketdatei ist <code>%config(noreplace)</code>: Updates legen eine <code>.rpmnew</code> daneben, statt sie zu überschreiben.
+</p>
+<h3>Normales Log-Rauschen</h3>
+<p>Wer weiß, wie harmlos aussieht, erkennt echte Probleme sofort. Diese Einträge sind erwartet:</p>
+<table>
+  <tr><th>Eintrag</th><th>Wo</th><th>Bedeutung</th></tr>
+  <tr><td><code>Socket write returned -1 (EPIPE / ECONNRESET)</code>, ~60/h, auch nachts</td><td>Collabora</td><td>Die Gegenseite hat die Verbindung geschlossen, bevor Collabora fertig war. Harmlos.</td></tr>
+  <tr><td><code>access forbidden by rule</code> auf <code>/data/.ncdata</code></td><td>nginx-Sidecar</td><td>Nextclouds eigene Sicherheitsprüfung, dass das Datenverzeichnis <em>nicht</em> erreichbar ist.</td></tr>
+  <tr><td><code>access forbidden by rule</code> auf <code>/.env</code>, <code>/web/.env</code>, <code>/.npmrc</code></td><td>nginx-Sidecar</td><td>Bots auf der Suche nach Zugangsdaten, absichtlich blockiert (fail2ban sperrt Wiederholungstäter).</td></tr>
+  <tr><td><code>… differs from the latest version of this image</code></td><td>nextcloud-fpm, beim Start</td><td>Die Rolle verwaltet diese Konfigurationsdateien selbst (z. B. Redis mit Passwort).</td></tr>
+  <tr><td><code>Self test failed … CaUsedAsEndEntity</code></td><td>notify-push, direkt nach einem Neustart</td><td>Der Ingress liefert für einige Sekunden noch sein Standard-Zertifikat. Eine Minute später ergibt <code>occ notify_push:self-test</code> 6/6.</td></tr>
+  <tr><td><code>Failed to connect to the database</code> in der Neustart-Minute</td><td>nextcloud.log (Cron)</td><td>Der Cron-Job lief, während der Knoten neu startete (automatischer Neustart 03:30 nach Kernel-Updates).</td></tr>
+  <tr><td><code>executing too slow (5.4 sec)</code> bei Vorschau-URLs</td><td>nextcloud-fpm</td><td>Das FPM-Slowlog (5&nbsp;s) meldet Vorschauen großer Fotos. <code>request_slowlog_trace_depth = 0</code>: kein Stacktrace, weil der Container kein ptrace darf (früher kam jedes Mal <code>ERROR: failed to ptrace</code> dazu).</td></tr>
+</table>
 </section>
 
 <!-- ─────────────────────────── UPDATES ──────────────────────────────── -->

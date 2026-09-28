@@ -691,6 +691,24 @@ kubectl exec -n nextcloud deployment/collabora -- nc -z -w4 &lt;mariadb-host-ip&
   Calico enforces per <em>pod label selector</em>, not by pod name – double
   check the <code>podSelector</code> matches before assuming a policy applies.
 </div>
+
+<h3>Hidden Files and WebDAV (nginx sidecar)</h3>
+<p>
+  The nginx config denies hidden files (<code>/.htaccess</code>, <code>/.git/</code>, <code>/.env</code>, …) and editor
+  leftovers (<code>*.bak</code>, <code>*.swp</code>, …) in the code tree, but <strong>not below
+  <code>/remote.php/</code> and <code>/public.php/</code></strong>. Those paths are the users' own files, where
+  <code>.obsidian</code>, <code>.BackupManager</code> or <code>offer.bak</code> are normal, and Nextcloud checks
+  permissions there itself; Nextcloud's own nginx example has no generic hidden-file rule for that reason. Before
+  2026-09-27 a sync client got 403 on a user's <code>.BackupManager</code> folder. The exemption also covers the
+  chunked-upload finalisation (<code>MOVE …/uploads/&lt;user&gt;/&lt;id&gt;/.file</code>) that the earlier
+  <code>.file</code> carve-out handled.
+</p>
+<h3>Collabora Upload Limit</h3>
+<p>
+  <code>collabora-routes</code> sets <code>client-max-body-size: 2g</code>. Nextcloud renders Office previews by uploading
+  the document to Collabora (<code>convert-to</code>); with nginx' default of 1&nbsp;MB every Office file above 1&nbsp;MB
+  failed its preview with <code>413 Request Entity Too Large</code>.
+</p>
 </section>
 
 <!-- ─────────────────────────── FILES ──────────────────────────────── -->
@@ -923,6 +941,25 @@ k3s kubectl rollout restart deployment/nextcloud -n nextcloud</code></pre>
 
 k3s kubectl exec -n nextcloud deployment/nextcloud -c nextcloud-fpm -- \
   runuser -u www-data -- php /var/www/html/occ setupchecks</code></pre>
+
+<h3>Previews</h3>
+<p>
+  <code>custom.config.php</code> sets <code>preview_max_memory</code> to 512&nbsp;MB (default 256). Decoding a
+  108-megapixel phone photo (12,032&nbsp;px wide) needs about 430&nbsp;MB; above the limit Nextcloud skips the
+  preview silently and the apps get a 404. <code>enabledPreviewProviders</code> adds HEIC (iPhone photos, via
+  imagick). Setting this key <strong>replaces</strong> the built-in default list instead of extending it, so the
+  Nextcloud 34 defaults (MarkDown, TXT, OpenDocument, PNG, JPEG, GIF, BMP, XBitmap, Krita, WebP) are repeated there.
+  Videos would additionally need ffmpeg in the image.
+</p>
+<div class="callout callout-info">
+  <strong>Config changes restart the pod once (checksum annotation)</strong>
+  <code>custom.config.php</code>, the FPM pool and the nginx config are ConfigMaps mounted with <code>subPath</code>,
+  and subPath mounts are copied once at container start and never updated. Until 2026-09-24 a changed ConfigMap only
+  took effect at the next accidental restart. The pod template now carries <code>checksum/config</code>, a SHA-256 of
+  the three rendered templates: change one and the next playbook run rolls the Nextcloud pod (Recreate, about a
+  minute of downtime). Unchanged config leaves the pod alone. To check what the pod really uses, read the file inside
+  the container, not the ConfigMap.
+</div>
 </section>
 
 <!-- ─────────────────────────── PLAYBOOK ─────────────────────────────── -->
@@ -1299,6 +1336,28 @@ curl -s http://127.0.0.1:9104/metrics | grep mysql_up</code></pre>
   must be changed to the blog hostname – otherwise the /grafana/ path
   points to the wrong ingress.
 </div>
+
+<h3>Log Rotation (MariaDB on the host)</h3>
+<p>
+  <code>next_mariadb</code> owns <code>/etc/logrotate.d/mariadb</code> (weekly, 4 rotations, 200&nbsp;MB, compressed,
+  <code>copytruncate</code>). The MariaDB-server package ships the same file covering <code>/var/log/mariadb/*.log</code>;
+  a second snippet for <code>slow.log</code> made logrotate fail every night with "duplicate log entry". Both variants
+  also flushed via <code>mariadb-admin</code> without credentials, which cannot work because root and mysql use
+  passwords. <code>copytruncate</code> needs neither. The package file is <code>%config(noreplace)</code>, so updates
+  leave a <code>.rpmnew</code> instead of overwriting it.
+</p>
+<h3>Normal Log Noise</h3>
+<p>Knowing what harmless looks like makes the real problems stand out. These entries are expected:</p>
+<table>
+  <tr><th>Entry</th><th>Where</th><th>Meaning</th></tr>
+  <tr><td><code>Socket write returned -1 (EPIPE / ECONNRESET)</code>, ~60/h, also at night</td><td>Collabora</td><td>The other side closed the connection before Collabora finished writing. Harmless.</td></tr>
+  <tr><td><code>access forbidden by rule</code> on <code>/data/.ncdata</code></td><td>nginx sidecar</td><td>Nextcloud's own security check verifying that the data directory is <em>not</em> reachable.</td></tr>
+  <tr><td><code>access forbidden by rule</code> on <code>/.env</code>, <code>/web/.env</code>, <code>/.npmrc</code></td><td>nginx sidecar</td><td>Bots probing for secrets, blocked on purpose (fail2ban bans repeat offenders).</td></tr>
+  <tr><td><code>… differs from the latest version of this image</code></td><td>nextcloud-fpm, at start</td><td>The role manages those config files itself (e.g. Redis with a password).</td></tr>
+  <tr><td><code>Self test failed … CaUsedAsEndEntity</code></td><td>notify-push, right after a reboot</td><td>For a few seconds the ingress still serves its default certificate. A minute later <code>occ notify_push:self-test</code> is 6/6.</td></tr>
+  <tr><td><code>Failed to connect to the database</code> at the reboot minute</td><td>nextcloud.log (cron)</td><td>The cron job ran while the node was rebooting (auto-reboot 03:30 after kernel updates).</td></tr>
+  <tr><td><code>executing too slow (5.4 sec)</code> on preview URLs</td><td>nextcloud-fpm</td><td>The FPM slowlog (5&nbsp;s) flags large-photo previews. <code>request_slowlog_trace_depth = 0</code>: no stack trace, because the container has no ptrace capability (it used to add <code>ERROR: failed to ptrace</code>).</td></tr>
+</table>
 </section>
 
 <!-- ─────────────────────────── UPDATES ──────────────────────────────── -->

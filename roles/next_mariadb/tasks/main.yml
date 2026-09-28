@@ -109,27 +109,37 @@
     setype: mysqld_log_t
   notify: Restart MariaDB
 
-# Without this the slow log grows without bound. The mariadb package ships a
-# logrotate snippet for the error log only, since upstream does not assume a
-# separate slow log file.
-- name: MariaDB | Rotate the slow query log
+# Log rotation for /var/log/mariadb (the slow query log lives there).
+# The MariaDB-server package ships /etc/logrotate.d/mariadb covering
+# /var/log/mariadb/*.log, so a separate snippet for slow.log made logrotate
+# fail every night with "duplicate log entry" (found 2026-09-27, logrotate.service
+# red since the package update). Both variants also flushed the logs through
+# mariadb-admin without credentials, which cannot work here: root@localhost
+# and mysql@localhost use passwords, not unix_socket. So Ansible now owns the
+# package file (it is %config(noreplace): package updates leave a .rpmnew
+# next to it instead of overwriting) and uses copytruncate, which needs no
+# flush and no database login at all. The old snippet is removed.
+- name: MariaDB | Remove the old separate slow-log logrotate snippet
+  ansible.builtin.file:
+    path: /etc/logrotate.d/mariadb-slow
+    state: absent
+
+- name: MariaDB | Rotate the MariaDB logs (replaces the package snippet)
   ansible.builtin.copy:
-    dest: /etc/logrotate.d/mariadb-slow
+    dest: /etc/logrotate.d/mariadb
     content: |
-      # Managed by Ansible (next_mariadb)
-      /var/log/mariadb/slow.log {
+      # Managed by Ansible (next_mariadb) - replaces the MariaDB-server package
+      # file. copytruncate: no flush via mariadb-admin, so no credentials needed.
+      /var/log/mariadb/*.log /var/lib/mysql/mysqld.log /var/lib/mysql/mariadb.log {
+          su mysql mysql
           weekly
           rotate 4
+          maxsize 200M
           missingok
           notifempty
           compress
           delaycompress
-          create 0640 mysql mysql
-          # flush-logs makes the server reopen its log files after rotation,
-          # otherwise it keeps writing to the renamed (now invisible) inode.
-          postrotate
-              /usr/bin/mariadb-admin flush-logs --defaults-file=/etc/my.cnf 2>/dev/null || true
-          endscript
+          copytruncate
       }
     owner: root
     group: root

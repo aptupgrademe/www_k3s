@@ -13,6 +13,10 @@ data:
     pm.status_path = /fpm-status
     slowlog = /proc/1/fd/2
     request_slowlog_timeout = 5s
+    ; Log the "executing too slow" line, but no stack trace: the trace needs
+    ; ptrace, which the container (all capabilities dropped) does not have, so
+    ; every slow request also logged "ERROR: failed to ptrace(ATTACH)".
+    request_slowlog_trace_depth = 0
 
     ; --- Pool tuning ---
     ; Without these the container silently inherits php-fpm's stock default of

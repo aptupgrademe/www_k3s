@@ -65,3 +65,12 @@ check file nc_backup with path /var/lib/nextcloud-backup/last-success
     every "17 * * * *"
     if timestamp > {{ monit_backup_max_days }} days then alert
 {% endif %}
+{% if 'blog' in group_names %}
+
+# --- WordPress backup freshness ---
+# Same idea as nc_backup: the backup PC pulls the blog (scripts/wordpress-backup,
+# /data/backup/wordpress/<name>_backup.sh) and touches this file on success.
+check file wp_backup with path /var/lib/wordpress-backup/last-success
+    every "17 * * * *"
+    if timestamp > {{ monit_backup_max_days }} days then alert
+{% endif %}

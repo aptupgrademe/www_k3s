@@ -40,6 +40,8 @@ notes/
 # Filled-in Nextcloud backup scripts (real hostnames) stay local.
 # Copy scripts/nextcloud-backup/example_backup.sh.example -> <name>_backup.sh.
 scripts/nextcloud-backup/*_backup.sh
+# Same for the WordPress backup (scripts/wordpress-backup/example_backup.sh.example).
+scripts/wordpress-backup/*_backup.sh
 
 # Python bytecode
 __pycache__/

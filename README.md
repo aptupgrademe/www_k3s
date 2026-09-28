@@ -70,7 +70,18 @@ Internet
   K3s's default Flannel CNI does not enforce NetworkPolicy objects at all
 - **WordPress 7.1.1** with PHP-FPM, nginx sidecar, MariaDB pod and **Redis Object Cache** pod
 - Automatic installation on first pod start via container env vars and WP-CLI
-- WordPress WP-Cron as Kubernetes CronJob (no HTTP trigger)
+- WordPress WP-Cron as Kubernetes CronJob (no HTTP trigger); the cron pods carry
+  their own label (`app: wordpress-cron`) so the Services never route visitors to them
+- **Nightly WordPress updates** – CronJob `wordpress-autoupdate` (03:30 Europe/Berlin):
+  DB dump first, then core minor releases, plugins, themes and all language packs via
+  WP-CLI, and an HTTP 200 check afterwards
+- **Config changes roll the pod** – a `checksum/config` annotation on the Nextcloud and
+  WordPress pod templates restarts the pod once when a rendered ConfigMap changes
+  (subPath mounts never update inside a running pod)
+- **Pull backups with history** – a backup machine pulls every Nextcloud instance and
+  the blog (rsync + verified DB dump, no maintenance mode) and keeps 30 days of versions
+  with rdiff-backup; Monit alerts on the servers when the last success is older than
+  3 days (`scripts/nextcloud-backup/`, `scripts/wordpress-backup/`)
 - **Container health probes** – startup + readiness + liveness (tcpSocket) on
   every FPM, nginx and Collabora container, so a *wedged* (not crashed) container
   is restarted automatically while a slow `occ upgrade` or preview burst never
@@ -261,7 +272,8 @@ www_k3s/
 ├── scripts/
 │   ├── nextcloud-backup/      # Pull backup (rsync + rdiff-backup) for a backup machine, see its README
 │   ├── nextcloud-restore.sh   # Nextcloud restore from /data/backup/nextcloud-data/<env>
-│   ├── wordpress-backup.sh    # WordPress backup via kubectl exec
+│   ├── wordpress-backup/      # Pull backup (rsync + rdiff-backup) for the blog, see its README
+│   ├── wordpress-backup.sh    # Manual ad-hoc WordPress backup via kubectl exec
 │   └── wordpress-restore.sh   # WordPress restore including MariaDB re-init
 │
 └── docs/

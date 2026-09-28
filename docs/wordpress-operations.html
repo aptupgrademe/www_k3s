@@ -611,20 +611,20 @@ real_ip_recursive on;</code></pre>
   <tr><th>Policy</th><th>Applies to</th><th>Allowed ingress</th><th>Allowed egress</th></tr>
   <tr>
     <td><code>wordpress-netpol</code></td>
-    <td>Pods labelled <code>app: wordpress</code> (Deployment + <code>wordpress-cron</code>)</td>
+    <td>Pods labelled <code>app: wordpress</code> (Deployment) or <code>app: wordpress-cron</code> (CronJob pods)</td>
     <td>Port 80 from the ingress-nginx host IP only; port 9253 (php-fpm-exporter) from the pod CIDR (host Prometheus via NodePort)</td>
     <td>DNS; MariaDB :3306; Redis :6379; the open internet on :443 (core/plugin/WP-CLI updates – can't be scoped tighter, see below)</td>
   </tr>
   <tr>
     <td><code>mariadb-netpol</code></td>
     <td>Pods labelled <code>app: mariadb</code></td>
-    <td>Port 3306 from <code>app: wordpress</code> pods only; port 9104 (mysqld-exporter) from the pod CIDR</td>
+    <td>Port 3306 from <code>app: wordpress</code> and <code>app: wordpress-cron</code> pods only; port 9104 (mysqld-exporter) from the pod CIDR</td>
     <td>None – standalone DB, no replication/external calls</td>
   </tr>
   <tr>
     <td><code>redis-netpol</code></td>
     <td>Pods labelled <code>app: redis</code></td>
-    <td>Port 6379 from <code>app: wordpress</code> pods only</td>
+    <td>Port 6379 from <code>app: wordpress</code> and <code>app: wordpress-cron</code> pods only</td>
     <td>None – pure in-memory cache</td>
   </tr>
 </table>
@@ -657,6 +657,17 @@ real_ip_recursive on;</code></pre>
   today, so it isn't affected – but would need the same treatment if one is
   ever added).
 </div>
+
+<h3>Grafana Route (own Ingress minion)</h3>
+<p>
+  <code>/grafana/</code> has its own minion Ingress, <code>grafana-routes</code>, separate from
+  <code>wordpress-routes</code>. Grafana Live (<code>/grafana/api/live/ws</code>) is a WebSocket and needs the
+  <code>Upgrade</code>/<code>Connection</code> headers plus a long read timeout (3600&nbsp;s); putting those on the shared
+  minion would send them with every WordPress request. The shared minion also added
+  <code>X-Frame-Options: SAMEORIGIN</code> on top of Grafana's own <code>deny</code>, and browsers may drop conflicting
+  duplicates. Regex locations are ordered by Ingress name, so <code>grafana-routes</code> sorts before
+  <code>wordpress-routes</code> and wins for <code>/grafana</code>.
+</p>
 </section>
 
 <!-- ─────────────────────────── FILES ──────────────────────────────── -->
@@ -976,6 +987,14 @@ ansible-playbook blog.yml --limit www.apt-upgrade.me --tags blog_k3s_deploy --as
 
 # Only WordPress configuration (plugins, admin, settings)
 ansible-playbook blog.yml --limit www.apt-upgrade.me --tags blog_wordpress --ask-vault-pass</code></pre>
+
+<div class="callout callout-info">
+  <strong>Config changes restart the pod once (checksum annotation)</strong>
+  nginx, PHP and FPM configs are ConfigMaps mounted with <code>subPath</code>, and subPath mounts never update inside a
+  running pod. The pod template therefore carries <code>checksum/config</code>, a SHA-256 of the rendered ConfigMap
+  template. Change a config and the next playbook run rolls the WordPress pod once (Recreate, about a minute);
+  unchanged config leaves the pod alone.
+</div>
 </section>
 
 <!-- ─────────────────────────── COMMANDS ──────────────────────────────── -->
@@ -1285,6 +1304,19 @@ k3s kubectl logs -n wordpress deployment/wordpress -c wordpress-fpm -f | grep -i
 <h3>Prometheus Scrape Targets</h3>
 <pre><code># Check active scrape targets (in browser or curl)
 curl -s http://127.0.0.1:9090/api/v1/targets | python3 -m json.tool | grep -E '"job"|"state"|"scrapeUrl"'</code></pre>
+
+<h3>mysqld_exporter Privileges</h3>
+<p>
+  The exporter logs in as a least-privilege user with <code>PROCESS</code>, <code>REPLICATION CLIENT</code>,
+  <code>SLAVE MONITOR</code> and <code>SELECT</code> on <code>performance_schema</code>. MariaDB 10.5.9 split
+  <code>SLAVE MONITOR</code> out of <code>REPLICATION CLIENT</code>; without it the <code>slave_status</code> scraper
+  logged <code>Error 1227 Access denied</code> every 15&nbsp;s (fixed 2026-09-25, <code>tasks/mariadb.yml</code>).
+</p>
+<h3>Monit: Backup Freshness (<code>wp_backup</code>)</h3>
+<p>
+  The backup machine writes <code>/var/lib/wordpress-backup/last-success</code> on the blog host after every
+  successful pull. Monit alerts when it is older than <code>monit_backup_max_days</code> (3), or missing.
+</p>
 </section>
 
 <!-- ─────────────────────────── WP-CRON ──────────────────────────────── -->
@@ -1357,11 +1389,56 @@ k3s kubectl create job --from=cronjob/wordpress-cron wordpress-cron-manual-test 
   </ol>
   <p>Both are fixed and verified live against a real (not manually triggered) scheduled tick.</p>
 </div>
+
+<div class="callout callout-warn">
+  <strong>The CronJob pods have their own label: <code>app: wordpress-cron</code></strong>
+  Until 2026-09-25 they were labelled <code>app: wordpress</code> like the web pod. The <code>wordpress</code> and
+  <code>php-fpm-exporter</code> Services select on that label, so every cron pod became a Service endpoint for its
+  ~10&nbsp;s lifetime, and the ingress sent visitors to a pod without a web server (<code>connect() failed (111)</code>
+  every 5 minutes, occasional 502s). The NetworkPolicies now match both labels. The cron pod also mounts the web
+  root read-only, which is why WordPress' own background auto-updates never ran; see
+  <a href="#updates">Automatic Nightly Updates</a>.
+</div>
 </section>
 
 <!-- ─────────────────────────── UPDATES ──────────────────────────────── -->
 <section id="updates">
 <h2>Updates</h2>
+
+<h3>Automatic Nightly Updates (<code>wordpress-autoupdate</code>)</h3>
+<p>
+  A second CronJob runs every night at <strong>03:30 Europe/Berlin</strong> (<code>blog_autoupdate_schedule</code>).
+  WordPress' built-in background updates never worked here, because they are triggered from <code>wp-cron.php</code>
+  and the wp-cron pod mounts the web root read-only: WordPress detects it can't write and skips silently. A separate
+  job gives a fixed time, a DB dump first, one log per night and a health check, while the wp-cron pod stays read-only.
+</p>
+<ol class="steps">
+  <li>Init <code>wp-cli</code>: download WP-CLI (pinned version, SHA-512 verified).</li>
+  <li>Init <code>db-dump</code>: <code>mariadb-dump</code> into <code>/srv/wordpress-update-backups/</code> on the host
+      (<code>blog_k3s_update_backup_dir</code>, outside the web root, mode 0600/0700, kept 14 days). If the dump fails, nothing is updated.</li>
+  <li><code>wp-update</code> (as www-data): <code>core update --minor</code>, all plugins, all themes, all language packs,
+      <code>core update-db</code>, <code>cache flush</code>, then an HTTP&nbsp;200 check of the front page.</li>
+</ol>
+<pre><code># Last runs and their logs
+k3s kubectl -n wordpress get jobs | grep autoupdate
+k3s kubectl -n wordpress logs job/&lt;job-name&gt; --all-containers
+
+# Run it now
+k3s kubectl -n wordpress create job --from=cronjob/wordpress-autoupdate manual-update
+k3s kubectl -n wordpress logs -f job/manual-update --all-containers
+
+# Roll back the database to the dump taken before an update
+zcat /srv/wordpress-update-backups/wordpress-db-&lt;date&gt;.sql.gz | \
+  k3s kubectl -n wordpress exec -i deploy/mariadb -c mariadb -- \
+  sh -c 'MYSQL_PWD="$(cat /etc/secrets/db-root-password)" mariadb -u root "$MARIADB_DATABASE"'
+# A single broken plugin: pin the previous version
+k3s kubectl -n wordpress exec deploy/wordpress -c wordpress-fpm -- \
+  php /usr/local/lib/wp-cli/wp-cli.phar --allow-root --path=/var/www/html plugin install &lt;slug&gt; --version=&lt;x.y&gt; --force</code></pre>
+<p>
+  A failing step marks the Job as <code>Failed</code> but the other steps still run, so one broken plugin doesn't block
+  translations. There is no automatic rollback. These dumps stay on the blog host; the off-host copy is the pull backup
+  described under <a href="#backup">Backup &amp; Restore</a>.
+</p>
 
 <h3>Operating System (AlmaLinux 9)</h3>
 <p>
@@ -1450,6 +1527,24 @@ k3s kubectl rollout status  deployment/wordpress -n wordpress --timeout=300s</co
 <section id="backup">
 <h2>Backup &amp; Restore</h2>
 
+<h3>Automatic Pull Backup (backup machine)</h3>
+<p>
+  Since 2026-09-28 the backup machine that already pulls the Nextcloud instances also pulls the blog, daily and
+  after every boot: <code>scripts/wordpress-backup/</code>. It rsyncs <code>/srv/wordpress-www</code> (core,
+  <code>wp-content</code>, <code>wp-config.php</code>), dumps the database inside the MariaDB pod
+  (<code>mariadb-dump --single-transaction</code>, verified before it is kept), rsyncs the changes again, and
+  versions everything with rdiff-backup for 30 days. Monit's <code>wp_backup</code> check alerts when the last
+  success is older than three days. Setup, layout and restore steps: <code>scripts/wordpress-backup/README.md</code>.
+</p>
+<div class="callout callout-info">
+  <strong>Requires the rsync client on the blog host</strong>
+  <code>common_cis_hardening</code> used to remove the whole <code>rsync</code> package. It now removes only
+  <code>rsync-daemon</code> (the service CIS is actually about) and masks <code>rsyncd.service</code>.
+</div>
+<p>
+  The manual <code>scripts/wordpress-backup.sh</code> below still works for an ad-hoc copy to the control node.
+</p>
+
 <h3>What Is Backed Up</h3>
 <table>
   <tr><th>What</th><th>Path (Server)</th><th>Destination (local)</th><th>Method</th></tr>
@@ -1471,8 +1566,9 @@ k3s kubectl rollout status  deployment/wordpress -n wordpress --timeout=300s</co
   <strong>MariaDB runs as a K3s pod – not on the host</strong>
   Unlike Nextcloud, MariaDB runs in the WordPress pod here. The dump is executed via
   <code>kubectl exec</code> in the <code>mariadb</code> container.
-  The root credentials come from the <code>MARIADB_ROOT_PASSWORD</code> environment variable,
-  injected by the K8s secret – no password needed in the script.
+  The root password is read from the secret file the pod mounts
+  (<code>MARIADB_ROOT_PASSWORD_FILE</code>, CIS 5.4.1). There is no
+  <code>MARIADB_ROOT_PASSWORD</code> environment variable any more, so no password is needed in the script.
 </div>
 
 <h3>Run Backup</h3>
@@ -1523,14 +1619,14 @@ cd ~/www_k3s
 </div>
 
 <h3>Manual Individual Commands (Reference)</h3>
-<pre><code># mysqldump from the MariaDB pod (MARIADB_ROOT_PASSWORD from K8s secret)
+<pre><code># mysqldump from the MariaDB pod (root password from the secret file mounted in the pod)
 k3s kubectl exec -n wordpress deployment/mariadb -c mariadb -- \
   sh -c 'mysqldump --single-transaction wordpress_db \
-    -u root -p"$MARIADB_ROOT_PASSWORD"'
+    -u root -p"$(cat $MARIADB_ROOT_PASSWORD_FILE)"'
 
 # Import SQL dump into a running MariaDB pod
 k3s kubectl exec -n wordpress deployment/mariadb -c mariadb -- \
-  sh -c 'mysql wordpress_db -u root -p"$MARIADB_ROOT_PASSWORD" &lt; /tmp/dump.sql'
+  sh -c 'mysql wordpress_db -u root -p"$(cat $MARIADB_ROOT_PASSWORD_FILE)" &lt; /tmp/dump.sql'
 
 # WP-CLI Maintenance
 k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \

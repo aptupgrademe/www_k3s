@@ -93,9 +93,15 @@ data:
         # its chunks with 201 and then died on the final MOVE with 403
         # "access forbidden by rule". Small files are a single direct PUT and
         # were never affected, which is why this only showed up on big ones.
-        # The lookahead excludes exactly ".file" as a full path segment;
+        # WebDAV (/remote.php/…, /public.php/…) is excluded as a whole, not
+        # just ".file": those paths are the users' own files, and hidden ones
+        # are legitimate there (".obsidian", ".BackupManager", a "~/.config"
+        # someone syncs). Found 2026-09-27: a sync client got 403 on PROPFIND
+        # for a user's ".BackupManager" folder. Nextcloud itself enforces
+        # permissions on everything below remote.php; Nextcloud's own nginx
+        # config has no generic hidden-file rule for that reason.
         # /data/.ocdata, /.htaccess, /apps/*/.git/ etc. stay denied.
-        location ~ /\.(?!file(?:$|/)) { deny all; }
+        location ~ ^(?!/(?:remote|public)\.php/).*/\. { deny all; }
         location ~* ^/(?:data|config|lib|3rdparty|templates|tests)/ { deny all; }
 
         # Command-line entry points and dev leftovers. This is the companion
@@ -111,7 +117,10 @@ data:
         location = /robots.txt  { allow all; log_not_found off; access_log off; }
         location = /favicon.ico { log_not_found off; access_log off; }
 
-        location ~* \.(?:bak|orig|save|swp|hta)$ { deny all; }
+        # Editor/backup leftovers in the code tree. Not below WebDAV, for the
+        # same reason as the hidden-file rule above: "offer.bak" in a user's
+        # Nextcloud is a normal file and would otherwise fail to sync.
+        location ~* ^(?!/(?:remote|public)\.php/).*\.(?:bak|orig|save|swp|hta)$ { deny all; }
 
         # -------------------------------------------------------
         # PHP-FPM  (FPM listens on TCP 9000 in the same pod)

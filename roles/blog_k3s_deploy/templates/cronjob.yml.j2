@@ -243,6 +243,9 @@ spec:
             - -c
             - |
               set -e
+              # Dumps hold every password hash and user e-mail: owner-only.
+              umask 077
+              chmod 0700 /backup
               f=/backup/wordpress-db-$(date +%Y-%m-%d_%H%M).sql.gz
               MYSQL_PWD="$(cat /etc/secrets/db-password)" mariadb-dump -h "$DB_HOST" -u "$DB_USER" \
                 --single-transaction --quick --routines "$DB_NAME" | gzip > "$f"
