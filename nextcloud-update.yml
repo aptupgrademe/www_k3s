@@ -37,6 +37,15 @@
 
   tasks:
 
+    # "hosts: nextcloud" would otherwise hit every instance at once - including
+    # one that is mid-migration and must not be touched (sofie until its
+    # cutover) and the test host. Updates are deliberate, one host at a time.
+    - name: Update | Refuse to run without --limit
+      ansible.builtin.assert:
+        that: ansible_limit is defined
+        fail_msg: "Run with --limit <host>, e.g. --limit cvjm - this playbook restarts Nextcloud."
+      run_once: true
+
     # -------------------------------------------------------------------------
     # Pull latest images for the current tags.
     # crictl pull is idempotent: if the registry digest matches the local cache
@@ -92,7 +101,9 @@
         --
         runuser -u www-data -- php /var/www/html/occ upgrade --no-interaction
       register: occ_upgrade
-      changed_when: "'already at the latest version' not in occ_upgrade.stdout"
+      # Only a real upgrade prints "Update successful"; a no-op run just prints
+      # a note (NC 34 no longer says "already at the latest version").
+      changed_when: "'Update successful' in occ_upgrade.stdout"
       failed_when: occ_upgrade.rc != 0
 
     # -------------------------------------------------------------------------
