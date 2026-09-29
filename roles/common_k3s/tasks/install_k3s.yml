@@ -166,6 +166,16 @@
     path: /usr/local/bin/k3s
   register: k3s_binary
 
+# Whether the installer still has to run is decided by the systemd unit, not
+# by the binary: a first run interrupted after the binary download but before
+# the installer (get.k3s.io outage, 2026-09-29) left the binary in place and
+# no k3s.service, and the next run then skipped the installer and failed at
+# "Ensure k3s service is enabled". Keying on the unit makes that self-healing.
+- name: K3s | Check whether the k3s systemd unit exists
+  ansible.builtin.stat:
+    path: /etc/systemd/system/k3s.service
+  register: k3s_unit
+
 # Empty string (not installed) never equals k3s_version, so this correctly
 # triggers a download on first install too.
 - name: K3s | Check installed k3s version
@@ -195,12 +205,21 @@
   notify: Restart k3s service
   timeout: 600
 
-- name: K3s | Download K3s install script
+# The install script comes from the k3s repo at the same tag as the binary
+# (k3s_version), not from get.k3s.io: that always serves the newest script,
+# and it answered HTTP 500 for a while on 2026-09-29 (first run of the new
+# sofie host) while GitHub was fine. Pinned script + pinned binary = the
+# same install every time. "+" in the tag must be URL-encoded (%2B).
+- name: K3s | Download K3s install script (pinned to {{ k3s_version }})
   ansible.builtin.get_url:
-    url: https://get.k3s.io
+    url: "https://raw.githubusercontent.com/k3s-io/k3s/{{ k3s_version | urlencode }}/install.sh"
     dest: /tmp/k3s-install.sh
     mode: "0755"
-  when: not k3s_binary.stat.exists
+  register: k3s_script
+  until: k3s_script is succeeded
+  retries: 3
+  delay: 10
+  when: not k3s_unit.stat.exists
   timeout: 60
 
 # Invoked as `sh /tmp/k3s-install.sh`, not executed directly: common_cis_hardening
@@ -210,7 +229,7 @@
   ansible.builtin.shell: INSTALL_K3S_SKIP_DOWNLOAD=true sh /tmp/k3s-install.sh
   args:
     creates: /etc/systemd/system/k3s.service
-  when: not k3s_binary.stat.exists
+  when: not k3s_unit.stat.exists
 
 # Handlers otherwise only run at the very end of the whole play – far too
 # late for a version upgrade. Flush immediately so the restart (new binary)

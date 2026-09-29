@@ -46,3 +46,6 @@ scripts/wordpress-backup/*_backup.sh
 # Python bytecode
 __pycache__/
 *.pyc
+
+# Internal explainer PDFs for non-IT readers (German only) - never published.
+docs/intern/

@@ -25,6 +25,31 @@
 
 
 # -----------------------------------------------------------------------------
+# Static or DHCP? Decides whether the template renders the DHCP rules at all.
+# IONOS (blog) hands out IPv4 by DHCP (IPv6 is static); Contabo (cvjm, sofie)
+# is static for both families. Read from NetworkManager instead of an
+# inventory flag, so a provider change can never leave a stale setting behind.
+# If detection fails, both default to true: allowing DHCP is harmless, a
+# missing rule on a DHCP host can cost the address on the next renewal.
+# -----------------------------------------------------------------------------
+- name: Firewall | Detect whether IPv4/IPv6 are configured by DHCP (NetworkManager)
+  ansible.builtin.shell: |
+    set -o pipefail
+    dev=$(ip -4 route show default | awk '{print $5; exit}')
+    con=$(nmcli -g GENERAL.CONNECTION device show "$dev")
+    nmcli -g ipv4.method,ipv6.method connection show "$con"
+  register: _fw_ipmethods
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Firewall | Remember the address configuration for the template
+  ansible.builtin.set_fact:
+    fw_dhcp4: "{{ _fw_ipmethods.rc != 0 or _fw_ipmethods.stdout_lines[0] | default('auto') == 'auto' }}"
+    fw_dhcp6: "{{ _fw_ipmethods.rc != 0 or _fw_ipmethods.stdout_lines[1] | default('auto') in ['auto', 'dhcp'] }}"
+
+
+# -----------------------------------------------------------------------------
 # Deploy ruleset to the file the nftables systemd service actually reads.
 # AlmaLinux 9: ExecStart=/sbin/nft -f /etc/sysconfig/nftables.conf
 # -----------------------------------------------------------------------------
@@ -103,6 +128,33 @@
     state: started
   when: not ssh_first_run
 
+# Leftover of the pre-nftables era: the blog was filtered by
+# /root/fw/fw_ipv{4,6}.sh (iptables-legacy, applied by an @reboot cron job).
+# The migration to this role never removed it, so the blog ran two stacked
+# firewalls; the old one has OUTPUT policy DROP without a DHCP rule and
+# dropped the IPv4 lease renewals ("IPTables-Dropped ... DPT=67", found
+# 2026-09-29). No-op on hosts that never had it (cvjm, sofie). The rules
+# already loaded stay active until the next reboot.
+- name: Firewall | Remove the legacy iptables @reboot job
+  ansible.builtin.cron:
+    name: Apply iptables rules at reboot
+    special_time: reboot
+    user: root
+    state: absent
+
+- name: Firewall | Remove the legacy iptables scripts
+  ansible.builtin.file:
+    path: /root/fw
+    state: absent
+  register: _legacy_fw
+
+- name: Firewall | Legacy iptables rules are still loaded until the next reboot
+  ansible.builtin.debug:
+    msg: >-
+      /root/fw removed. The old iptables-legacy rules stay loaded until the
+      next reboot - reboot this host at a convenient time.
+  when: _legacy_fw.changed
+
 # firewalld ships installed-but-inactive on this image and is never used to
 # manage packet filtering here - nftables rules above are applied directly.
 # Masking (not removing the package) prevents it from ever being started by
@@ -136,17 +188,29 @@
 - name: Firewall | First run only – reboot to activate the new SSH port and firewall together
   when: ssh_first_run
   block:
-    - name: First run | Reboot
-      ansible.builtin.reboot:
-        reboot_timeout: 180
-        connect_timeout: 20
-        test_command: whoami
-      vars:
-        ansible_port: 10022
+    # The reboot must be SENT over the current connection (port 22): sshd only
+    # moves to 10022 when it starts again. An earlier version used the reboot
+    # module with task-level "vars: ansible_port: 10022" - but task vars apply
+    # to the whole task, including the connection that issues the reboot, so it
+    # failed right away with "port 10022: Connection refused" and the host was
+    # never rebooted (found on the sofie VPS, 2026-09-29). Fire-and-forget over
+    # port 22, then switch the port and wait for the host to come back.
+    - name: First run | Reboot (sent over the current port-22 connection)
+      ansible.builtin.shell: sleep 2 && systemctl reboot
+      async: 1
+      poll: 0
 
     - name: First run | Use the new SSH port for the rest of this run
       ansible.builtin.set_fact:
         ansible_port: 10022
+
+    - name: First run | Drop the old multiplexed connection on port 22
+      ansible.builtin.meta: reset_connection
+
+    - name: First run | Wait until the host answers on port 10022
+      ansible.builtin.wait_for_connection:
+        delay: 30
+        timeout: 300
 
     - name: First run | Reminder to persist the new port for future runs
       ansible.builtin.debug:

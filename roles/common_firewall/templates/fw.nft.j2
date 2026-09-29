@@ -177,10 +177,14 @@ table inet filter {
     ip  daddr {{ server_ipv4 }} tcp dport 10022 ct state new accept
     ip6 daddr {{ server_ipv6 }} tcp dport 10022         accept
 
+{% if fw_dhcp6 | default(true) %}
     # DHCPv6 Antwort vom Router (link-local → UDP 546 am Client)
-    # PFLICHT: ohne diese Regel bekommt der Server keine IPv6-Adresse per DHCPv6.
+    # PFLICHT, solange IPv6 per DHCPv6 kommt (fw_dhcp6, von der Rolle erkannt).
     # DHCPv4-Antworten (UDP 68) sind durch ct state established,related abgedeckt.
     ip6 saddr fe80::/10 udp dport 546 accept comment "DHCPv6 response – PFLICHT fuer IPv6"
+{% else %}
+    # No DHCPv6 rule: IPv6 is configured statically on this host (fw_dhcp6).
+{% endif %}
 
     # -------------------------------------------------------------------------
     # Port-scan detection. Everything that reaches this point is about to be
@@ -258,14 +262,23 @@ table inet filter {
     ip6 nexthdr ipv6-icmp accept
 
     # -------------------------------------------------------------------------
-    # DHCP – PFLICHT für IPv4- und IPv6-Adresszuweisung
+    # DHCP – only rendered for the address families that really use it.
     #
-    # OHNE diese Regeln kann der Server beim Lease-Renewal seine IPv4-Adresse
-    # verlieren und bekommt via DHCPv6 KEINE IPv6-Adresse zugeteilt.
-    # IPv6 (2001:ba0:27b:2a00::1) wird vom Provider per DHCPv6 zugewiesen.
+    # fw_dhcp4 / fw_dhcp6 are detected by the role from NetworkManager
+    # (ipv4.method / ipv6.method of the uplink). Where DHCP is in use, these
+    # rules are PFLICHT: without them the IPv4 lease renewal fails and the
+    # address can be lost. Hosts with a static config (e.g. Contabo) get no
+    # DHCP rules at all - nothing to renew, nothing to allow.
     # -------------------------------------------------------------------------
+{% if fw_dhcp4 | default(true) %}
     udp dport 67  ct state new accept comment "DHCPv4 lease renewal – PFLICHT"
+{% endif %}
+{% if fw_dhcp6 | default(true) %}
     udp dport 547 ct state new accept comment "DHCPv6 solicit/request – PFLICHT fuer IPv6"
+{% endif %}
+{% if not (fw_dhcp4 | default(true)) and not (fw_dhcp6 | default(true)) %}
+    # (static addressing for IPv4 and IPv6 - no DHCP rules)
+{% endif %}
 
     # DNS (UDP + TCP for large responses)
     udp dport 53  ct state new accept
