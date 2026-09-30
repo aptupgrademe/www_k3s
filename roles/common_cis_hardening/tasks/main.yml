@@ -295,6 +295,28 @@
 # rpcbind specifically (UDP/TCP 111) is a known historical target for RPC
 # portmapper reflection/amplification abuse - one less unused listener-
 # capable daemon on the host.
+# cloud-init only matters for the very first boot of a provider image (network,
+# root key, hostname). After that it just re-reads the provider metadata on every
+# boot - and it is the tool that dropped Contabo's 50-cloud-init.conf with
+# "PasswordAuthentication yes" (see common_ssh). Checked 2026-09-30 before
+# disabling: the network profiles are plain files written once at provisioning
+# (Contabo: ifcfg-eth0, IONOS: "Wired connection 1", cloud-init logs "No network
+# config applied" on later boots), so nothing depends on it any more.
+# The marker file is cloud-init's documented off switch; delete it to re-enable.
+- name: CIS | Check whether cloud-init is installed
+  ansible.builtin.stat:
+    path: /etc/cloud
+  register: cis_cloud_dir
+
+- name: CIS | Disable cloud-init after provisioning (marker file)
+  ansible.builtin.copy:
+    dest: /etc/cloud/cloud-init.disabled
+    content: "Disabled by Ansible (common_cis_hardening) - provisioning is done; delete this file to re-enable.\n"
+    owner: root
+    group: root
+    mode: "0644"
+  when: cis_cloud_dir.stat.exists
+
 - name: CIS | Remove unused NFS/RPC/Samba-client packages (verified 2026-08-21)
   ansible.builtin.dnf:
     name:
