@@ -205,7 +205,7 @@ table inet filter {
   }
 
   # ===========================================================================
-  # PREROUTING – close the NodePort back door (runs before kube-proxy DNAT)
+  # PREROUTING – close the NodePort back door (after conntrack, before kube-proxy DNAT)
   # ---------------------------------------------------------------------------
   # kube-proxy DNATs the NodePort range (30000-32767) for ANY dst-type LOCAL
   # address, including {{ server_ipv4 }}. That DNAT'd traffic is rewritten to a
@@ -214,15 +214,26 @@ table inet filter {
   # every NodePort was in fact reachable from the internet, bypassing the input
   # chain entirely (verified: the mysqld/php-fpm exporters on :30104/:30253
   # answered from outside). Prometheus scrapes them via 127.0.0.1 only, so the
-  # public IPs have no business exposing NodePorts at all. Drop it here at raw
-  # priority (-300), before the DNAT at dstnat (-100). Matches on the public
-  # destination IP only: loopback (127.0.0.1, Prometheus) and pod/ClusterIP
-  # destinations are untouched, and this also protects any future NodePort.
+  # public IPs have no business exposing NodePorts at all. Matches on the
+  # public destination IP only: loopback (127.0.0.1, Prometheus) and
+  # pod/ClusterIP destinations are untouched, and this also protects any
+  # future NodePort.
+  #
+  # Only NEW connections are dropped, and the chain runs at -150: after
+  # conntrack (-200), before the DNAT at dstnat (-100). It used to run at raw
+  # (-300), before conntrack, and dropped every packet to 30000-32767 - also
+  # the REPLIES to pod traffic: flannel masquerades pod egress with
+  # --random-fully over the whole port space, so ~4 % of outgoing pod
+  # connections got a public source port in the NodePort range and their
+  # SYN-ACK was thrown away (connect timeouts to GitHub / the app store from
+  # every K3s host, 2026-07-31 .. 2026-09-30; found in the sofie acceptance test:
+  # every conntrack entry stuck in SYN_SENT/UNREPLIED had its NAT port there).
+  # Replies are "established" for conntrack, so they now pass.
   # ===========================================================================
   chain prerouting {
-    type filter hook prerouting priority -300; policy accept;
-    ip  daddr {{ server_ipv4 }} tcp dport 30000-32767 drop
-    ip6 daddr {{ server_ipv6 }} tcp dport 30000-32767 drop
+    type filter hook prerouting priority -150; policy accept;
+    ip  daddr {{ server_ipv4 }} tcp dport 30000-32767 ct state new drop
+    ip6 daddr {{ server_ipv6 }} tcp dport 30000-32767 ct state new drop
   }
 
   # ===========================================================================

@@ -2269,13 +2269,18 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   </tr>
   <tr>
     <td>NodePort-Absicherung (PREROUTING)</td>
-    <td>Eine <code>prerouting</code>-Chain (Priority <code>raw</code>, <em>vor</em> der kube-proxy-DNAT)
-        verwirft Zugriffe auf den NodePort-Range (30000–32767) auf den öffentlichen IPv4/IPv6-Adressen.
+    <td>Eine <code>prerouting</code>-Chain (Priority <code>-150</code>: <em>nach</em> conntrack, <em>vor</em> der kube-proxy-DNAT)
+        verwirft <strong>neue</strong> Verbindungen (<code>ct state new</code>) auf den NodePort-Range (30000–32767)
+        der öffentlichen IPv4/IPv6-Adressen.
         Grund: kube-proxy DNAT'et NodePorts für jede lokale Ziel-Adresse (auch die öffentliche IP) und
         leitet sie danach in die FORWARD-Chain – sie umgehen damit die INPUT-Regeln. Ohne diese Chain
         wären die Prometheus-Exporter (<code>:30104</code>/<code>:30253</code>) aus dem Internet
         erreichbar. Prometheus scrapt sie ausschließlich über <code>127.0.0.1</code> – localhost bleibt
-        unberührt.</td>
+        unberührt.<br><strong>Bis 30.09.2026</strong> lief die Chain mit Priority <code>raw</code> (vor conntrack) und
+        verwarf <em>jedes</em> Paket in diesem Bereich – auch Antworten auf Pod-Verbindungen nach außen: flannel
+        maskiert Pod-Egress mit <code>--random-fully</code> über den ganzen Portraum, rund 4&nbsp;% bekamen einen
+        öffentlichen Quellport im NodePort-Bereich und deren SYN-ACK ging verloren (Timeouts zu GitHub/App-Store,
+        in conntrack als <code>SYN_SENT [UNREPLIED]</code> sichtbar).</td>
   </tr>
 </table>
 <pre><code># Geblockte Pakete live verfolgen

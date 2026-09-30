@@ -2430,12 +2430,16 @@ Both verified 2026-09-14.</p>
   </tr>
   <tr>
     <td>NodePort lockdown (PREROUTING)</td>
-    <td>A <code>prerouting</code> chain (raw priority, <em>before</em> kube-proxy's DNAT) drops access to
-        the NodePort range (30000–32767) aimed at the public IPv4/IPv6 addresses. Reason: kube-proxy
+    <td>A <code>prerouting</code> chain (priority <code>-150</code>: <em>after</em> conntrack, <em>before</em> kube-proxy's DNAT) drops
+        <strong>new</strong> connections (<code>ct state new</code>) to the NodePort range (30000–32767) aimed at the public IPv4/IPv6 addresses. Reason: kube-proxy
         DNATs NodePorts for any dst-type LOCAL address (including the public IP) and then routes them
         through FORWARD — bypassing the INPUT rules. Without this chain the Prometheus exporters
         (<code>:30104</code>/<code>:30253</code>) were reachable from the internet. Prometheus scrapes
-        them via <code>127.0.0.1</code> only, so loopback stays untouched.</td>
+        them via <code>127.0.0.1</code> only, so loopback stays untouched.<br><strong>Until 2026-09-30</strong> the chain ran at
+        <code>raw</code> priority (before conntrack) and dropped <em>every</em> packet in that range, including replies to
+        outbound pod connections: flannel masquerades pod egress with <code>--random-fully</code> across the whole port space,
+        so about 4&nbsp;% got a public source port in the NodePort range and lost their SYN-ACK (timeouts e.g. on WordPress
+        updates, visible in conntrack as <code>SYN_SENT [UNREPLIED]</code>).</td>
   </tr>
 </table>
 <pre><code># Monitor blocked packets live
