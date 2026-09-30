@@ -3,3 +3,16 @@
   ansible.builtin.service:
     name: nftables
     state: reloaded
+
+# The reload replaces the whole "inet filter" table (fw.nft.j2: delete +
+# recreate), and with it the ban sets banned4/banned6 that fail2ban fills.
+# fail2ban does not notice: it keeps the IPs as "banned" while the firewall
+# lets them in again. Found 2026-09-30: after a playbook run, 15 of 17 bans on
+# sofie and 17 of 24 on cvjm existed only in fail2ban. A restart makes
+# fail2ban re-apply every still-active ban from its database. try-restart:
+# does nothing where fail2ban is not running. Runs after the reload because
+# handlers execute in the order they are defined here.
+- name: Re-apply fail2ban bans after the nftables reload
+  ansible.builtin.command: systemctl try-restart fail2ban
+  listen: Reload nftables
+  changed_when: true
