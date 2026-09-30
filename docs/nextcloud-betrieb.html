@@ -1970,7 +1970,7 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   </tr>
   <tr>
     <td>SSH</td>
-    <td>Port 10022, Key-only (<code>PermitRootLogin without-password</code>), gehärtete sshd_config, Fail2Ban</td>
+    <td>Port 10022, Key-only (<code>PermitRootLogin without-password</code>), gehärtete sshd_config, Fail2Ban, <code>sshd_config.d/00-hardening.conf</code> pinnt Key-only vor Anbieter-Drop-ins (Contabos <code>50-cloud-init.conf</code> schaltete Passwörter sonst wieder ein, gefunden 30.09.2026)</td>
     <td><code>common_ssh</code>, <code>common_fail2ban</code></td>
   </tr>
   <tr>
@@ -2072,6 +2072,32 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
     <td><code>next_k3s_deploy</code></td>
   </tr>
 </table>
+
+<h3>Collabora: öffentlich erreichbar, aber an Nextcloud gebunden</h3>
+<p>
+  <code>collabora.&lt;domain&gt;</code> muss aus dem Internet erreichbar sein: Beim Öffnen eines Dokuments lädt der
+  <em>Browser</em> der Nutzerin bzw. des Nutzers die Office-Oberfläche direkt von dort. Geschützt ist der Dienst nicht
+  über Erreichbarkeit, sondern über diese Punkte (von außen getestet am 30.09.2026, cvjm und sofie identisch):
+</p>
+<table>
+  <tr><th>Aufruf von außen</th><th>Ergebnis</th><th>Warum</th></tr>
+  <tr><td><code>/</code></td><td>200 „OK“</td><td>nur Lebenszeichen, keine Oberfläche, keine Daten</td></tr>
+  <tr><td><code>/hosting/discovery</code></td><td>200</td><td>muss öffentlich sein (Nextcloud und Browser lesen die unterstützten Formate)</td></tr>
+  <tr><td>Admin-Konsole <code>/browser/dist/admin/admin.html</code>, <code>/cool/getMetrics</code></td><td>401</td><td>nur mit Admin-Zugangsdaten</td></tr>
+  <tr><td><code>POST /cool/convert-to/…</code></td><td>403</td><td>Umwandlung nur für Nextcloud selbst (nutzt sie für Office-/PDF-Vorschaubilder), kein offener Konverter</td></tr>
+  <tr><td>Dokument von fremdem WOPI-Host</td><td>abgelehnt</td><td><code>aliasgroup1=https://nextcloud.&lt;domain&gt;</code> bindet Collabora an die eigene Instanz; die statische <code>cool.html</code>-Hülle liefert zwar 200, das Laden scheitert</td></tr>
+</table>
+<p>
+  Ein Dokument öffnet sich nur mit einem kurzlebigen WOPI-Zugangs-Token, das Nextcloud für eine angemeldete Person mit
+  Rechten an genau dieser Datei ausstellt. Collabora speichert selbst nichts: Es holt die Datei mit dem Token bei Nextcloud
+  und schreibt sie dorthin zurück.
+</p>
+<p>
+  <strong>Anmeldeseite und HSTS:</strong> <code>/login</code> hat einen eigenen <code>location</code>-Block für das
+  Rate-Limit (<code>nc_login</code>). Die Header der Minion-Annotation (<code>location-snippets</code>) greifen dort nicht,
+  deshalb setzt der Block HSTS selbst (fehlte bis 30.09.2026; gleiches Muster beim Blog auf <code>/wp-login.php</code>).
+</p>
+
 <div class="callout callout-info">
   <strong>Noch nicht live ausgerollt (2026-08-20)</strong>
   Die drei Punkte oben wurden im Zuge der CIS/kube-bench-Härtung des

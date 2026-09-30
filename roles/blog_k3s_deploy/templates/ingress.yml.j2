@@ -39,6 +39,9 @@ metadata:
       location = /readme.html { deny all; return 403; }
       location = /license.txt { deny all; return 403; }
       location = /wp-login.php {
+        # Own location (rate limit) = the minion's location-snippets do not apply
+        # here, so the login page went out without HSTS (found 2026-09-30).
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
         limit_req zone=wp_login burst=5 nodelay;
         proxy_pass http://wordpress.wordpress.svc.cluster.local;
         proxy_set_header Host              $host;

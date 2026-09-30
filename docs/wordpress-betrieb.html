@@ -1999,7 +1999,7 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   </tr>
   <tr>
     <td>SSH</td>
-    <td>Port 10022, Key-only (<code>PermitRootLogin without-password</code>), gehärtete sshd_config, Fail2Ban</td>
+    <td>Port 10022, Key-only (<code>PermitRootLogin without-password</code>), gehärtete sshd_config, Fail2Ban, <code>sshd_config.d/00-hardening.conf</code> pinnt Key-only vor Anbieter-Drop-ins (Contabos <code>50-cloud-init.conf</code> schaltete Passwörter sonst wieder ein, gefunden 30.09.2026)</td>
     <td><code>common_ssh</code>, <code>common_fail2ban</code></td>
   </tr>
   <tr>
@@ -2028,7 +2028,7 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   </tr>
   <tr>
     <td>HTTP – Rate-Limiting</td>
-    <td>wp-login.php: 5 r/s pro IP, Burst 5</td>
+    <td>wp-login.php: 5 r/s pro IP, Burst 5; eigener location-Block, setzt HSTS selbst (die Header der Minion-Annotation greifen dort nicht)</td>
     <td><code>common_k3s</code> (nginx-ingress Helm-Values + Ingress-Annotations)</td>
   </tr>
   <tr>

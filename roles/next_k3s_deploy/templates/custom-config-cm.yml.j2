@@ -16,6 +16,11 @@ data:
       'force_language'       => 'de',
       'default_phone_region' => 'DE',
 
+{% if nextcloud_default_app | default('') %}
+      // --- Start page after login (empty var = Nextcloud's default, the dashboard) ---
+      'defaultapp' => '{{ nextcloud_default_app }}',
+
+{% endif %}
       // --- Session ---
       // session_keepalive=true: without it, a long Collabora editing session
       // with a pause >1h can outlive the Nextcloud login session (Collabora's

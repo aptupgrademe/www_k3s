@@ -93,6 +93,31 @@
   notify: Validate sshd config
 
 
+# The main sshd_config pulls in /etc/ssh/sshd_config.d/*.conf at the TOP, and
+# for sshd the first value of a keyword wins. Cloud images drop their own
+# 50-cloud-init.conf there: Contabo's says "PasswordAuthentication yes" and
+# silently overrode our "no" (found 2026-09-30 on cvjm and sofie; IONOS ships
+# "no", so the blog was fine). A 00- drop-in sorts first and pins the
+# authentication settings no matter what a provider image adds later.
+- name: SSH | Pin key-only authentication ahead of provider drop-ins
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/00-hardening.conf
+    owner: root
+    group: root
+    mode: "0600"
+    content: |
+      # Managed by Ansible (role common_ssh) - do not edit.
+      # Sorts before provider drop-ins such as 50-cloud-init.conf (first value wins).
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin prohibit-password
+  notify:
+    - Validate sshd config
+    - Reload sshd
+    - Reset connection after sshd restart
+    - Confirm sshd is accepting connections again
+
+
 # -----------------------------------------------------------------------------
 # STEP 5: Deploy SSH login banner
 # -----------------------------------------------------------------------------

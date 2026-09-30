@@ -26,4 +26,8 @@ nextcloud_apps_disabled: []
 # path, bind address, `occ notify_push:setup` self-test). Flip to true on cvjm
 # via host_vars once verified.
 nextcloud_notify_push_enabled: false
+
+# App users land on after login ('files', 'dashboard', ...). Empty = Nextcloud's
+# own default (the dashboard). Written as 'defaultapp' into custom.config.php.
+nextcloud_default_app: ""
 notify_push_port: 7867
