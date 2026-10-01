@@ -122,6 +122,18 @@ DC_PTR = re.compile(
 SCRAPER_PAGE_THRESHOLD = 200
 
 
+# Referer of a page view that came from a search engine (incl. AI search). The
+# group is the engine's host part, mapped to a display name below.
+SEARCH_REF = re.compile(
+    r'^https?://(?:www\.|[a-z]{2,5}\.)?(google|bing|duckduckgo|ecosia|startpage|qwant|'
+    r'yahoo|yandex|baidu|search\.brave|kagi|perplexity|chatgpt|metager)\.', re.I)
+ENGINE_NAMES = {"google": "Google", "bing": "Bing", "duckduckgo": "DuckDuckGo",
+                "ecosia": "Ecosia", "startpage": "Startpage", "qwant": "Qwant",
+                "yahoo": "Yahoo", "yandex": "Yandex", "baidu": "Baidu",
+                "search.brave": "Brave Search", "kagi": "Kagi",
+                "perplexity": "Perplexity", "chatgpt": "ChatGPT", "metager": "MetaGer"}
+
+
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -155,7 +167,7 @@ def read_log(pattern):
                 except ValueError:
                     continue
                 rows.append((ts, m["ip"], m["method"], m["path"],
-                             int(m["status"]), m["ua"]))
+                             int(m["status"]), m["ua"], m["ref"]))
     rows.sort()
     return rows
 
@@ -218,8 +230,9 @@ def main():
     assets = collections.Counter()
     pages_of = collections.defaultdict(list)
     first_of, ua_of = {}, {}
+    search_hits = []  # (day, ip, engine) - page views that arrived from a search engine
 
-    for ts, ip, method, path, status, ua in rows:
+    for ts, ip, method, path, status, ua, ref in rows:
         if is_internal(ip) or is_excluded(ip) or method != "GET":
             continue
         if not ua or ua == "-" or BOT_UA.search(ua):
@@ -234,6 +247,9 @@ def main():
             pages_of[ip].append(path)
             first_of.setdefault(ip, ts)
             ua_of.setdefault(ip, ua)
+            se = SEARCH_REF.search(ref)
+            if se:
+                search_hits.append((ts.date(), ip, se.group(1).lower()))
 
     browsers = [ip for ip in html if assets[ip] >= args.min_assets]
 
@@ -323,6 +339,25 @@ def main():
                 read[path] += 1
     for path, n in read.most_common(12):
         print(f"  {n:4d}  {path[:52]}")
+
+    # Arrivals from search engines, counted for regular visitors only. Ask the
+    # question "do more readers find the blog through search?" over several
+    # runs: the per-day rows are the trend, the period above is the window.
+    print("\nSEARCH ENGINE ARRIVALS (regular visitors)")
+    print("-" * 60)
+    hits = [(d, ip, e) for d, ip, e in search_hits if mask(ip) in keep]
+    if not hits:
+        print("  none in this period")
+    else:
+        engines = collections.Counter(ENGINE_NAMES.get(e, e) for _, _, e in hits)
+        print("  by engine : " + ", ".join(f"{n} {e}" for e, n in engines.most_common()))
+        print(f"  visitors  : {len({mask(ip) for _, ip, _ in hits})} of {len(visitors)} "
+              f"regular visitors arrived via search at least once")
+        per_day = collections.defaultdict(set)
+        for d, ip, _ in hits:
+            per_day[d].add(mask(ip))
+        for d in sorted(per_day):
+            print(f"  {d}  {len(per_day[d]):3d} visitor(s)")
 
     if machines:
         print(f"\nFILTERED OUT: {len(machines)} cloud/scraper IPs")
