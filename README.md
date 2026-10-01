@@ -130,6 +130,15 @@ Internet
   and the stock `flush ruleset` wiped them, breaking Service traffic for up to
   90 s on every firewall change
 - The template is checked with `nft -c` before it replaces the live file
+- **Optional SSH country filter** (`fw_ssh_geo_countries`, e.g. `[DE]`, off by
+  default; currently on for the blog only): port 10022 accepts new connections
+  only from the IP blocks RIPE has delegated to those countries. Web traffic is
+  not affected. `ssh-geo-update` builds `/etc/nftables/ssh-geo.nft`, which the
+  ruleset includes, so reloads and boots refill the sets in the same
+  transaction; a weekly timer refreshes the list and keeps the old one on any
+  error (failed download, stale data, a list shrinking by more than 20 %).
+  For Germany: ~8,700 IPv4 + 3,100 IPv6 blocks, ~1.5 MB kernel memory. Details
+  and the emergency path: [`roles/common_firewall/readme.md`](roles/common_firewall/readme.md)
 
 #### NetworkPolicy – Calico (Nextcloud)
 
@@ -184,7 +193,10 @@ issuance succeeds.
 - **auditd** with security-relevant rules
 - **rkhunter** daily scan with email alerts
 - **ClamAV** nightly scan of Nextcloud user data / WordPress uploads, email alerts
-- **dnf-automatic** for auto security updates, automatic reboot if required
+- **dnf-automatic** for auto security updates, automatic reboot if required.
+  The night runs in a fixed order: AIDE check 00:00, updates 01:00-02:00,
+  reboot if needed 03:30, AIDE baseline refresh 04:00 - so an update never
+  triggers a false AIDE alert
 - **systemd hardening** drop-ins for sshd, node_exporter, prometheus
 - **CIS AlmaLinux 9 Benchmark** hardening (AIDE file integrity, kernel module
   blacklist, cron/sudo permissions, `nodev,nosuid,noexec` mount options)
@@ -319,7 +331,7 @@ ansible-vault encrypt inventory/host_vars/<host>/vault.yml
 | `common_version_check` | Pre-flight: K3s, Helm, chart and image versions vs. latest |
 | `common_k3s` | K3s, Helm, cert-manager, F5 nginx-ingress (HTTP/2, Brotli, OCSP) |
 | `common_calico` | Calico policy-only mode: NetworkPolicy enforcement (Nextcloud) |
-| `common_firewall` | nftables (table inet, banned/scan-ban sets, port-scan detection, K3s exceptions, table-scoped reload) |
+| `common_firewall` | nftables (table inet, banned/scan-ban sets, port-scan detection, K3s exceptions, table-scoped reload, optional SSH country allowlist) |
 | `common_ssh` | SSH hardening (port 10022, key-only, PermitRootLogin without-password) |
 | `common_prometheus` | Prometheus metrics collector (dashboards/history only – see note below) |
 | `common_grafana` | Grafana dashboards |
