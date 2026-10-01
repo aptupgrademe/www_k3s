@@ -68,6 +68,28 @@ table inet filter {
     timeout 1h
     comment "port scanners, auto-detected (IPv6)"
   }
+{% if fw_ssh_geo_countries | length > 0 %}
+
+  # ---------------------------------------------------------------------------
+  # SSH country allowlist ({{ fw_ssh_geo_countries | join(', ') }}{{ ' + ' ~ (fw_ssh_geo_extra | join(', ')) if fw_ssh_geo_extra | length > 0 else '' }}).
+  # Filled by the include at the end of this file (/etc/nftables/ssh-geo.nft,
+  # built and refreshed weekly by ssh-geo-update) in the same transaction.
+  # Check an address: nft get element inet filter ssh_geo4 { 1.2.3.4 }
+  # ---------------------------------------------------------------------------
+  set ssh_geo4 {
+    type ipv4_addr
+    flags interval
+    auto-merge
+    comment "SSH allowed from (IPv4)"
+  }
+
+  set ssh_geo6 {
+    type ipv6_addr
+    flags interval
+    auto-merge
+    comment "SSH allowed from (IPv6)"
+  }
+{% endif %}
 
   # ===========================================================================
   # INPUT
@@ -174,8 +196,16 @@ table inet filter {
     ip6 daddr {{ server_ipv6 }} tcp dport { 80, 443 } accept
 
     # Incoming: management (SSH on non-standard port)
+{% if fw_ssh_geo_countries | length > 0 %}
+    # Only from the country allowlist above. Everything else falls through to
+    # the port-scan counter and the policy drop below - the same as a closed
+    # port, so 30+ attempts per minute earn a 1-hour ban on all ports.
+    ip  daddr {{ server_ipv4 }} tcp dport 10022 ct state new ip saddr @ssh_geo4 accept
+    ip6 daddr {{ server_ipv6 }} tcp dport 10022 ip6 saddr @ssh_geo6 accept
+{% else %}
     ip  daddr {{ server_ipv4 }} tcp dport 10022 ct state new accept
     ip6 daddr {{ server_ipv6 }} tcp dport 10022         accept
+{% endif %}
 
 {% if fw_dhcp6 | default(true) %}
     # DHCPv6 Antwort vom Router (link-local → UDP 546 am Client)
@@ -319,3 +349,8 @@ table inet filter {
     limit rate 2/minute log prefix "nftables DROP OUT: " level warn flags all
   }
 }
+{% if fw_ssh_geo_countries | length > 0 %}
+
+# SSH country allowlist: flush + refill of ssh_geo4/ssh_geo6 (ssh-geo-update).
+include "/etc/nftables/ssh-geo.nft"
+{% endif %}

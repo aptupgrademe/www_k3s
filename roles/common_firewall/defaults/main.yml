@@ -1,4 +1,17 @@
 ---
-# All firewall parameters are defined directly in the fw.nft.j2 template
+# Firewall addresses are defined directly in the fw.nft.j2 template
 # using inventory variables (server_ipv4, server_ipv6, k3s_pod_cidr).
-# No role-level defaults needed.
+# The only role defaults are the optional SSH country filter below.
+
+# SSH country filter (off by default). When set, port 10022 only accepts new
+# connections from IP blocks that RIPE has delegated to these countries, plus
+# fw_ssh_geo_extra. Web (80/443) stays open worldwide. RIPE-region country
+# codes only (e.g. DE, AT, CH, NL). Enabled per host in host_vars, e.g.
+#   fw_ssh_geo_countries: [DE]
+# The list is built on the host by /usr/local/sbin/ssh-geo-update and
+# refreshed weekly (ssh-geo-update.timer, Sun 02:30-03:00 - between the
+# midnight AIDE check and the 04:00 baseline refresh). Emergency access from
+# elsewhere: the provider's web console (root password), or add your address
+# to fw_ssh_geo_extra and run the playbook from inside the allowed area.
+fw_ssh_geo_countries: []
+fw_ssh_geo_extra: []

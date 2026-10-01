@@ -44,6 +44,28 @@ Without these three rules all pod controllers (cert-manager, coredns, metrics-se
 | `k3s_pod_cidr` | `10.42.0.0/16` | K3s pod network (Flannel default) |
 | `server_ipv4` | `1.2.3.4` | Public IPv4 address of the server |
 | `server_ipv6` | `2a01::1` | Public IPv6 address (optional) |
+| `fw_ssh_geo_countries` | `[DE]` | Optional: SSH (10022) only from these countries' IP blocks (RIPE region). Default `[]` = off |
+| `fw_ssh_geo_extra` | `["198.51.100.7/32"]` | Optional: extra CIDRs always allowed for SSH when the country filter is on |
+
+## SSH country filter (optional)
+
+With `fw_ssh_geo_countries` set, port 10022 only accepts new connections from
+the IP blocks RIPE has delegated to those countries. Web (80/443) is not
+affected. `/usr/local/sbin/ssh-geo-update` downloads RIPE's delegation file,
+merges the blocks (DE: ~8,700 IPv4 + ~3,100 IPv6, ~1.5 MB kernel memory) and
+writes `/etc/nftables/ssh-geo.nft`, which the ruleset includes - so every
+reload and boot refills the sets in the same transaction. A weekly timer
+(Sun 02:30-03:00) refreshes the list live; on any error (download, stale
+data, a list shrinking by more than 20 %) the old list stays. The first
+list is built before the ruleset is templated, so a failed download stops
+the play before anything could lock SSH out.
+
+    systemctl list-timers ssh-geo-update.timer
+    journalctl -u ssh-geo-update.service
+    nft get element inet filter ssh_geo4 { 1.2.3.4 }   # is this address allowed?
+
+Locked out (abroad, foreign VPN): use the provider's web console, or add the
+address to `fw_ssh_geo_extra` and run the playbook from an allowed network.
 
 ## AlmaLinux 9 note
 

@@ -9,8 +9,9 @@
 #          its own KUBE-* chains in iptables (a separate subsystem), so there
 #          is no lock contention with nftables.
 # Target:  AlmaLinux 9
-# Variables: all values come from the inventory (group_vars/all.yml and
-#            host_vars/<host>/vars.yml); this role defines none of its own.
+# Variables: addresses come from the inventory (group_vars/all.yml and
+#            host_vars/<host>/vars.yml); the only role defaults are the
+#            optional SSH country filter (fw_ssh_geo_countries/_extra).
 # =============================================================================
 
 
@@ -50,6 +51,96 @@
 
 
 # -----------------------------------------------------------------------------
+# SSH country allowlist (fw_ssh_geo_countries, off by default - see defaults).
+# Runs BEFORE the ruleset template: the template includes
+# /etc/nftables/ssh-geo.nft and its "nft -c" validation reads that file, so
+# the list must exist first. If the very first download fails, the play
+# stops here - before any rule that could lock SSH out is written.
+# The list lives in /etc/nftables (etc_t): the nftables unit loads the
+# ruleset in a confined SELinux domain that reads etc_t, not var_lib_t; a
+# file it cannot read would make the whole ruleset fail at boot.
+# -----------------------------------------------------------------------------
+- name: Firewall | SSH country allowlist
+  when: fw_ssh_geo_countries | length > 0
+  block:
+    - name: SSH geo | Install the update script
+      ansible.builtin.copy:
+        src: ssh-geo-update
+        dest: /usr/local/sbin/ssh-geo-update
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: SSH geo | Write the country list
+      ansible.builtin.copy:
+        dest: /etc/ssh-geo.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: "{{ {'countries': fw_ssh_geo_countries, 'extra': fw_ssh_geo_extra} | to_nice_json }}\n"
+      register: _geo_conf
+
+    - name: SSH geo | Is there a list already?
+      ansible.builtin.stat:
+        path: /etc/nftables/ssh-geo.nft
+      register: _geo_list
+
+    # --no-apply: only write the file. The reload handler loads it together
+    # with the (possibly new) ruleset; applying it live here would fail on the
+    # first run anyway, because the sets don't exist yet.
+    - name: SSH geo | Build the list (first run, or the countries changed)
+      ansible.builtin.command: /usr/local/sbin/ssh-geo-update --no-apply
+      when: _geo_conf.changed or not _geo_list.stat.exists
+      changed_when: true
+      notify: Reload nftables
+
+    - name: SSH geo | Weekly refresh (service + timer)
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/{{ item.name }}"
+        owner: root
+        group: root
+        mode: "0644"
+        content: "{{ item.content }}"
+      loop:
+        - name: ssh-geo-update.service
+          content: |
+            # Managed by Ansible (role common_firewall)
+            [Unit]
+            Description=Refresh the SSH country allowlist (nftables)
+            Wants=network-online.target
+            After=network-online.target nftables.service
+
+            [Service]
+            Type=oneshot
+            ExecStart=/usr/local/sbin/ssh-geo-update
+        - name: ssh-geo-update.timer
+          content: |
+            # Managed by Ansible (role common_firewall)
+            # Sun 02:30-03:00: after the 00:00 AIDE check, before the 04:00
+            # AIDE baseline refresh - the new list never triggers an AIDE mail.
+            [Unit]
+            Description=Weekly refresh of the SSH country allowlist
+
+            [Timer]
+            OnCalendar=Sun *-*-* 02:30
+            RandomizedDelaySec=30m
+            Persistent=true
+
+            [Install]
+            WantedBy=timers.target
+      loop_control:
+        label: "{{ item.name }}"
+      register: _geo_units
+
+    - name: SSH geo | Enable the weekly refresh
+      ansible.builtin.systemd:
+        name: ssh-geo-update.timer
+        enabled: true
+        state: started
+        daemon_reload: "{{ _geo_units.changed }}"
+
+
+# -----------------------------------------------------------------------------
 # Deploy ruleset to the file the nftables systemd service actually reads.
 # AlmaLinux 9: ExecStart=/sbin/nft -f /etc/sysconfig/nftables.conf
 # -----------------------------------------------------------------------------
@@ -64,6 +155,29 @@
     mode: "0640"
     validate: nft -c -f %s
   notify: Reload nftables
+
+# Country filter switched off (or never on): remove its pieces. The ruleset
+# above no longer includes the list, so deleting it is safe.
+- name: Firewall | Remove the SSH country allowlist when it is not configured
+  when: fw_ssh_geo_countries | length == 0
+  block:
+    - name: SSH geo | Stop the weekly refresh
+      ansible.builtin.systemd:
+        name: ssh-geo-update.timer
+        enabled: false
+        state: stopped
+      failed_when: false
+
+    - name: SSH geo | Remove script, config, list and units
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/systemd/system/ssh-geo-update.timer
+        - /etc/systemd/system/ssh-geo-update.service
+        - /usr/local/sbin/ssh-geo-update
+        - /etc/ssh-geo.conf
+        - /etc/nftables/ssh-geo.nft
 
 # The stock unit reloads with 'flush ruleset; include ...' and stops with
 # 'flush ruleset'. That also wipes kube-proxy's / flannel's / Calico's tables,
