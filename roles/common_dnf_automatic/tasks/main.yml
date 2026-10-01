@@ -31,20 +31,50 @@
     regexp: '^apply_updates\s*='
     line: "apply_updates = yes"
 
-# The timer fires once a day (at a random offset within an hour)
+# The night is planned around this window: AIDE check 00:00
+# (common_cis_hardening), updates 01:00-02:00, reboot-if-needed 03:30,
+# AIDE baseline refresh 04:00, reboot-required check 06:00. The packaged
+# timer fires at 06:00 + up to 60 min, i.e. AFTER the reboot and the AIDE
+# refresh - found 2026-10-01: every security update (gawk) mailed an AIDE
+# alert the following midnight, and a new kernel waited ~21 h for the next
+# 03:30 reboot. The drop-in moves it into the window above (host clock:
+# Europe/Berlin on the Nextcloud hosts, UTC on the blog - the cron jobs use
+# the same clock, so the order holds on every host).
+- name: dnf-automatic | Create the install timer drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/dnf-automatic-install.timer.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: dnf-automatic | Move the install timer into the 01:00-02:00 window
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/dnf-automatic-install.timer.d/schedule.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (common_dnf_automatic) - see the role for the night's schedule
+      [Timer]
+      OnCalendar=
+      OnCalendar=*-*-* 01:00
+      RandomizedDelaySec=60m
+  register: dnf_automatic_timer_dropin
+
 - name: dnf-automatic | Enable and start install timer
   ansible.builtin.systemd:
     name: dnf-automatic-install.timer
     enabled: true
-    state: started
+    state: "{{ 'restarted' if dnf_automatic_timer_dropin is changed else 'started' }}"
     daemon_reload: true
 
 
 # -----------------------------------------------------------------------------
 # Automatic reboot after security update
 # dnf-automatic silently installs security updates (including the kernel) in
-# the background during its once-a-day window (00:00-01:00, see the timer's
-# own randomized delay). A pending reboot leaves a patched kernel/glibc/
+# the background during its once-a-day window (01:00-02:00, set by the timer
+# drop-in above). A pending reboot leaves a patched kernel/glibc/
 # systemd unused until the box actually restarts, so reboot automatically at
 # 03:30 - safely after the install window, in the least busy hour - if one is
 # genuinely pending. Mail is sent first so there's a record of why the box

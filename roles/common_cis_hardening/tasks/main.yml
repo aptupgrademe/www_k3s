@@ -88,7 +88,7 @@
 # common_aide_refresh (end of playbook) only re-baselines when an Ansible
 # run actually touches this host. dnf-automatic (common_dnf_automatic)
 # installs security updates - including kernel swaps - silently every night
-# in its own 00:00-01:00 window with no Ansible run involved, so that path
+# in its own 01:00-02:00 window with no Ansible run involved, so that path
 # never refreshed the baseline. Confirmed live 2026-08-29/2026-09-01: a
 # kernel update (687.39.1 -> 687.42.1) landed via dnf-automatic, and the
 # next @daily "AIDE integrity check" above mailed a false-positive alert
