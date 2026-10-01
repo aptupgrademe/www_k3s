@@ -202,6 +202,11 @@ table inet filter {
     # port, so 30+ attempts per minute earn a 1-hour ban on all ports.
     ip  daddr {{ server_ipv4 }} tcp dport 10022 ct state new ip saddr @ssh_geo4 accept
     ip6 daddr {{ server_ipv6 }} tcp dport 10022 ip6 saddr @ssh_geo6 accept
+    # One journal line per rejected SSH attempt (own prefix, generous limit),
+    # so the filter's effect can be counted per day and country - the general
+    # drop log below is capped at 2/minute for everything together. No
+    # verdict here: the packet still goes on to the port-scan counter.
+    tcp flags & (fin|syn|rst|ack) == syn tcp dport 10022 limit rate 10/second log prefix "nftables SSH-GEO: " level info
 {% else %}
     ip  daddr {{ server_ipv4 }} tcp dport 10022 ct state new accept
     ip6 daddr {{ server_ipv6 }} tcp dport 10022         accept
