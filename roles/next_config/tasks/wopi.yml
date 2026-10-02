@@ -58,3 +58,17 @@
     --value="{{ collabora_url }}"
   when: current_wopi_url.stdout | trim != collabora_url
   changed_when: true
+
+# Nextcloud caches Collabora's discovery (incl. the WOPI proof key). After the
+# Collabora deployment changed, re-read it so proof-key verification uses the
+# current key right away instead of after the cache expires.
+- name: WOPI | Re-read Collabora discovery after a Collabora change
+  ansible.builtin.command: >
+    k3s kubectl exec deployment/nextcloud
+    --namespace nextcloud
+    --container nextcloud-fpm
+    --
+    runuser -u www-data -- php /var/www/html/occ
+    richdocuments:activate-config
+  when: collabora_apply is defined and collabora_apply is changed
+  changed_when: true

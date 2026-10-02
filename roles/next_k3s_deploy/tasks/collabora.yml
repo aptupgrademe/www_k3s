@@ -8,6 +8,26 @@
 # so wopi_allowed_hosts must include k3s_pod_cidr (see next_config/wopi.yml).
 # =============================================================================
 
+# WOPI proof key. The collabora/code image (26.04+) starts coolwsd directly,
+# without the old start script that generated /etc/coolwsd/proof_key, so it
+# logged "Could not open proof RSA key" and served discovery without a
+# proof-key: Nextcloud could not verify that WOPI requests really come from
+# our Collabora (found 2026-10-02). Generated once into a Secret, so the key
+# survives pod restarts; never written to disk on the host, never logged.
+- name: Collabora | Does the WOPI proof key secret exist?
+  ansible.builtin.command: k3s kubectl -n nextcloud get secret collabora-proof-key -o name
+  register: _collabora_proof_key
+  changed_when: false
+  failed_when: false
+
+- name: Collabora | Generate the WOPI proof key (first run only)
+  ansible.builtin.shell: |
+    set -o pipefail
+    openssl genrsa -traditional 2048 2>/dev/null \
+      | k3s kubectl -n nextcloud create secret generic collabora-proof-key --from-file=proof_key=/dev/stdin
+  when: _collabora_proof_key.rc != 0
+  no_log: true
+
 - name: Collabora | Template Deployment + Service manifest
   ansible.builtin.template:
     src: collabora-deployment.yml.j2

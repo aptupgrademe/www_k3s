@@ -21,6 +21,15 @@ spec:
     spec:
       # Collabora never talks to the Kubernetes API — no SA token needed.
       automountServiceAccountToken: false
+      # coolwsd runs as uid 1001 (image default); fsGroup makes the proof key
+      # secret readable for it without making it world-readable.
+      securityContext:
+        fsGroup: 1001
+      volumes:
+      - name: proof-key
+        secret:
+          secretName: collabora-proof-key
+          defaultMode: 0440
       containers:
       - name: collabora
         image: {{ nextcloud_image_collabora }}
@@ -51,6 +60,12 @@ spec:
           value: "--o:ssl.enable=false --o:ssl.termination=true --o:num_prealloc_children={{ collabora_num_prealloc }} --o:per_document.max_concurrency={{ collabora_max_concurrency }}"
         - name: DONT_GEN_SSL_CERT
           value: "true"
+        volumeMounts:
+        # single file via subPath: /etc/coolwsd also holds coolwsd.xml
+        - name: proof-key
+          mountPath: /etc/coolwsd/proof_key
+          subPath: proof_key
+          readOnly: true
         ports:
         - containerPort: 9980
           name: http

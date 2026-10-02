@@ -1944,7 +1944,7 @@ Both verified 2026-09-14.</p>
   </tr>
   <tr>
     <td>SSH</td>
-    <td>Port 10022, key-only (<code>PermitRootLogin without-password</code>), hardened sshd_config, Fail2Ban, <code>sshd_config.d/00-hardening.conf</code> pins key-only ahead of provider drop-ins (Contabo's <code>50-cloud-init.conf</code> otherwise re-enabled passwords, found 2026-09-30). Optional country filter for port 10022 (<code>fw_ssh_geo_countries</code>, e.g. <code>[DE]</code>; currently only enabled on the blog, see the WordPress operations doc)</td>
+    <td>Port 10022, key-only (<code>PermitRootLogin without-password</code>), hardened sshd_config, Fail2Ban, <code>sshd_config.d/00-hardening.conf</code> pins key-only ahead of provider drop-ins (Contabo's <code>50-cloud-init.conf</code> otherwise re-enabled passwords, found 2026-09-30). Optional country filter for port 10022 (<code>fw_ssh_geo_countries</code>, e.g. <code>[DE]</code>; enabled on the blog and on cvjm since 2026-10-02, not on sofie; see the WordPress operations doc)</td>
     <td><code>common_ssh</code>, <code>common_fail2ban</code>, <code>common_firewall</code></td>
   </tr>
   <tr>
@@ -2058,6 +2058,7 @@ Both verified 2026-09-14.</p>
   <tr><td><code>/hosting/discovery</code></td><td>200</td><td>must be public (Nextcloud and the browser read the supported formats)</td></tr>
   <tr><td>Admin console <code>/browser/dist/admin/admin.html</code>, <code>/cool/getMetrics</code></td><td>401</td><td>admin credentials only</td></tr>
   <tr><td><code>POST /cool/convert-to/…</code></td><td>403</td><td>conversion only for Nextcloud itself (used for Office/PDF previews), no open converter</td></tr>
+  <tr><td>WOPI proof key</td><td>active since 2026-10-02</td><td>Collabora signs every WOPI request; Nextcloud verifies the signature against the key from the discovery. The 26.04 image no longer generates the key itself: Ansible creates it once as the secret <code>collabora-proof-key</code> and mounts it as <code>/etc/coolwsd/proof_key</code>. Check: <code>curl -s http://collabora:9980/hosting/discovery | grep -c proof-key</code> (from the Nextcloud pod)</td></tr>
   <tr><td>Document from a foreign WOPI host</td><td>rejected</td><td><code>aliasgroup1=https://nextcloud.&lt;domain&gt;</code> binds Collabora to its own instance; the static <code>cool.html</code> shell returns 200, but loading fails</td></tr>
 </table>
 <p>

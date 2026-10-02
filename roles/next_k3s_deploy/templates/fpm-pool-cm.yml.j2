@@ -14,8 +14,12 @@ data:
     slowlog = /proc/1/fd/2
     request_slowlog_timeout = 5s
     ; Log the "executing too slow" line, but no stack trace: the trace needs
-    ; ptrace, which the container (all capabilities dropped) does not have, so
-    ; every slow request also logged "ERROR: failed to ptrace(ATTACH)".
+    ; ptrace, which the container (all capabilities dropped) does not have.
+    ; Note: php-fpm still TRIES to attach even at depth 0, so each slow request
+    ; keeps one harmless "ERROR: failed to ptrace(ATTACH)" line (checked
+    ; 2026-10-02). Accepted on purpose: allowing SYS_PTRACE would weaken the
+    ; container, and request_slowlog_timeout = 0 would also zero the
+    ; slow-request counter of the php-fpm exporter (Grafana dashboard 4912).
     request_slowlog_trace_depth = 0
 
     ; --- Pool tuning ---

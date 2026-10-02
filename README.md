@@ -131,7 +131,7 @@ Internet
   90 s on every firewall change
 - The template is checked with `nft -c` before it replaces the live file
 - **Optional SSH country filter** (`fw_ssh_geo_countries`, e.g. `[DE]`, off by
-  default; currently on for the blog only): port 10022 accepts new connections
+  default; on for the blog and cvjm, not sofie): port 10022 accepts new connections
   only from the IP blocks RIPE has delegated to those countries. Web traffic is
   not affected. `ssh-geo-update` builds `/etc/nftables/ssh-geo.nft`, which the
   ruleset includes, so reloads and boots refill the sets in the same

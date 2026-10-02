@@ -6989,6 +6989,25 @@ rules:
       - get
       - list
       - watch
+  # From upstream canal.yaml (v3.32): the policy name migrator reads the
+  # calico-node DaemonSet and the CRDs. Missing here, it logged ~2,000
+  # 'forbidden' errors a day (found 2026-10-02).
+  - apiGroups: ["apps"]
+    resources:
+      - daemonsets
+      - deployments
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources:
+      - customresourcedefinitions
+    verbs:
+      - get
+      - list
+      - watch
+      - delete
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
@@ -7009,6 +7028,8 @@ rules:
     resourceNames:
       - canal
       - calico-cni-plugin
+      # our calico-node has no separate CNI service account (CALICO_CNI_SERVICE_ACCOUNT below)
+      - calico-node
     verbs:
       - create
   - apiGroups: [""]
@@ -7252,6 +7273,15 @@ spec:
               value: "kubernetes"
             - name: WAIT_FOR_DATASTORE
               value: "true"
+            # node-services always runs the CNI token refresher, even with
+            # CALICO_NETWORKING_BACKEND=none. Without this it requested a token
+            # for the default 'calico-cni-plugin' account, which policy-only mode
+            # never creates: ~2,500 'serviceaccounts not found' errors a day
+            # (found 2026-10-02). Upstream canal.yaml sets it the same way.
+            - name: CALICO_CNI_SERVICE_ACCOUNT
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.serviceAccountName
             - name: NODENAME
               valueFrom:
                 fieldRef:
@@ -7320,7 +7350,14 @@ spec:
             - mountPath: /var/lib/calico
               name: var-lib-calico
               readOnly: false
+            # The token refresher writes a CNI kubeconfig here. K3s's Flannel
+            # never reads it (K3s keeps its CNI config elsewhere), so it goes to
+            # a pod-local emptyDir instead of the host.
+            - mountPath: /host/etc/cni/net.d
+              name: cni-net-dir
       volumes:
+        - name: cni-net-dir
+          emptyDir: {}
         - name: lib-modules
           hostPath:
             path: /lib/modules
