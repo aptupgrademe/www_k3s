@@ -14,17 +14,25 @@ scrape_configs:
         labels:
           instance: "{{ inventory_hostname }}"
 
-  # Note: All four exporter jobs are defined in this shared template.
-  # On a WordPress-only host, the nextcloud jobs (9104, 30254) will show as DOWN.
-  # On a Nextcloud-only host, the wordpress jobs (30104, 30253) will show as DOWN.
-  # Prometheus handles missing targets gracefully – no alerts are configured.
-
+  # Only the exporters of this host's stack. Until 2026-10-02 all four jobs
+  # were rendered everywhere, so every host showed two targets permanently
+  # DOWN (the other stack's ports) - noise in Grafana's target views.
+{% if 'nextcloud' in group_names %}
   # MariaDB – host service (Nextcloud) via common_mysqld_exporter
   - job_name: "mysqld_nextcloud"
     static_configs:
       - targets: ["127.0.0.1:9104"]
         labels:
           instance: "nextcloud"
+
+  # PHP-FPM – K3s pod (Nextcloud) via NodePort 30254 → php-fpm_exporter sidecar
+  - job_name: "php_fpm_nextcloud"
+    static_configs:
+      - targets: ["127.0.0.1:30254"]
+        labels:
+          instance: "nextcloud"
+{% endif %}
+{% if 'blog' in group_names %}
 
   # MariaDB – K3s pod (WordPress) via NodePort 30104 → mysqld_exporter sidecar
   - job_name: "mysqld_wordpress"
@@ -39,10 +47,4 @@ scrape_configs:
       - targets: ["127.0.0.1:30253"]
         labels:
           instance: "wordpress"
-
-  # PHP-FPM – K3s pod (Nextcloud) via NodePort 30254 → php-fpm_exporter sidecar
-  - job_name: "php_fpm_nextcloud"
-    static_configs:
-      - targets: ["127.0.0.1:30254"]
-        labels:
-          instance: "nextcloud"
+{% endif %}
