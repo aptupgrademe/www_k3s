@@ -184,6 +184,9 @@
       folderId: 0
     status_code: 200
   register: import_1860
+  # The whole dashboard JSON would otherwise be logged to the target's syslog
+  # with every run ("message too long" from rsyslog, found 2026-10-02).
+  no_log: true
 
 # Dashboard 1860 uses the modern Grafana 11 format (no __inputs section).
 # The ds_prometheus datasource variable and the node/job chain are not
@@ -284,6 +287,9 @@
           value: "Prometheus"
       folderId: 0
     status_code: 200
+  # The whole dashboard JSON would otherwise be logged to the target's syslog
+  # with every run ("message too long" from rsyslog, found 2026-10-02).
+  no_log: true
 
 
 # -----------------------------------------------------------------------------
@@ -319,6 +325,9 @@
           value: "Prometheus"
       folderId: 0
     status_code: 200
+  # The whole dashboard JSON would otherwise be logged to the target's syslog
+  # with every run ("message too long" from rsyslog, found 2026-10-02).
+  no_log: true
 
 
 # Note: Grafana is proxied via K3s Ingress at /grafana/

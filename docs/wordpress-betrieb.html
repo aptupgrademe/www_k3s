@@ -1020,9 +1020,11 @@ k3s kubectl logs deployment/wordpress -c nginx -n wordpress --tail=50
 k3s kubectl logs deployment/mariadb -n wordpress --tail=50</code></pre>
 
 <h3>WP-CLI-Befehle</h3>
-<pre><code># Prefix für alle WP-CLI-Befehle:
+<pre><code># Immer als www-data, nie als root (--allow-root): sonst legt WordPress Cache-Dateien als root an
+# und der Webserver kann sie nicht mehr schreiben (Autoptimize-Meldung, gefunden 02.10.2026).
+# Prefix für alle WP-CLI-Befehle:
 k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
-  wp --allow-root &lt;BEFEHL&gt;
+  su -s /bin/sh www-data -c 'php /usr/local/lib/wp-cli/wp-cli.phar --path=/var/www/html &lt;BEFEHL&gt;'
 
 # Beispiele:
 ... wp core version
@@ -1440,7 +1442,7 @@ zcat /srv/wordpress-update-backups/wordpress-db-&lt;datum&gt;.sql.gz | \
   sh -c 'MYSQL_PWD="$(cat /etc/secrets/db-root-password)" mariadb -u root "$MARIADB_DATABASE"'
 # Ein einzelnes kaputtes Plugin: vorige Version festsetzen
 k3s kubectl -n wordpress exec deploy/wordpress -c wordpress-fpm -- \
-  php /usr/local/lib/wp-cli/wp-cli.phar --allow-root --path=/var/www/html plugin install &lt;slug&gt; --version=&lt;x.y&gt; --force</code></pre>
+  su -s /bin/sh www-data -c 'php /usr/local/lib/wp-cli/wp-cli.phar --path=/var/www/html plugin install &lt;slug&gt; --version=&lt;x.y&gt; --force'</code></pre>
 <p>
   Ein fehlgeschlagener Schritt markiert den Job als <code>Failed</code>, die übrigen Schritte laufen aber weiter – ein
   kaputtes Plugin blockiert also keine Übersetzungen. Ein automatisches Zurückrollen gibt es nicht. Diese Dumps bleiben
@@ -1515,7 +1517,7 @@ k3s kubectl rollout status  deployment/wordpress -n wordpress --timeout=300s</co
   </li>
   <li>WordPress-DB-Update prüfen (bei Major-Versionen manchmal nötig):
     <pre><code>k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
-  wp --allow-root core update-db</code></pre>
+  su -s /bin/sh www-data -c 'php /usr/local/lib/wp-cli/wp-cli.phar --path=/var/www/html core update-db'</code></pre>
   </li>
 </ol>
 
@@ -1643,7 +1645,7 @@ k3s kubectl exec -n wordpress deployment/mariadb -c mariadb -- \
 
 # WP-CLI Maintenance
 k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
-  php /usr/local/lib/wp-cli/wp-cli.phar maintenance-mode activate --path=/var/www/html --allow-root</code></pre>
+  su -s /bin/sh www-data -c 'php /usr/local/lib/wp-cli/wp-cli.phar maintenance-mode activate --path=/var/www/html'</code></pre>
 </section>
 
 <!-- ──────────────────────── TROUBLESHOOTING ─────────────────────────── -->
@@ -1683,7 +1685,7 @@ k3s kubectl get pod -l app=wordpress -n wordpress</code></pre>
 
 <h3>WordPress-Admin-Backend: "Es sind Datenbankaktualisierungen erforderlich"</h3>
 <pre><code>k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
-  wp --allow-root core update-db</code></pre>
+  su -s /bin/sh www-data -c 'php /usr/local/lib/wp-cli/wp-cli.phar --path=/var/www/html core update-db'</code></pre>
 
 <h3>Zertifikat wird nicht ausgestellt</h3>
 <pre><code># cert-manager Logs:
@@ -1941,7 +1943,7 @@ ss -tin dst www.apt-upgrade.me | grep bbr</code></pre>
 </p>
 <pre><code># Redis-Status im WordPress-Kontext prüfen
 k3s kubectl exec deployment/wordpress -n wordpress -c wordpress-fpm -- \
-  php /usr/local/lib/wp-cli/wp-cli.phar redis status --path=/var/www/html --allow-root
+  su -s /bin/sh www-data -c 'php /usr/local/lib/wp-cli/wp-cli.phar redis status --path=/var/www/html'
 
 # Redis-Pod direkt testen
 k3s kubectl exec deployment/redis -n wordpress -- redis-cli ping

@@ -68,9 +68,11 @@
       # cni0, flannel.1, docker*, br-*, kube-ipvs*, dummy*, lo) so the netdev
       # metrics -- and every Grafana Network panel -- show only real NICs like
       # eth0 (the server's actual in/out) instead of dozens of veth* churn.
+      # '\\.' because systemd unescapes ExecStart: a bare '\.' still reached the
+      # exporter but logged "Ignoring unknown escape sequences" on every reload.
       ExecStart=/usr/local/bin/node_exporter \
         --web.listen-address=127.0.0.1:9100 \
-        --collector.netdev.device-exclude=^(veth.*|cni[0-9]+|flannel\.[0-9]+|docker[0-9]+|br-.*|kube-ipvs.*|dummy.*|lo|nodelocaldns)$
+        --collector.netdev.device-exclude=^(veth.*|cni[0-9]+|flannel\\.[0-9]+|docker[0-9]+|br-.*|kube-ipvs.*|dummy.*|lo|nodelocaldns)$
       Restart=on-failure
       RestartSec=5s
 
