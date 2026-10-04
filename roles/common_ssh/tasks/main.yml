@@ -96,8 +96,8 @@
 # The main sshd_config pulls in /etc/ssh/sshd_config.d/*.conf at the TOP, and
 # for sshd the first value of a keyword wins. Cloud images drop their own
 # 50-cloud-init.conf there: Contabo's says "PasswordAuthentication yes" and
-# silently overrode our "no" (found 2026-09-30 on cvjm and sofie; IONOS ships
-# "no", so the blog was fine). A 00- drop-in sorts first and pins the
+# silently overrode our "no" (found 2026-09-30 on cvjm and sofie; the blog's image
+# ships "no", so the blog was fine). A 00- drop-in sorts first and pins the
 # authentication settings no matter what a provider image adds later.
 # X11Forwarding belongs here for the same reason: AlmaLinux's own
 # 50-redhat.conf says "yes" and beat the "no" in our sshd_config on all three

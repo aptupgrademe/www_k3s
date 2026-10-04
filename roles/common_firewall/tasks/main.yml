@@ -27,7 +27,7 @@
 
 # -----------------------------------------------------------------------------
 # Static or DHCP? Decides whether the template renders the DHCP rules at all.
-# IONOS (blog) hands out IPv4 by DHCP (IPv6 is static); Contabo (cvjm, sofie)
+# The blog provider hands out IPv4 by DHCP (IPv6 is static); Contabo (cvjm, sofie)
 # is static for both families. Read from NetworkManager instead of an
 # inventory flag, so a provider change can never leave a stale setting behind.
 # If detection fails, both default to true: allowing DHCP is harmless, a

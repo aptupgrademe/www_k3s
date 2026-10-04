@@ -327,7 +327,7 @@
 # boot - and it is the tool that dropped Contabo's 50-cloud-init.conf with
 # "PasswordAuthentication yes" (see common_ssh). Checked 2026-09-30 before
 # disabling: the network profiles are plain files written once at provisioning
-# (Contabo: ifcfg-eth0, IONOS: "Wired connection 1", cloud-init logs "No network
+# (Contabo: ifcfg-eth0, blog provider: "Wired connection 1", cloud-init logs "No network
 # config applied" on later boots), so nothing depends on it any more.
 # The marker file is cloud-init's documented off switch; delete it to re-enable.
 - name: CIS | Check whether cloud-init is installed
