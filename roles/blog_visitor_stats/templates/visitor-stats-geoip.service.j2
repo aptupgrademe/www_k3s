@@ -1,0 +1,14 @@
+# Managed by Ansible (role blog_visitor_stats) - do not edit.
+[Unit]
+Description=Refresh the DB-IP country database for visitor-stats
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/visitor-stats-geoip-update {{ visitor_stats_dir }} {{ visitor_stats_geoip_url | replace('%', '%%') }}
+ProtectSystem=strict
+ReadWritePaths={{ visitor_stats_dir }}
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true

@@ -1,0 +1,12 @@
+# Managed by Ansible (role blog_visitor_stats) - do not edit.
+[Unit]
+Description=Monthly GeoIP refresh for visitor-stats
+
+[Timer]
+OnCalendar={{ visitor_stats_geoip_oncalendar }}
+# Catch up after the host was down at the scheduled time.
+Persistent=true
+RandomizedDelaySec=30m
+
+[Install]
+WantedBy=timers.target

@@ -98,6 +98,7 @@
     - { role: common_dnf_automatic, tags: [common_dnf_automatic] }  # Automatic security-only updates via dnf-automatic
     - { role: common_rkhunter,      tags: [common_rkhunter] }       # Rootkit detection with daily scan
     - { role: blog_clamav,          tags: [blog_clamav] }           # ClamAV: nightly antivirus scan of WordPress uploads
+    - { role: blog_visitor_stats,   tags: [blog_visitor_stats] }    # Daily anonymous visitor trend + monthly GeoIP (DB-IP), computed on the host
     - { role: common_auditd,        tags: [common_auditd] }         # Linux Audit Daemon with security-relevant rules
     - { role: common_logrotate,     tags: [common_logrotate] }      # Log rotation for Grafana, Prometheus, fail2ban, rkhunter
     - { role: common_monit,         tags: [common_monit] }          # Watchdog: emails on service/resource failures, auto-restarts fail2ban

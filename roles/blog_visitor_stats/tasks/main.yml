@@ -1,0 +1,103 @@
+---
+# =============================================================================
+# Role: blog_visitor_stats
+# Purpose: Daily, anonymous visitor trend for the blog - computed ON the host
+#          from the nginx-ingress access log, so visitor IPs never leave it
+#          (GDPR). k3s keeps only ~4 days of container logs, so without a
+#          daily snapshot there is no way to answer "is the blog read more
+#          than last month" or "do more readers come from search engines".
+#
+#          - /usr/local/sbin/visitor-stats   = scripts/analytics/visitor-stats.py
+#          - visitor-stats-daily.timer       one JSON line of counts per day
+#          - visitor-stats-geoip.timer       monthly DB-IP country database
+#            (the EL9 GeoLite2 package is frozen at 2019-12)
+#
+# Read the trend:  visitor-stats --trend /var/lib/visitor-stats/daily.jsonl
+# =============================================================================
+
+- name: Visitor stats | mmdblookup for GeoIP lookups
+  ansible.builtin.dnf:
+    name: libmaxminddb
+    state: present
+
+- name: Visitor stats | Data directory
+  ansible.builtin.file:
+    path: "{{ visitor_stats_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Visitor stats | Install the statistics script
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/scripts/analytics/visitor-stats.py"
+    dest: /usr/local/sbin/visitor-stats
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Visitor stats | Install the GeoIP updater
+  ansible.builtin.copy:
+    src: visitor-stats-geoip-update
+    dest: /usr/local/sbin/visitor-stats-geoip-update
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Visitor stats | systemd units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - visitor-stats-daily.service
+    - visitor-stats-daily.timer
+    - visitor-stats-geoip.service
+    - visitor-stats-geoip.timer
+  notify: Reload systemd for visitor-stats
+
+- name: Visitor stats | Apply unit changes before starting timers
+  ansible.builtin.meta: flush_handlers
+
+# First run: fetch the database right away instead of waiting for the 3rd of
+# the month. Non-fatal - the script falls back to the old GeoLite2 file.
+- name: Visitor stats | Initial GeoIP download
+  ansible.builtin.command: >-
+    /usr/local/sbin/visitor-stats-geoip-update {{ visitor_stats_dir }}
+    {{ visitor_stats_geoip_url }}
+  args:
+    creates: "{{ visitor_stats_dir }}/dbip-country-lite.mmdb"
+  failed_when: false
+
+- name: Visitor stats | Enable timers
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - visitor-stats-daily.timer
+    - visitor-stats-geoip.timer
+
+# The logs on disk still cover the last few days - record them once so the
+# trend does not start empty. Days already in the file are only replaced,
+# never duplicated; days the logs no longer cover just fail quietly.
+- name: Visitor stats | Backfill the days still in the logs
+  ansible.builtin.command: >-
+    /usr/local/sbin/visitor-stats --date {{ '%Y-%m-%d' | strftime(ansible_date_time.epoch | int - item * 86400) }}
+    --record {{ visitor_stats_dir }}/daily.jsonl
+    {% for net in visitor_stats_exclude %} --exclude {{ net }}{% endfor %}
+  loop: [1, 2, 3, 4, 5]
+  args:
+    creates: "{{ visitor_stats_dir }}/.backfilled"
+  register: visitor_stats_backfill
+  changed_when: visitor_stats_backfill.rc == 0
+  failed_when: false
+
+- name: Visitor stats | Mark the backfill as done
+  ansible.builtin.file:
+    path: "{{ visitor_stats_dir }}/.backfilled"
+    state: touch
+    modification_time: preserve
+    access_time: preserve

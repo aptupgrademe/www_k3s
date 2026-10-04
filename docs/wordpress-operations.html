@@ -2050,6 +2050,11 @@ Both verified 2026-09-14.</p>
     <td><code>blog_clamav</code></td>
   </tr>
   <tr>
+    <td>Visitor statistics</td>
+    <td>Daily at 00:20 (UTC) one line of plain counts per previous day in <code>/var/lib/visitor-stats/daily.jsonl</code>: regular visitors, page views, countries, arrivals from search engines – no IP addresses; computed on the host from the ingress log (GDPR). Countries via the monthly refreshed DB-IP Lite database (the EL9 GeoLite2 package dates from 2019). Your own addresses: <code>visitor_stats_exclude</code> in host_vars. Show the trend: <code>visitor-stats --trend /var/lib/visitor-stats/daily.jsonl</code></td>
+    <td><code>blog_visitor_stats</code></td>
+  </tr>
+  <tr>
     <td>Patches</td>
     <td>dnf-automatic: security updates applied automatically every night between 01:00 and 02:00, followed by an automatic reboot at 03:30 if required; AIDE takes over the new state at 04:00</td>
     <td><code>common_dnf_automatic</code></td>

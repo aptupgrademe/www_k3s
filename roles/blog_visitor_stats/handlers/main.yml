@@ -1,0 +1,4 @@
+---
+- name: Reload systemd for visitor-stats
+  ansible.builtin.systemd:
+    daemon_reload: true

@@ -1,0 +1,12 @@
+# Managed by Ansible (role blog_visitor_stats) - do not edit.
+[Unit]
+Description=Daily blog visitor statistics
+
+[Timer]
+OnCalendar={{ visitor_stats_oncalendar }}
+# Catch up after the host was down at the scheduled time.
+Persistent=true
+RandomizedDelaySec=5m
+
+[Install]
+WantedBy=timers.target

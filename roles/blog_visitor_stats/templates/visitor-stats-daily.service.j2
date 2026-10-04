@@ -1,0 +1,17 @@
+# Managed by Ansible (role blog_visitor_stats) - do not edit.
+[Unit]
+Description=Record yesterday's aggregated blog visitor numbers
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Reads the ingress logs, writes one line of counts - no IPs - per day.
+ExecStart=/bin/sh -c '/usr/local/sbin/visitor-stats --date "$(date -d yesterday +%%F)" --record {{ visitor_stats_dir }}/daily.jsonl{% for net in visitor_stats_exclude %} --exclude {{ net }}{% endfor %}'
+Nice=10
+IOSchedulingClass=idle
+ProtectSystem=strict
+ReadWritePaths={{ visitor_stats_dir }}
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true

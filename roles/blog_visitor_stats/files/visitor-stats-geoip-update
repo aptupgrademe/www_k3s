@@ -1,0 +1,28 @@
+#!/bin/sh
+# Refresh the DB-IP country database used by visitor-stats.
+# Tries this month's file first, then last month's (DB-IP publishes early in
+# the month). The new file only replaces the old one after a sanity lookup
+# succeeds, so a broken download never leaves the statistics without GeoIP.
+set -eu
+DIR=${1:-/var/lib/visitor-stats}
+URL_FMT=${2:-https://download.db-ip.com/free/dbip-country-lite-%Y-%m.mmdb.gz}
+DEST="$DIR/dbip-country-lite.mmdb"
+TMP=$(mktemp -d "$DIR/.geoip.XXXXXX")
+trap 'rm -rf "$TMP"' EXIT
+
+for when in now "-1 month"; do
+    url=$(date -u -d "$when" +"$URL_FMT")
+    if curl -fsS --max-time 300 -o "$TMP/db.gz" "$url"; then
+        gunzip -c "$TMP/db.gz" > "$TMP/db.mmdb"
+        # 8.8.8.8 is Google's resolver - US in every GeoIP database.
+        if [ "$(mmdblookup --file "$TMP/db.mmdb" --ip 8.8.8.8 country iso_code | tr -d ' \n')" = '"US"<utf8_string>' ]; then
+            chmod 0644 "$TMP/db.mmdb"
+            mv -f "$TMP/db.mmdb" "$DEST"
+            echo "GeoIP updated from $url"
+            exit 0
+        fi
+        echo "GeoIP sanity check failed for $url" >&2
+    fi
+done
+echo "GeoIP update failed, keeping the existing database" >&2
+exit 1

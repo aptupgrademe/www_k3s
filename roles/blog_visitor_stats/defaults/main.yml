@@ -1,0 +1,19 @@
+---
+# Where the daily aggregates and the GeoIP database live. Nothing in here is
+# personal data: one JSON line per day with counts only (see --record in
+# scripts/analytics/visitor-stats.py).
+visitor_stats_dir: /var/lib/visitor-stats
+
+# Prefixes to keep out of the numbers entirely - typically your own
+# connections, which otherwise dominate a small blog's statistics. Set it in
+# the (gitignored) host_vars, not here: it is your address.
+# Example: visitor_stats_exclude: ["203.0.113.0/24"]
+visitor_stats_exclude: []
+
+# Daily run, in the blog host's clock (UTC on this host). Shortly after
+# midnight so the previous day is complete, well before the logs rotate away.
+visitor_stats_oncalendar: "*-*-* 00:20:00"
+
+# DB-IP "IP to Country Lite" - free, no account, CC BY 4.0, new file monthly.
+visitor_stats_geoip_url: "https://download.db-ip.com/free/dbip-country-lite-%Y-%m.mmdb.gz"
+visitor_stats_geoip_oncalendar: "*-*-03 03:40:00"

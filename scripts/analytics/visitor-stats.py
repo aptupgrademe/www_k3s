@@ -12,6 +12,16 @@ Usage (on the host):
     python3 visitor-stats.py
     python3 visitor-stats.py --days 7 --top 50
 
+Daily trend (what the blog_visitor_stats role runs from a systemd timer):
+    visitor-stats --date 2026-10-03 --record /var/lib/visitor-stats/daily.jsonl
+    visitor-stats --trend /var/lib/visitor-stats/daily.jsonl
+
+    --record appends ONE line of aggregated numbers per day (visitors, page
+    views, countries, search-engine arrivals) - no IP, not even masked. That
+    file is what makes week-over-week trends possible at all, given that the
+    raw logs only cover ~4 days (see "Known limits" below). Re-recording a
+    day replaces its line.
+
 Usage (from a workstation, one shot):
     scp -P 10022 scripts/analytics/visitor-stats.py root@<host>:/tmp/
     ssh -p 10022 root@<host> 'python3 /tmp/visitor-stats.py'
@@ -58,6 +68,8 @@ import datetime
 import glob
 import gzip
 import ipaddress
+import json
+import os
 import re
 import socket
 import subprocess
@@ -67,7 +79,11 @@ from concurrent.futures import ThreadPoolExecutor
 # (and may gzip older ones). A plain "*.log" silently read only the live file,
 # i.e. the few hours since the last rotation instead of the whole window.
 DEFAULT_LOGS = "/var/log/pods/ingress-nginx_*/*/*.log*"
-DEFAULT_MMDB = "/usr/share/GeoIP/GeoLite2-Country.mmdb"
+# DB-IP's free country database, refreshed monthly by the blog_visitor_stats
+# role. The GeoLite2 copy from the EL9 package is frozen at 2019-12 and puts
+# newer allocations in the wrong country; it is only the fallback.
+DBIP_MMDB = "/var/lib/visitor-stats/dbip-country-lite.mmdb"
+DEFAULT_MMDB = DBIP_MMDB if os.path.exists(DBIP_MMDB) else "/usr/share/GeoIP/GeoLite2-Country.mmdb"
 
 # CRI log line wrapping the standard nginx combined format:
 #   <rfc3339> stdout F <ip> - - [<time>] "<method> <path> <proto>" <st> <b> "<ref>" "<ua>"
@@ -145,6 +161,13 @@ def parse_args():
     p.add_argument("--min-assets", type=int, default=3,
                    help="assets an IP must fetch to count as a real browser")
     p.add_argument("--no-rdns", action="store_true", help="skip reverse-DNS lookups")
+    p.add_argument("--date", metavar="YYYY-MM-DD",
+                   help="only consider this calendar day (log timestamps)")
+    p.add_argument("--record", metavar="FILE",
+                   help="append the day's aggregated numbers as one JSON line to FILE "
+                        "(needs --date; prints nothing else)")
+    p.add_argument("--trend", metavar="FILE",
+                   help="print a per-week trend from a --record file and exit")
     # Your own connection dwarfs everything else in the log - editing a post
     # touches more pages in an evening than a month of real readers. Pass your
     # home prefix here (repeatable) to keep it out of the numbers.
@@ -199,8 +222,68 @@ def geo(mmdb, ip, *field):
     return None
 
 
+def trend(path):
+    """Weekly table from the --record file: is the blog read more, and found via search?"""
+    days = {}
+    with open(path) as fh:
+        for line in fh:
+            if line.strip():
+                rec = json.loads(line)
+                days[rec["date"]] = rec          # last line for a date wins
+    if not days:
+        raise SystemExit(f"No records in {path}")
+    weeks = collections.OrderedDict()
+    for d in sorted(days):
+        y, w, _ = datetime.date.fromisoformat(d).isocalendar()
+        weeks.setdefault(f"{y}-W{w:02d}", []).append(days[d])
+    print(f"{'Week':<9} {'Days':>4} {'Visitors':>9} {'per day':>8} {'Pages':>6} "
+          f"{'via search':>11}  Top countries")
+    print("-" * 86)
+    for wk, recs in weeks.items():
+        vis = sum(r["visitors"] for r in recs)
+        pages = sum(r["pages"] for r in recs)
+        search = sum(r["search_visitors"] for r in recs)
+        countries = collections.Counter()
+        for r in recs:
+            countries.update(r["countries"])
+        top = ", ".join(f"{iso} {n}" for iso, n in countries.most_common(4))
+        print(f"{wk:<9} {len(recs):>4} {vis:>9} {vis / len(recs):>8.1f} {pages:>6} "
+              f"{search:>11}  {top}")
+    print("\nVisitors are summed per day: someone reading on three days counts three times.")
+
+
+def record(path, day, rows, visitors, machines, search_hits, keep):
+    """Replace the line for `day` in `path` with this day's aggregates (no IPs)."""
+    hits = [(ip, e) for d, ip, e in search_hits if mask(ip) in keep]
+    rec = {
+        "date": day.isoformat(),
+        "requests": len(rows),
+        "visitors": len(visitors),
+        "pages": sum(v["pages"] for v in visitors),
+        "countries": dict(collections.Counter(v["iso"] for v in visitors).most_common()),
+        "search_visitors": len({mask(ip) for ip, _ in hits}),
+        "search_by_engine": dict(collections.Counter(ENGINE_NAMES.get(e, e) for _, e in hits)),
+        "filtered_machines": len(machines),
+    }
+    lines = []
+    if os.path.exists(path):
+        with open(path) as fh:
+            lines = [l for l in fh if l.strip() and json.loads(l).get("date") != rec["date"]]
+    lines.append(json.dumps(rec, sort_keys=True) + "\n")
+    lines.sort(key=lambda l: json.loads(l)["date"])
+    tmp = path + ".tmp"
+    with open(tmp, "w") as fh:
+        fh.writelines(lines)
+    os.replace(tmp, path)
+
+
 def main():
     args = parse_args()
+    if args.trend:
+        trend(args.trend)
+        return
+    if args.record and not args.date:
+        raise SystemExit("--record needs --date")
     rows = read_log(args.logs)
     if not rows:
         raise SystemExit(f"No parseable log lines in {args.logs}")
@@ -208,6 +291,12 @@ def main():
     if args.days:
         cutoff = rows[-1][0] - datetime.timedelta(days=args.days)
         rows = [r for r in rows if r[0] >= cutoff]
+    day = None
+    if args.date:
+        day = datetime.date.fromisoformat(args.date)
+        rows = [r for r in rows if r[0].date() == day]
+        if not rows:
+            raise SystemExit(f"No log lines for {day} - outside the retained logs?")
 
     first_ts, last_ts = rows[0][0], rows[-1][0]
     span = max((last_ts - first_ts).total_seconds() / 86400, 1 / 24)
@@ -291,6 +380,11 @@ def main():
         if keep is None or rec["pages"] > keep["pages"]:
             dedup[rec["masked"]] = rec
     visitors = list(dedup.values())
+
+    if args.record:
+        record(args.record, day, rows, visitors, machines, search_hits,
+               {v["masked"] for v in visitors})
+        return
 
     total = len(visitors) or 1
     bar = "=" * 78

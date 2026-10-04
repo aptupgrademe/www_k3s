@@ -67,3 +67,8 @@ mail_domain:       "CHANGE_ME"           # e.g. example.de
 mail_smtphost:     "CHANGE_ME"           # e.g. smtp.strato.de
 mail_smtpport:     "587"
 mail_smtpauth:     true
+
+# --- Visitor statistics (blog_visitor_stats) -------------------------------
+# Prefixes kept out of the daily visitor numbers - usually your own
+# connections, which otherwise dominate a small blog's statistics.
+# visitor_stats_exclude: ["203.0.113.0/24"]
