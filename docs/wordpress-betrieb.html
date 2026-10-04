@@ -268,6 +268,7 @@
   <a href="#playbook">Playbook ausführen</a>
   <a href="#befehle">Wichtige Befehle</a>
   <a href="#monitoring">Monitoring</a>
+  <a href="#besucherstatistik">Besucherstatistik</a>
   <a href="#cronjob">WP-Cron</a>
 
   <div class="section-label">Wartung</div>
@@ -1323,6 +1324,47 @@ curl -s http://127.0.0.1:9090/api/v1/targets | python3 -m json.tool | grep -E '"
   Die Backup-Maschine schreibt nach jedem erfolgreichen Lauf <code>/var/lib/wordpress-backup/last-success</code> auf den
   Blog-Server. Monit alarmiert, wenn die Datei älter als <code>monit_backup_max_days</code> (3) ist oder fehlt (geprüft stündlich in Minute 17–18, siehe Nextcloud-Betriebsdoku).
 </p>
+</section>
+
+<!-- ─────────────────────── BESUCHERSTATISTIK ─────────────────────────── -->
+<section id="besucherstatistik">
+<h2>Besucherstatistik</h2>
+<p>
+  Rolle <code>blog_visitor_stats</code>. Der Blog-Server wertet sein eigenes Ingress-Zugriffslog aus –
+  die IP-Adressen der Besucher verlassen den Server nie (DSGVO). Weil k3s die Container-Logs nur
+  2–4 Tage aufbewahrt, sichert ein Timer jeden Tag die Zahlen des Vortags. Nur so lässt sich über
+  Wochen ein Trend erkennen.
+</p>
+<h3>Was automatisch passiert</h3>
+<table>
+  <tr><th>Wann</th><th>Was</th></tr>
+  <tr><td>täglich 00:20 (Serverzeit UTC)</td><td><code>visitor-stats-daily.timer</code> hängt eine Zeile mit reinen Zahlen für den Vortag an <code>/var/lib/visitor-stats/daily.jsonl</code> an: regelmäßige Besucher, Seitenaufrufe, Länder (ISO-Code), Besucher über Suchmaschinen je Suchmaschine, herausgefilterte Maschinen. <strong>Keine IP-Adressen</strong>, auch keine gekürzten. Ein erneuter Lauf für denselben Tag ersetzt dessen Zeile.</td></tr>
+  <tr><td>monatlich am 3., 03:40</td><td><code>visitor-stats-geoip.timer</code> lädt die DB-IP-Lite-Länderdatenbank (kostenlos, CC BY 4.0) nach <code>/var/lib/visitor-stats/dbip-country-lite.mmdb</code>. Die neue Datei ersetzt die alte erst nach einer Probe-Abfrage. Das GeoLite2-Paket von AlmaLinux ist von 2019 und dient nur als Rückfall.</td></tr>
+  <tr><td>beim Ausrollen</td><td>Die noch vorhandenen Log-Tage werden einmal nachgetragen (Marker <code>.backfilled</code>).</td></tr>
+</table>
+<p>Verpasste Läufe (Server aus) holt systemd nach (<code>Persistent=true</code>).</p>
+<h3>Trend ansehen</h3>
+<pre><code>ssh -p 10022 root@www.apt-upgrade.me visitor-stats --trend /var/lib/visitor-stats/daily.jsonl
+
+Week      Days  Visitors  per day  Pages  via search  Top countries
+2026-W40     2        18      9.0     33           8  CN 4, US 4, FR 2, AR 1</code></pre>
+<p>
+  Eine Zeile pro Kalenderwoche. Aussagekräftig wird es nach etwa vier Wochen: Steigen
+  <em>per day</em> (Besucher pro Tag) und <em>via search</em> (Besucher, die über eine Suchmaschine
+  kamen)?
+</p>
+<p>Ausführliche Auswertung der Logs, die noch auf dem Server liegen (einzelne Länder, meistgelesene Seiten):</p>
+<pre><code>visitor-stats                     # ganzes vorhandenes Log
+visitor-stats --date 2026-10-03   # nur ein Tag
+systemctl list-timers 'visitor-stats-*'
+journalctl -u visitor-stats-daily -n 20</code></pre>
+<h3>Zahlen richtig einordnen</h3>
+<ul>
+  <li><strong>Tageswerte werden addiert:</strong> Wer an drei Tagen liest, zählt dreimal.</li>
+  <li><strong>Eine IP ist kein Mensch:</strong> Mobilgeräte wechseln die Adresse, Haushalte teilen sich eine. Die Zahlen zeigen die <em>Richtung</em>, keine exakte Leserzahl.</li>
+  <li><strong>Gefiltert wird in drei Stufen:</strong> bekannte Bots (User-Agent), Abrufe ohne CSS/JS/Bilder (Scraper) und Rechenzentrums-Netze. Was übrig bleibt, verhält sich wie ein echter Browser.</li>
+  <li><strong>Eigene Zugriffe</strong> verfälschen kleine Zahlen stark. Feste eigene Adressen gehören in <code>visitor_stats_exclude</code> (host_vars, nicht im Repo). Ein Anschluss mit täglich wechselnder Adresse lässt sich so nicht ausschließen.</li>
+</ul>
 </section>
 
 <!-- ─────────────────────────── WP-CRON ──────────────────────────────── -->
