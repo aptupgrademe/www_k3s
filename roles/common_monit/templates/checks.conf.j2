@@ -46,11 +46,15 @@ check program f2b_jails with path "/usr/local/sbin/monit-check-f2b-jails.sh"
 
 # --- TLS certificates: warn long before they expire ---
 # Hostnames are discovered from the Ingress resources by the script itself.
-# Checked every 30 cycles (~1x/hour at the default interval) - certificate
-# expiry moves in days, there is nothing to gain from checking every 2 minutes,
-# and each check opens a TLS connection per hostname.
+# Checked about once an hour - certificate expiry moves in days, there is
+# nothing to gain from checking every cycle, and each check opens a TLS
+# connection per hostname.
+# Cron form, because Monit (6.0 here) warns that "every N cycles" is deprecated.
+# The window is two minutes wide (0-1) on purpose: with a {{ monit_check_interval }}s cycle a
+# single-minute spec can fall between two cycles and be skipped. An
+# occasional double run or skipped hour is harmless for this check.
 check program certs with path "/usr/local/sbin/monit-check-certs.sh {{ monit_cert_min_days }}"
-    every 30 cycles
+    every "0-1 * * * *"
     if status != 0 then alert
 {% endif %}
 {% if 'nextcloud' in group_names %}
@@ -61,8 +65,12 @@ check program certs with path "/usr/local/sbin/monit-check-certs.sh {{ monit_cer
 # this file after every successful run. If that PC stays off, or the backup
 # keeps failing, nobody would notice without this check. A missing file (no
 # backup yet) alerts too.
+# Two-minute window (17-18) for the same reason as the certs check above: a
+# single minute is hit only if a {{ monit_check_interval }}s cycle happens to start in it, which
+# depends on when Monit was started - after an unlucky restart the check would
+# never run and a dead backup would never alert.
 check file nc_backup with path /var/lib/nextcloud-backup/last-success
-    every "17 * * * *"
+    every "17-18 * * * *"
     if timestamp > {{ monit_backup_max_days }} days then alert
 {% endif %}
 {% if 'blog' in group_names %}
@@ -70,7 +78,8 @@ check file nc_backup with path /var/lib/nextcloud-backup/last-success
 # --- WordPress backup freshness ---
 # Same idea as nc_backup: the backup PC pulls the blog (scripts/wordpress-backup,
 # /data/backup/wordpress/<name>_backup.sh) and touches this file on success.
+# Two-minute window, see nc_backup above.
 check file wp_backup with path /var/lib/wordpress-backup/last-success
-    every "17 * * * *"
+    every "17-18 * * * *"
     if timestamp > {{ monit_backup_max_days }} days then alert
 {% endif %}

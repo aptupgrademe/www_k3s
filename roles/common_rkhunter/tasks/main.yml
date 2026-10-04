@@ -80,6 +80,28 @@
     job: "/usr/bin/rkhunter --check --cronjob --report-warnings-only --nocolors 2>&1"
     user: root
 
+# The EPEL package ships its own /etc/cron.daily/rkhunter, so every host ran
+# two full scans a night (found 2026-10-02) - twice the I/O and, on a warning,
+# two mails. The cron entry above is the one we control, so the packaged
+# script goes. Deleting it alone would not last: it is not a %config file,
+# and the next rkhunter update would put it back. %_netsharedpath tells rpm
+# to skip installing that path from now on (rpm -V does not flag it either).
+- name: rkhunter | Keep rpm from reinstalling the packaged cron.daily script
+  ansible.builtin.copy:
+    dest: /etc/rpm/macros.rkhunter-nocron
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (role common_rkhunter) - the daily scan runs from
+      # root's crontab instead, see "rkhunter daily scan".
+      %_netsharedpath /etc/cron.daily/rkhunter
+
+- name: rkhunter | Remove the packaged cron.daily script (duplicate scan)
+  ansible.builtin.file:
+    path: /etc/cron.daily/rkhunter
+    state: absent
+
 
 # -----------------------------------------------------------------------------
 # Auto-propupd after ANY dnf transaction (manual and automatic)

@@ -1588,7 +1588,7 @@ cat /data/backup/nextcloud-data/cvjm/last-success</code></pre>
   <code>example_backup.sh.example</code>. After every successful run the
   instance gets <code>/var/lib/nextcloud-backup/last-success</code>. Monit
   (<code>nc_backup</code>) mails when it is older than
-  <code>monit_backup_max_days</code> (3), which catches both a failing backup
+  <code>monit_backup_max_days</code> (3; checked hourly in minutes 17–18 – a one-minute window could be missed for good by the 2-minute cycle depending on start time, fixed 2026-10-04), which catches both a failing backup
   and a backup machine that stayed off.
 </p>
 
@@ -1944,7 +1944,7 @@ Both verified 2026-09-14.</p>
   </tr>
   <tr>
     <td>SSH</td>
-    <td>Port 10022, key-only (<code>PermitRootLogin without-password</code>), hardened sshd_config, Fail2Ban, <code>sshd_config.d/00-hardening.conf</code> pins key-only ahead of provider drop-ins (Contabo's <code>50-cloud-init.conf</code> otherwise re-enabled passwords, found 2026-09-30). Optional country filter for port 10022 (<code>fw_ssh_geo_countries</code>, e.g. <code>[DE]</code>; enabled on the blog and on cvjm since 2026-10-02, not on sofie; see the WordPress operations doc)</td>
+    <td>Port 10022, key-only (<code>PermitRootLogin without-password</code>), hardened sshd_config, Fail2Ban, <code>sshd_config.d/00-hardening.conf</code> pins key-only ahead of provider drop-ins (Contabo's <code>50-cloud-init.conf</code> otherwise re-enabled passwords, found 2026-09-30). It also pins <code>X11Forwarding no</code>, which AlmaLinux’s <code>50-redhat.conf</code> otherwise set to <code>yes</code> (found 2026-10-02). Optional country filter for port 10022 (<code>fw_ssh_geo_countries</code>, e.g. <code>[DE]</code>; enabled on the blog and on cvjm since 2026-10-02, not on sofie; see the WordPress operations doc)</td>
     <td><code>common_ssh</code>, <code>common_fail2ban</code>, <code>common_firewall</code></td>
   </tr>
   <tr>
@@ -1996,7 +1996,7 @@ Both verified 2026-09-14.</p>
   </tr>
   <tr>
     <td>Rootkits</td>
-    <td>rkhunter daily scan at 03:15; <code>WEB_CMD=curl -L</code> (SourceForge redirect fix); <code>ALLOW_SSH_ROOT_USER=without-password</code>; <code>DISABLE_TESTS=system_configs_ssh</code> (rkhunter 1.4.6 bug: warns on root SSH despite correct config)</td>
+    <td>rkhunter daily scan at 03:15; <code>WEB_CMD=curl -L</code> (SourceForge redirect fix); <code>ALLOW_SSH_ROOT_USER=without-password</code>; <code>DISABLE_TESTS=system_configs_ssh</code> (rkhunter 1.4.6 bug: warns on root SSH despite correct config). This is the only run: the packaged <code>/etc/cron.daily/rkhunter</code> is removed and kept out by <code>%_netsharedpath</code> (<code>/etc/rpm/macros.rkhunter-nocron</code>) so updates do not restore it (two scans a night until 2026-10-02)</td>
     <td><code>common_rkhunter</code></td>
   </tr>
   <tr>

@@ -99,6 +99,10 @@
 # silently overrode our "no" (found 2026-09-30 on cvjm and sofie; IONOS ships
 # "no", so the blog was fine). A 00- drop-in sorts first and pins the
 # authentication settings no matter what a provider image adds later.
+# X11Forwarding belongs here for the same reason: AlmaLinux's own
+# 50-redhat.conf says "yes" and beat the "no" in our sshd_config on all three
+# hosts (found 2026-10-02). No X server runs anywhere, so this only closes the
+# CIS finding - nothing that worked before stops working.
 - name: SSH | Pin key-only authentication ahead of provider drop-ins
   ansible.builtin.copy:
     dest: /etc/ssh/sshd_config.d/00-hardening.conf
@@ -111,6 +115,7 @@
       PasswordAuthentication no
       KbdInteractiveAuthentication no
       PermitRootLogin prohibit-password
+      X11Forwarding no
   notify:
     - Validate sshd config
     - Reload sshd

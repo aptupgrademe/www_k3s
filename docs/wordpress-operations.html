@@ -1317,7 +1317,7 @@ curl -s http://127.0.0.1:9090/api/v1/targets | python3 -m json.tool | grep -E '"
 <h3>Monit: Backup Freshness (<code>wp_backup</code>)</h3>
 <p>
   The backup machine writes <code>/var/lib/wordpress-backup/last-success</code> on the blog host after every
-  successful pull. Monit alerts when it is older than <code>monit_backup_max_days</code> (3), or missing.
+  successful pull. Monit alerts when it is older than <code>monit_backup_max_days</code> (3), or missing (checked hourly in minutes 17–18, see the Nextcloud operations doc).
 </p>
 </section>
 
@@ -1973,7 +1973,7 @@ Both verified 2026-09-14.</p>
   </tr>
   <tr>
     <td>SSH</td>
-    <td>Port 10022, key-only (<code>PermitRootLogin without-password</code>), hardened sshd_config, Fail2Ban, <code>sshd_config.d/00-hardening.conf</code> pins key-only ahead of provider drop-ins (Contabo's <code>50-cloud-init.conf</code> otherwise re-enabled passwords, found 2026-09-30). <strong>Country filter:</strong> port 10022 only accepts new connections from German IP blocks (RIPE data, <code>fw_ssh_geo_countries: [DE]</code>, sets <code>ssh_geo4</code>/<code>ssh_geo6</code>); <code>ssh-geo-update.timer</code> refreshes the list on Sundays 02:30–03:00 and keeps the old one on any error. Check: <code>nft get element inet filter ssh_geo4 { 1.2.3.4 }</code>. Emergency from abroad: IONOS web console, or add the address to <code>fw_ssh_geo_extra</code></td>
+    <td>Port 10022, key-only (<code>PermitRootLogin without-password</code>), hardened sshd_config, Fail2Ban, <code>sshd_config.d/00-hardening.conf</code> pins key-only ahead of provider drop-ins (Contabo's <code>50-cloud-init.conf</code> otherwise re-enabled passwords, found 2026-09-30). It also pins <code>X11Forwarding no</code>, which AlmaLinux’s <code>50-redhat.conf</code> otherwise set to <code>yes</code> (found 2026-10-02). <strong>Country filter:</strong> port 10022 only accepts new connections from German IP blocks (RIPE data, <code>fw_ssh_geo_countries: [DE]</code>, sets <code>ssh_geo4</code>/<code>ssh_geo6</code>); <code>ssh-geo-update.timer</code> refreshes the list on Sundays 02:30–03:00 and keeps the old one on any error. Check: <code>nft get element inet filter ssh_geo4 { 1.2.3.4 }</code>. Emergency from abroad: IONOS web console, or add the address to <code>fw_ssh_geo_extra</code></td>
     <td><code>common_ssh</code>, <code>common_fail2ban</code>, <code>common_firewall</code></td>
   </tr>
   <tr>
@@ -2041,7 +2041,7 @@ Both verified 2026-09-14.</p>
   </tr>
   <tr>
     <td>Rootkits</td>
-    <td>rkhunter daily scan at 03:15; <code>WEB_CMD=curl -L</code> (SourceForge redirect fix); <code>ALLOW_SSH_ROOT_USER=without-password</code>; <code>DISABLE_TESTS=system_configs_ssh</code> (rkhunter 1.4.6 bug: warns on root SSH despite correct config)</td>
+    <td>rkhunter daily scan at 03:15; <code>WEB_CMD=curl -L</code> (SourceForge redirect fix); <code>ALLOW_SSH_ROOT_USER=without-password</code>; <code>DISABLE_TESTS=system_configs_ssh</code> (rkhunter 1.4.6 bug: warns on root SSH despite correct config). This is the only run: the packaged <code>/etc/cron.daily/rkhunter</code> is removed and kept out by <code>%_netsharedpath</code> (<code>/etc/rpm/macros.rkhunter-nocron</code>) so updates do not restore it (two scans a night until 2026-10-02)</td>
     <td><code>common_rkhunter</code></td>
   </tr>
   <tr>
@@ -2205,7 +2205,9 @@ Both verified 2026-09-14.</p>
   <tr>
     <td>cron/at, sudo</td>
     <td>Tightened cron directory/file permissions + explicit allow-lists;
-        sudo logs to its own file, requires a pty, re-authenticates every time</td>
+        sudo logs to its own file, requires a pty, re-authenticates every time; the sudo grant of the
+        cloud-init default user <code>almalinux</code> (Contabo image only) is removed,
+        the account gets <code>/sbin/nologin</code> and stays (UID 1000 = metrics-server pod)</td>
     <td><code>common_cis_hardening</code></td>
   </tr>
   <tr>

@@ -1321,7 +1321,7 @@ curl -s http://127.0.0.1:9090/api/v1/targets | python3 -m json.tool | grep -E '"
 <h3>Monit: Aktualität des Backups (<code>wp_backup</code>)</h3>
 <p>
   Die Backup-Maschine schreibt nach jedem erfolgreichen Lauf <code>/var/lib/wordpress-backup/last-success</code> auf den
-  Blog-Server. Monit alarmiert, wenn die Datei älter als <code>monit_backup_max_days</code> (3) ist oder fehlt.
+  Blog-Server. Monit alarmiert, wenn die Datei älter als <code>monit_backup_max_days</code> (3) ist oder fehlt (geprüft stündlich in Minute 17–18, siehe Nextcloud-Betriebsdoku).
 </p>
 </section>
 
@@ -2001,7 +2001,7 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   </tr>
   <tr>
     <td>SSH</td>
-    <td>Port 10022, Key-only (<code>PermitRootLogin without-password</code>), gehärtete sshd_config, Fail2Ban, <code>sshd_config.d/00-hardening.conf</code> pinnt Key-only vor Anbieter-Drop-ins (Contabos <code>50-cloud-init.conf</code> schaltete Passwörter sonst wieder ein, gefunden 30.09.2026). <strong>Länderfilter:</strong> Port 10022 nimmt neue Verbindungen nur aus deutschen IP-Blöcken an (RIPE-Daten, <code>fw_ssh_geo_countries: [DE]</code>, Set <code>ssh_geo4</code>/<code>ssh_geo6</code>); <code>ssh-geo-update.timer</code> erneuert die Liste sonntags 02:30–03:00 und behält bei Fehlern die alte. Prüfen: <code>nft get element inet filter ssh_geo4 { 1.2.3.4 }</code>. Notfall aus dem Ausland: IONOS-Webkonsole oder Adresse in <code>fw_ssh_geo_extra</code></td>
+    <td>Port 10022, Key-only (<code>PermitRootLogin without-password</code>), gehärtete sshd_config, Fail2Ban, <code>sshd_config.d/00-hardening.conf</code> pinnt Key-only vor Anbieter-Drop-ins (Contabos <code>50-cloud-init.conf</code> schaltete Passwörter sonst wieder ein, gefunden 30.09.2026). Dort steht auch <code>X11Forwarding no</code>, weil AlmaLinux’ <code>50-redhat.conf</code> sonst <code>yes</code> setzte (gefunden 02.10.2026). <strong>Länderfilter:</strong> Port 10022 nimmt neue Verbindungen nur aus deutschen IP-Blöcken an (RIPE-Daten, <code>fw_ssh_geo_countries: [DE]</code>, Set <code>ssh_geo4</code>/<code>ssh_geo6</code>); <code>ssh-geo-update.timer</code> erneuert die Liste sonntags 02:30–03:00 und behält bei Fehlern die alte. Prüfen: <code>nft get element inet filter ssh_geo4 { 1.2.3.4 }</code>. Notfall aus dem Ausland: IONOS-Webkonsole oder Adresse in <code>fw_ssh_geo_extra</code></td>
     <td><code>common_ssh</code>, <code>common_fail2ban</code>, <code>common_firewall</code></td>
   </tr>
   <tr>
@@ -2070,7 +2070,7 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   </tr>
   <tr>
     <td>Rootkits</td>
-    <td>rkhunter täglicher Scan um 03:15; <code>WEB_CMD=curl -L</code> (SourceForge-Redirect-Fix); <code>ALLOW_SSH_ROOT_USER=without-password</code>; <code>DISABLE_TESTS=system_configs_ssh</code> (rkhunter 1.4.6 Bug: warnt bei Root-SSH trotz korrekter Konfiguration)</td>
+    <td>rkhunter täglicher Scan um 03:15; <code>WEB_CMD=curl -L</code> (SourceForge-Redirect-Fix); <code>ALLOW_SSH_ROOT_USER=without-password</code>; <code>DISABLE_TESTS=system_configs_ssh</code> (rkhunter 1.4.6 Bug: warnt bei Root-SSH trotz korrekter Konfiguration). Nur dieser Lauf: das Paket-Skript <code>/etc/cron.daily/rkhunter</code> ist entfernt und per <code>%_netsharedpath</code> (<code>/etc/rpm/macros.rkhunter-nocron</code>) gegen Wiederherstellung bei Updates gesperrt (vorher zwei Scans pro Nacht, bis 02.10.2026)</td>
     <td><code>common_rkhunter</code></td>
   </tr>
   <tr>
@@ -2237,7 +2237,9 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
     <td>cron/at, sudo</td>
     <td>Verschärfte cron-Verzeichnis-/Dateirechte + explizite Allow-Lists;
         sudo loggt in eigene Datei, braucht ein pty, verlangt jedes Mal
-        Re-Authentifizierung</td>
+        Re-Authentifizierung; das sudo-Recht des cloud-init-Standardbenutzers
+        <code>almalinux</code> (nur Contabo-Image) wird entfernt, das Konto bekommt
+        <code>/sbin/nologin</code> und bleibt bestehen (UID 1000 = metrics-server-Pod)</td>
     <td><code>common_cis_hardening</code></td>
   </tr>
   <tr>

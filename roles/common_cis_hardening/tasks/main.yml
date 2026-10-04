@@ -251,6 +251,33 @@
       Defaults logfile="/var/log/sudo.log"
       Defaults timestamp_timeout=0
 
+# Contabo's AlmaLinux image creates a cloud-init default user "almalinux" with
+# NOPASSWD:ALL in /etc/sudoers.d/90-cloud-init-users (cvjm, sofie; the blog's
+# provider image has no such user). Locked, no keys, never logged in - but a
+# passwordless sudo grant has no business existing (found 2026-10-02).
+# The account itself stays: UID 1000 is also the UID metrics-server runs as
+# inside its pod, so the host shows a live process "owned" by almalinux and
+# userdel would refuse. Removing the sudo line and the login shell makes the
+# account inert without touching anything that runs.
+- name: CIS | Remove the cloud-init default user's sudo grant
+  ansible.builtin.lineinfile:
+    path: /etc/sudoers.d/90-cloud-init-users
+    regexp: '^almalinux\s'
+    state: absent
+    validate: "visudo -cf %s"
+
+- name: CIS | Check for the cloud-init default user
+  ansible.builtin.getent:
+    database: passwd
+    key: almalinux
+    fail_key: false
+
+- name: CIS | Give the cloud-init default user no login shell
+  ansible.builtin.user:
+    name: almalinux
+    shell: /sbin/nologin
+  when: (getent_passwd | default({})).get('almalinux') is not none
+
 # -----------------------------------------------------------------------------
 # Unused services/packages
 # -----------------------------------------------------------------------------

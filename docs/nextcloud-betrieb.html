@@ -1608,7 +1608,7 @@ cat /data/backup/nextcloud-data/cvjm/last-success</code></pre>
   <code>example_backup.sh.example</code>. Nach jedem erfolgreichen Lauf bekommt
   die Instanz <code>/var/lib/nextcloud-backup/last-success</code>. Monit
   (<code>nc_backup</code>) mailt, wenn die Datei älter als
-  <code>monit_backup_max_days</code> (3) ist. Das deckt ein scheiterndes Backup
+  <code>monit_backup_max_days</code> (3) ist (geprüft stündlich in Minute 17–18; ein Ein-Minuten-Fenster wurde beim 2-Minuten-Takt je nach Startzeit nie getroffen, korrigiert 04.10.2026). Das deckt ein scheiterndes Backup
   und einen Backup-Rechner, der aus bleibt, gleichermaßen ab.
 </p>
 
@@ -1970,7 +1970,7 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   </tr>
   <tr>
     <td>SSH</td>
-    <td>Port 10022, Key-only (<code>PermitRootLogin without-password</code>), gehärtete sshd_config, Fail2Ban, <code>sshd_config.d/00-hardening.conf</code> pinnt Key-only vor Anbieter-Drop-ins (Contabos <code>50-cloud-init.conf</code> schaltete Passwörter sonst wieder ein, gefunden 30.09.2026). Optionaler Länderfilter für Port 10022 (<code>fw_ssh_geo_countries</code>, z. B. <code>[DE]</code>; aktiv auf dem Blog und auf cvjm seit 02.10.2026, sofie ohne; siehe WordPress-Betriebsdoku)</td>
+    <td>Port 10022, Key-only (<code>PermitRootLogin without-password</code>), gehärtete sshd_config, Fail2Ban, <code>sshd_config.d/00-hardening.conf</code> pinnt Key-only vor Anbieter-Drop-ins (Contabos <code>50-cloud-init.conf</code> schaltete Passwörter sonst wieder ein, gefunden 30.09.2026). Dort steht auch <code>X11Forwarding no</code>, weil AlmaLinux’ <code>50-redhat.conf</code> sonst <code>yes</code> setzte (gefunden 02.10.2026). Optionaler Länderfilter für Port 10022 (<code>fw_ssh_geo_countries</code>, z. B. <code>[DE]</code>; aktiv auf dem Blog und auf cvjm seit 02.10.2026, sofie ohne; siehe WordPress-Betriebsdoku)</td>
     <td><code>common_ssh</code>, <code>common_fail2ban</code>, <code>common_firewall</code></td>
   </tr>
   <tr>
@@ -2023,7 +2023,7 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   </tr>
   <tr>
     <td>Rootkits</td>
-    <td>rkhunter täglicher Scan um 03:15; <code>WEB_CMD=curl -L</code> (SourceForge-Redirect-Fix); <code>ALLOW_SSH_ROOT_USER=without-password</code>; <code>DISABLE_TESTS=system_configs_ssh</code> (rkhunter 1.4.6 Bug: warnt bei Root-SSH trotz korrekter Konfiguration)</td>
+    <td>rkhunter täglicher Scan um 03:15; <code>WEB_CMD=curl -L</code> (SourceForge-Redirect-Fix); <code>ALLOW_SSH_ROOT_USER=without-password</code>; <code>DISABLE_TESTS=system_configs_ssh</code> (rkhunter 1.4.6 Bug: warnt bei Root-SSH trotz korrekter Konfiguration). Nur dieser Lauf: das Paket-Skript <code>/etc/cron.daily/rkhunter</code> ist entfernt und per <code>%_netsharedpath</code> (<code>/etc/rpm/macros.rkhunter-nocron</code>) gegen Wiederherstellung bei Updates gesperrt (vorher zwei Scans pro Nacht, bis 02.10.2026)</td>
     <td><code>common_rkhunter</code></td>
   </tr>
   <tr>
