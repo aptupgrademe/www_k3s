@@ -161,7 +161,7 @@ spec:
 # THIS host still needs the same minion treatment.
 #
 # Found 2026-08-20: the apex domain's DNS had stale/wrong records pointing
-# at Strato's generic "domain reserved" parking page instead of this
+# at the registrar's generic "domain reserved" parking page instead of this
 # cluster, so nobody could reach the blog via the bare domain at all - fixed
 # at the registrar, this Ingress is the server-side half of that fix so
 # search engines/backlinks pointed at the apex land on the real site
@@ -193,10 +193,26 @@ metadata:
     # the main site) and cert-manager reported "wrong status code 404,
     # expected 200", blocking certificate issuance entirely (verified live
     # 2026-08-20).
+    #
+    # HSTS preload (hstspreload.org) has two rules this host has to meet,
+    # since it is the registrable domain (found 2026-10-05, the header said
+    # "preload" but the domain was not eligible):
+    #  - plain HTTP must first go to HTTPS on the SAME host, not straight to
+    #    www - hence the "-http" branch below;
+    #  - the HTTPS response, even a redirect, must carry the HSTS header with
+    #    includeSubDomains and preload - otherwise includeSubDomains never
+    #    covers the apex at all.
+    # The header goes out over HTTPS only ($apex_hsts stays empty on HTTP;
+    # nginx sends no header with an empty value). "always" puts it on the 301.
     nginx.org/server-snippets: |
-      set $redirect_to_www 1;
-      if ($request_uri ~ "^/.well-known/") { set $redirect_to_www 0; }
-      if ($redirect_to_www = 1)            { return 301 https://{{ blog_hostname }}$request_uri; }
+      set $apex_action "www";
+      if ($request_uri ~ "^/.well-known/") { set $apex_action "none"; }
+      if ($scheme = http)                  { set $apex_action "${apex_action}-http"; }
+      set $apex_hsts "max-age=31536000; includeSubDomains; preload";
+      if ($scheme = http)                  { set $apex_hsts ""; }
+      add_header Strict-Transport-Security $apex_hsts always;
+      if ($apex_action = "www-http")       { return 301 https://$host$request_uri; }
+      if ($apex_action = "www")            { return 301 https://{{ blog_hostname }}$request_uri; }
 spec:
   ingressClassName: nginx
   tls:
