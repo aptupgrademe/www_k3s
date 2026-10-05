@@ -173,6 +173,22 @@
 # download timed out (cURL error 28 after 10 s) on the compressx item, the play
 # stopped there, and all-in-one-wp-migration was left unable to create its
 # storage/ directory until the chown was run by hand.
+# Version snapshot before anything installs or updates code. Compared with
+# the one after the update block, it decides the PHP-FPM restart at the end:
+# "plugin install --force" below re-downloads every plugin on each run and may
+# pull a NEWER release; its output does not say so, and before 2026-10-05 the
+# restart only looked at the update tasks - newer plugin code then sat on disk
+# while OPcache kept running the old one (found after the 2026-10-04 run).
+- name: WordPress | Snapshot core/plugin/theme versions (before)
+  ansible.builtin.shell: |
+    set -e
+    for what in "core version" "plugin list --fields=name,version --format=csv" "theme list --fields=name,version --format=csv"; do
+      k3s kubectl exec deployment/wordpress --namespace wordpress --container wordpress-fpm -- \
+        su -s /bin/sh www-data -c "php /usr/local/lib/wp-cli/wp-cli.phar --path=/var/www/html $what"
+    done
+  register: wp_versions_before
+  changed_when: false
+
 - name: WordPress | Install plugins and fix ownership
   block:
     # `until` retries per loop item, so one flaky download no longer takes the
@@ -487,7 +503,7 @@
         fi
   register: wp_mu_ai_disclosure
   changed_when: "'CHANGED' in wp_mu_ai_disclosure.stdout"
-  # A PHP file: OPcache (validate_timestamps=0) needs a restart to see changes.
+  # A PHP file: restart so the change is live at once (OPcache re-checks only every 60 s).
   notify: Restart wordpress deployment (OPcache picks up changed PHP files)
 
 
@@ -682,21 +698,32 @@
 # -----------------------------------------------------------------------------
 # Restart the pod when core, plugins or themes actually changed
 # -----------------------------------------------------------------------------
-# PHP runs with opcache.validate_timestamps=0 (see the php-config ConfigMap in
-# blog_k3s_deploy): file mtimes are never re-checked, so bytecode already in
-# the shared OPcache segment stays live for the lifetime of the pod. The two
-# update tasks above write new .php files to the volume, but PHP-FPM keeps
-# executing the old code — including for security releases, which is exactly
-# the failure mode where it hurts. Recycling workers via pm.max_requests does
-# not help: the OPcache segment is shared across the pool, not per worker.
+# OPcache re-checks a cached script against its file at most every 60 s
+# (php-config ConfigMap in blog_k3s_deploy; until 2026-10-05 it never did, and
+# updated plugin code stayed inactive until an unrelated restart). The restart
+# makes all updated files take effect at once rather than file by file within
+# the next minute - a half-old, half-new plugin for up to a minute is exactly
+# what a security release should not go through.
 #
 # Only fires when an update really happened, so an unchanged run stays a no-op
 # and does not cause needless downtime.
+- name: WordPress | Snapshot core/plugin/theme versions (after)
+  ansible.builtin.shell: |
+    set -e
+    for what in "core version" "plugin list --fields=name,version --format=csv" "theme list --fields=name,version --format=csv"; do
+      k3s kubectl exec deployment/wordpress --namespace wordpress --container wordpress-fpm -- \
+        su -s /bin/sh www-data -c "php /usr/local/lib/wp-cli/wp-cli.phar --path=/var/www/html $what"
+    done
+  register: wp_versions_after
+  changed_when: false
+
 - name: WordPress | Restart pod so PHP-FPM picks up updated code
   ansible.builtin.command: >
     k3s kubectl rollout restart deployment/wordpress
     --namespace wordpress
-  when: wp_core_update.changed or wp_plugin_update.changed or wp_theme_update.changed
+  when: >-
+    wp_core_update.changed or wp_plugin_update.changed or wp_theme_update.changed
+    or wp_versions_before.stdout != wp_versions_after.stdout
   changed_when: true
 
 - name: WordPress | Wait for the restarted pod to become ready
@@ -704,5 +731,7 @@
     k3s kubectl rollout status deployment/wordpress
     --namespace wordpress
     --timeout=300s
-  when: wp_core_update.changed or wp_plugin_update.changed or wp_theme_update.changed
+  when: >-
+    wp_core_update.changed or wp_plugin_update.changed or wp_theme_update.changed
+    or wp_versions_before.stdout != wp_versions_after.stdout
   changed_when: false

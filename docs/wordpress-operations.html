@@ -1513,21 +1513,31 @@ k3s kubectl get pods -n wordpress</code></pre>
   </li>
 </ol>
 
-<h3>WordPress Update: Rebuild Within the Same Tag</h3>
+<h3>Updates on demand (<code>blog-update.yml</code>)</h3>
 <p>
-  When Docker Hub rebuilds <code>wordpress:7.1.0-php8.4-fpm</code> (e.g. a base-image
-  security patch) and the tag in Ansible remains unchanged:
+  Updates plugins, themes, translations and WordPress minor releases <strong>right now</strong> and pulls rebuilt
+  images under the current tags. It only touches the containers, never the host (SSH, firewall, hardening) – the
+  counterpart of <code>nextcloud-update.yml</code>.
 </p>
+<pre><code>ansible-playbook -i inventory/hosts.yml blog-update.yml --limit www.apt-upgrade.me --ask-vault-pass</code></pre>
 <ol class="steps">
-  <li>Manually pull the new image:
-    <pre><code>crictl pull docker.io/library/wordpress:7.1.0-php8.4-fpm</code></pre>
-  </li>
-  <li>Restart the pod:
-    <pre><code>k3s kubectl rollout restart deployment/wordpress -n wordpress
-k3s kubectl rollout status  deployment/wordpress -n wordpress --timeout=300s</code></pre>
-  </li>
+  <li>Runs the nightly update job immediately (<code>kubectl create job --from=cronjob/wordpress-autoupdate</code>):
+      DB dump, updates, <code>core update-db</code>, cache flush, homepage check – the same code as at night.</li>
+  <li>Re-pulls the current tags of WordPress, nginx, Redis and MariaDB (Docker Hub rebuilds unchanged tags for
+      base-image security fixes; K3s never re-pulls on its own).</li>
+  <li>Restarts what needs it: <code>wordpress</code> if a plugin/theme/core version changed or one of its images was
+      rebuilt; <code>redis</code>/<code>mariadb</code> only on a new image.</li>
+  <li>Checks the homepage and prints the job log, rebuilt images, restarts and changed versions.</li>
 </ol>
-
+<p>
+  It refuses to run without <code>--limit</code>. Version bumps (new tag in <code>group_vars/all.yml</code>) still go
+  through <code>blog.yml</code>, see below.
+</p>
+<div class="callout callout-info">
+  <strong>Why it still restarts:</strong> PHP picks up changed files by itself, but only within 60 seconds and file
+  by file (see OPcache under Performance). The restart makes every updated file live at once. The nightly job does not
+  restart (no Kubernetes API access); its updates are active at most a minute after the job.
+</div>
 <h3>WordPress Update: Version Jump (e.g. 7.1.0 → 7.2)</h3>
 
 <div class="callout callout-danger">
@@ -1893,7 +1903,7 @@ rm -f ~/.ansible/cp/*</code></pre>
   </tr>
   <tr>
     <td>PHP OPcache</td>
-    <td><code>validate_timestamps=0</code> (no per-request file checks), 10,000 cached files, 16 MB interned strings</td>
+    <td><code>validate_timestamps=1</code>, <code>revalidate_freq=60</code> (file check at most once a minute), 10,000 cached files, 16 MB interned strings</td>
     <td><code>blog_k3s_deploy</code> → ConfigMap <code>wordpress-php-config</code></td>
   </tr>
   <tr>
@@ -1933,19 +1943,20 @@ rm -f ~/.ansible/cp/*</code></pre>
 <pre><code># Verify active congestion control
 sysctl net.ipv4.tcp_congestion_control</code></pre>
 
-<h3>OPcache – validate_timestamps=0</h3>
-<div class="callout callout-warn">
-  <strong>Pod restart required after plugin updates</strong>
-  With <code>validate_timestamps=0</code> PHP never checks whether files on disk have changed.
-  This is the biggest performance gain (~10–30 ms per request), but means: after manual
-  plugin updates via the WordPress admin panel, the pod must be restarted for PHP to
-  pick up the new code.
+<h3>OPcache – file check every 60 seconds</h3>
+<div class="callout callout-info">
+  <strong>Changed PHP code takes effect within a minute</strong>
+  Since 2026-10-05: <code>opcache.validate_timestamps=1</code>, <code>opcache.revalidate_freq=60</code>.
+  PHP compares a cached script with its file on disk at most once a minute. Before, the value was
+  <code>0</code> (never check): plugin updates from the nightly job – security releases included – kept running
+  the old code until the next unrelated pod restart, because the job cannot restart the pod. The check costs one
+  <code>stat()</code> per script per minute; on this blog, whose pages WP Super Cache mostly serves as static HTML,
+  that is not measurable.
+  <br><br>
+  The playbook (<code>blog.yml</code>) and <code>blog-update.yml</code> still restart the pod after real code
+  changes: everything then goes live <em>at once</em> instead of file by file within the next minute. A run without
+  changes restarts nothing. By hand:
   <pre style="margin-top:8px"><code>k3s kubectl rollout restart deployment/wordpress -n wordpress</code></pre>
-  The Ansible playbook restarts the pod automatically, but only when it actually
-  changed PHP code: a core, plugin or theme update, or new content in one of its
-  mu-plugins. A run without changes causes no restart and no 502. (Until
-  2026-09-23 every run restarted it, because the mu-plugin task always reported
-  a change. With the <code>Recreate</code> strategy that meant ~30–60 s of 502 per run.)
 </div>
 
 <h3>Redis Object Cache</h3>
@@ -2385,7 +2396,7 @@ Both verified 2026-09-14.</p>
   <tr><th>Measure</th><th>What it prevents</th><th>Implementation</th></tr>
   <tr>
     <td>OPcache restart after updates</td>
-    <td><code>opcache.validate_timestamps=0</code> keeps compiled PHP bytecode in memory &ndash; without a restart the <em>old, vulnerable code keeps running</em> after a security update. The playbook restarts the pod after core/plugin updates.</td>
+    <td>OPcache keeps compiled PHP bytecode in memory. With <code>validate_timestamps=1</code>/<code>revalidate_freq=60</code> a security update is live within a minute; the playbook and <code>blog-update.yml</code> additionally restart the pod after core/plugin updates so everything switches at once. (Until 2026-10-05 <code>validate_timestamps=0</code>: updates from the nightly job stayed inactive until the next restart.)</td>
     <td><code>blog_wordpress</code></td>
   </tr>
   <tr>

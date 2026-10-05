@@ -167,13 +167,19 @@ data:
     realpath_cache_ttl  = 3600
 
     ; --- OPcache (production tuning) ---
-    ; validate_timestamps=0: never check file mtimes – pod restart clears cache on deploy
+    ; validate_timestamps=1 + revalidate_freq=60: a cached script is re-checked
+    ; against its file at most once a minute. Until 2026-10-05 this was 0
+    ; (never check), which meant the nightly wordpress-autoupdate job - it
+    ; cannot restart the pod - replaced plugin files that PHP then ignored
+    ; until some unrelated restart, security releases included. One stat()
+    ; per script per minute is negligible here (WP Super Cache serves most
+    ; requests as static HTML anyway).
     opcache.enable                 = 1
     opcache.memory_consumption     = 128
     opcache.interned_strings_buffer = 16
     opcache.max_accelerated_files  = 10000
-    opcache.validate_timestamps    = 0
-    opcache.revalidate_freq        = 0
+    opcache.validate_timestamps    = 1
+    opcache.revalidate_freq        = 60
     opcache.fast_shutdown          = 1
 ---
 apiVersion: v1

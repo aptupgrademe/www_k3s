@@ -1528,21 +1528,32 @@ k3s kubectl get pods -n wordpress</code></pre>
   </li>
 </ol>
 
-<h3>WordPress-Update: Rebuild innerhalb desselben Tags</h3>
+<h3>Updates auf Knopfdruck (<code>blog-update.yml</code>)</h3>
 <p>
-  Wenn Docker Hub <code>wordpress:7.1.0-php8.4-fpm</code> neu baut (z.B. ein
-  Base-Image-Security-Patch) und der Tag im Ansible unverändert bleibt:
+  Aktualisiert Plugins, Themes, Übersetzungen und WordPress-Minor-Versionen <strong>sofort</strong> und holt
+  neu gebaute Images unter den aktuellen Tags. Es fasst nur die Container an, nie den Host (SSH, Firewall,
+  Härtung) – das Gegenstück zu <code>nextcloud-update.yml</code>.
 </p>
+<pre><code>ansible-playbook -i inventory/hosts.yml blog-update.yml --limit www.apt-upgrade.me --ask-vault-pass</code></pre>
 <ol class="steps">
-  <li>Neues Image manuell pullen:
-    <pre><code>crictl pull docker.io/library/wordpress:7.1.0-php8.4-fpm</code></pre>
-  </li>
-  <li>Pod neu starten:
-    <pre><code>k3s kubectl rollout restart deployment/wordpress -n wordpress
-k3s kubectl rollout status  deployment/wordpress -n wordpress --timeout=300s</code></pre>
-  </li>
+  <li>Startet den nächtlichen Update-Job sofort (<code>kubectl create job --from=cronjob/wordpress-autoupdate</code>):
+      DB-Dump, Updates, <code>core update-db</code>, Cache leeren, Prüfung der Startseite – derselbe Code wie nachts.</li>
+  <li>Holt die aktuellen Tags von WordPress, nginx, Redis und MariaDB neu (Docker Hub baut unveränderte Tags
+      für Sicherheitsfixes im Basis-Image neu; K3s holt sie von sich aus nie).</li>
+  <li>Startet neu, was es braucht: <code>wordpress</code>, wenn sich eine Plugin-/Theme-/Core-Version geändert hat oder
+      eines seiner Images neu gebaut wurde; <code>redis</code>/<code>mariadb</code> nur bei neuem Image.</li>
+  <li>Prüft die Startseite und zeigt Job-Log, neu gebaute Images, Neustarts und geänderte Versionen.</li>
 </ol>
-
+<p>
+  Ohne <code>--limit</code> verweigert das Playbook den Lauf. Versionssprünge (neuer Tag in
+  <code>group_vars/all.yml</code>) laufen weiter über <code>blog.yml</code>, siehe unten.
+</p>
+<div class="callout callout-info">
+  <strong>Warum trotzdem neu gestartet wird:</strong> PHP erkennt geänderte Dateien selbst, aber erst innerhalb von
+  60 Sekunden und Datei für Datei (siehe OPcache unter Performance). Der Neustart macht alle aktualisierten Dateien
+  auf einmal wirksam. Der nächtliche Job startet nicht neu (kein Zugriff auf die Kubernetes-API); seine Updates
+  sind spätestens eine Minute nach dem Job aktiv.
+</div>
 <h3>WordPress-Update: Versionssprung (z.B. 7.1.0 → 7.2)</h3>
 
 <div class="callout callout-danger">
@@ -1912,7 +1923,7 @@ rm -f ~/.ansible/cp/*</code></pre>
   </tr>
   <tr>
     <td>PHP OPcache</td>
-    <td><code>validate_timestamps=0</code> (keine Datei-Checks per Request), 10.000 gecachte Dateien, 16 MB interned strings</td>
+    <td><code>validate_timestamps=1</code>, <code>revalidate_freq=60</code> (Datei-Check höchstens einmal pro Minute), 10.000 gecachte Dateien, 16 MB interned strings</td>
     <td><code>blog_k3s_deploy</code> → ConfigMap <code>wordpress-php-config</code></td>
   </tr>
   <tr>
@@ -1956,19 +1967,20 @@ sysctl net.ipv4.tcp_congestion_control
 # BBR-Statistiken (via ss)
 ss -tin dst www.apt-upgrade.me | grep bbr</code></pre>
 
-<h3>OPcache – validate_timestamps=0</h3>
-<div class="callout callout-warn">
-  <strong>Pod-Neustart nach Plugin-Updates</strong>
-  Mit <code>validate_timestamps=0</code> prüft PHP nie ob Dateien auf Disk geändert wurden.
-  Das ist die größte Performance-Verbesserung (~10–30 ms pro Request), bedeutet aber:
-  nach manuellen Plugin-Updates im WordPress-Admin muss der Pod neu gestartet werden,
-  damit PHP den neuen Code sieht.
+<h3>OPcache – Dateiprüfung alle 60 Sekunden</h3>
+<div class="callout callout-info">
+  <strong>Geänderter PHP-Code wird spätestens nach einer Minute wirksam</strong>
+  Seit 05.10.2026: <code>opcache.validate_timestamps=1</code>, <code>opcache.revalidate_freq=60</code>.
+  PHP vergleicht ein gecachtes Skript höchstens einmal pro Minute mit der Datei auf der Platte.
+  Vorher stand der Wert auf <code>0</code> (nie prüfen): Dann liefen Plugin-Updates des nächtlichen Jobs –
+  Sicherheitsupdates eingeschlossen – bis zum nächsten zufälligen Pod-Neustart mit dem alten Code weiter, weil
+  der Job den Pod nicht neu starten kann. Die Prüfung kostet einen <code>stat()</code> pro Skript und Minute;
+  bei diesem Blog, dessen Seiten überwiegend WP Super Cache als statisches HTML ausliefert, ist das nicht messbar.
+  <br><br>
+  Playbook (<code>blog.yml</code>) und <code>blog-update.yml</code> starten den Pod nach echten Code-Änderungen
+  trotzdem neu: Dann ist alles <em>sofort und auf einmal</em> aktiv, statt Datei für Datei innerhalb der nächsten
+  Minute. Ein Lauf ohne Änderungen startet nichts neu. Von Hand:
   <pre style="margin-top:8px"><code>k3s kubectl rollout restart deployment/wordpress -n wordpress</code></pre>
-  Das Ansible-Playbook startet den Pod automatisch neu, aber nur, wenn es wirklich
-  PHP-Code geändert hat: ein Kern-, Plugin- oder Theme-Update oder neuer Inhalt in
-  einem seiner mu-Plugins. Ein Lauf ohne Änderungen startet nichts neu und erzeugt
-  kein 502. (Bis 23.09.2026 startete jeder Lauf neu, weil der mu-Plugin-Task immer
-  eine Änderung meldete. Mit der Strategie <code>Recreate</code> hieß das ~30–60 s 502 pro Lauf.)
 </div>
 
 <h3>Redis Object Cache</h3>
@@ -2423,7 +2435,7 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   <tr><th>Maßnahme</th><th>Was es verhindert</th><th>Umsetzung</th></tr>
   <tr>
     <td>OPcache-Neustart nach Updates</td>
-    <td><code>opcache.validate_timestamps=0</code> hält kompilierten PHP-Bytecode im Speicher – ohne Neustart liefe nach einem Sicherheitsupdate <em>weiter der alte, verwundbare Code</em>. Das Playbook startet den Pod nach Core-/Plugin-Updates neu.</td>
+    <td>OPcache hält kompilierten PHP-Bytecode im Speicher. Mit <code>validate_timestamps=1</code>/<code>revalidate_freq=60</code> ist ein Sicherheitsupdate spätestens nach einer Minute aktiv; Playbook und <code>blog-update.yml</code> starten den Pod nach Core-/Plugin-Updates zusätzlich neu, damit alles auf einmal wechselt. (Bis 05.10.2026 <code>validate_timestamps=0</code>: Updates des nächtlichen Jobs blieben bis zum nächsten Neustart inaktiv.)</td>
     <td><code>blog_wordpress</code></td>
   </tr>
   <tr>

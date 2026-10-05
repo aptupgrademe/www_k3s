@@ -267,6 +267,7 @@ www_k3s/
 ├── nextcloud-k3s.yml          # Nextcloud + Collabora playbook
 ├── blog.yml                   # WordPress playbook
 ├── nextcloud-update.yml       # Nextcloud patch update playbook
+├── blog-update.yml            # WordPress plugins/themes/core + rebuilt images, on demand
 │
 ├── inventory/
 │   ├── hosts.yml              # Server inventory (gitignored)
