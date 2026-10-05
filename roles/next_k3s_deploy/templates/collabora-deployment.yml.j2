@@ -87,16 +87,23 @@ spec:
             port: 9980
           periodSeconds: 10
           failureThreshold: 30
+        # Readiness and liveness poll "/" (body "OK", 2 bytes), as the
+        # upstream Collabora Helm chart does. /hosting/discovery is ~43 KB, but
+        # the kubelet reads only the first 10 KB of a probe response and then
+        # closes the socket - coolwsd logged every such close as an EPIPE +
+        # ECONNRESET pair, ~1,300 ERR lines per 48 h per host (found
+        # 2026-10-05). The startup probe above keeps discovery: it runs only
+        # until the first success, and it proves the full service is up.
         readinessProbe:
           httpGet:
-            path: /hosting/discovery
+            path: /
             port: 9980
           periodSeconds: 15
           failureThreshold: 3
-        # Liveness restarts a wedged Collabora (discovery no longer answering).
+        # Liveness restarts a wedged Collabora (its web server no longer answering).
         livenessProbe:
           httpGet:
-            path: /hosting/discovery
+            path: /
             port: 9980
           periodSeconds: 30
           timeoutSeconds: 5
