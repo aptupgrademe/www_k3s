@@ -30,8 +30,10 @@ KEEP_DUMPS=${KEEP_DUMPS:-14}
 KEEP_LOGS=${KEEP_LOGS:-30}
 REMOTE_STAMP=${REMOTE_STAMP:-1}
 
-BASE=/data/backup/wordpress-data/$NAME
-LOGDIR=/data/backup/wordpress/logs
+# DATA_ROOT/LOGDIR überschreibbar, z. B. auf HP3: DATA_ROOT=/storage (Dataset storage/blog).
+DATA_ROOT=${DATA_ROOT:-/data/backup/wordpress-data}
+BASE=$DATA_ROOT/$NAME
+LOGDIR=${LOGDIR:-/data/backup/wordpress/logs}
 TS=$(date +%Y-%m-%d_%H%M)
 SSH="ssh -i $SSH_KEY -p $REMOTE_PORT -o BatchMode=yes -o LogLevel=ERROR -o ConnectTimeout=15 -o ServerAliveInterval=30"
 TARGET="$REMOTE_USER@$REMOTE_HOST"

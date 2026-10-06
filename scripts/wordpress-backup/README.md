@@ -48,6 +48,26 @@ After every success the blog host gets `/var/lib/wordpress-backup/last-success`.
 Monit (`common_monit`, check `wp_backup`) alerts when it is older than
 `monit_backup_max_days` (3).
 
+
+### Split setup: pull host and versioning host
+
+The pull and the versioning can live on different machines, e.g. an always-on NAS that pulls
+nightly into its own storage, and a backup PC that only versions what the NAS has:
+
+```sh
+# on the NAS (as root), per instance script before sourcing the library:
+DATA_ROOT=/storage                    # -> /storage/<name>/{db,www}
+LOGDIR=/var/log/backup/wordpress
+SSH_KEY=/root/.ssh/id_rsa
+
+# on the backup PC: rdiff-backup over SSH (same rdiff-backup version on both sides)
+30 13 * * * SRC=root@nas::/storage /data/backup/wordpress/wp_rdiff.sh
+```
+
+With a remote `SRC`, `wp_rdiff.sh` first waits on the NAS for a running backup of each instance
+and refuses to run if an instance has no `last-success` or an empty `www/` (versioning an empty
+source would record everything as deleted).
+
 ## Restore
 
 ```bash

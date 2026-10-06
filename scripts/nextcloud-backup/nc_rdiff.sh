@@ -15,11 +15,15 @@
 # =============================================================================
 
 set -o pipefail
-SRC=/data/backup/nextcloud-data
-DST=/data/backup/nextcloud-rdiff
+# SRC darf auch entfernt sein: SRC=root@hp3::/storage/nextcloud (rdiff-backup über SSH,
+# dafür braucht der Quellrechner dieselbe rdiff-backup-Version).
+SRC=${SRC:-/data/backup/nextcloud-data}
+SRC_HOST=; SRC_PATH=$SRC
+case "$SRC" in *::*) SRC_HOST=${SRC%%::*}; SRC_PATH=${SRC#*::} ;; esac
+DST=${DST:-/data/backup/nextcloud-rdiff}
 KEEP=${KEEP:-30D}
 INSTANCES=${INSTANCES:-"cvjm sofie"}
-LOGDIR=/data/backup/nextcloud/logs
+LOGDIR=${LOGDIR:-/data/backup/nextcloud/logs}
 KEEP_LOGS=30
 RDIFF="rdiff-backup --api-version 201"
 
@@ -33,17 +37,28 @@ exec 7>/tmp/nc-rdiff.lock
 flock -n 7 || { log "rdiff läuft bereits – übersprungen"; exit 0; }
 
 # Auf laufende Instanz-Backups warten (max. 3 h), Locks dann halten.
-fd=10
-for inst in $INSTANCES; do
-    eval "exec $fd>/tmp/nc-backup-$inst.lock"
-    flock -w 10800 $fd || fail "Backup $inst läuft seit über 3 h – rdiff übersprungen"
-    fd=$((fd + 1))
-done
+if [ -z "$SRC_HOST" ]; then
+    fd=10
+    for inst in $INSTANCES; do
+        eval "exec $fd>/tmp/nc-backup-$inst.lock"
+        flock -w 10800 $fd || fail "Backup $inst läuft seit über 3 h – rdiff übersprungen"
+        fd=$((fd + 1))
+    done
+else
+    # Entfernte Quelle: auf dem Quellrechner auf laufende Backups warten und prüfen, dass
+    # jede Instanz erfolgreich gesichert und nicht leer ist (rdiff gegen eine leere Quelle
+    # würde alles als gelöscht verbuchen).
+    for inst in $INSTANCES; do
+        ssh -o BatchMode=yes -o ConnectTimeout=15 "$SRC_HOST" \
+            "flock -w 10800 /tmp/nc-backup-$inst.lock true && test -s '$SRC_PATH/$inst/last-success' && test -n \"\$(ls -A '$SRC_PATH/$inst/data' 2>/dev/null)\"" \
+            || fail "Quelle $SRC_HOST:$SRC_PATH/$inst nicht bereit (Backup läuft, fehlgeschlagen oder leer)"
+    done
+fi
 
 log "=== rdiff $SRC -> $DST start ==="
 # Nur die gelisteten Instanzen versionieren, alle anderen Ordner in $SRC ignorieren.
 INCLUDES=()
-for inst in $INSTANCES; do INCLUDES+=(--include "$SRC/$inst"); done
+for inst in $INSTANCES; do INCLUDES+=(--include "$SRC_PATH/$inst"); done
 $RDIFF backup "${INCLUDES[@]}" --exclude "**" "$SRC" "$DST" || fail "rdiff-backup backup"
 log "Versionen älter als $KEEP entfernen ..."
 # Solange es keine Version älter als $KEEP gibt (die ersten $KEEP nach dem Start), endet

@@ -54,6 +54,26 @@ host key, because the scripts use `BatchMode`. After every success the instance
 gets `/var/lib/nextcloud-backup/last-success`. Monit (`common_monit`, check
 `nc_backup`) alerts when it is older than `monit_backup_max_days` (3).
 
+
+### Split setup: pull host and versioning host
+
+The pull and the versioning can live on different machines, e.g. an always-on NAS that pulls
+nightly into its own storage, and a backup PC that only versions what the NAS has:
+
+```sh
+# on the NAS (as root), per instance script before sourcing the library:
+DATA_ROOT=/storage/nextcloud          # -> /storage/nextcloud/<name>/{data,db,www}
+LOGDIR=/var/log/backup/nextcloud
+SSH_KEY=/root/.ssh/id_rsa
+
+# on the backup PC: rdiff-backup over SSH (same rdiff-backup version on both sides)
+15 13 * * * SRC=root@nas::/storage/nextcloud /data/backup/nextcloud/nc_rdiff.sh
+```
+
+With a remote `SRC`, `nc_rdiff.sh` first waits on the NAS for a running backup of each instance
+and refuses to run if an instance has no `last-success` or an empty `data/` (versioning an empty
+source would record everything as deleted).
+
 ## Restore (K3s instance)
 
 ```bash

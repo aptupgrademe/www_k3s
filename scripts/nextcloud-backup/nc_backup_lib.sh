@@ -31,8 +31,10 @@ KEEP_LOGS=${KEEP_LOGS:-30}
 # REMOTE_STAMP=0: nichts auf die Instanz schreiben (rein lesender Lauf, z. B. ohne Monit dort).
 REMOTE_STAMP=${REMOTE_STAMP:-1}
 
-BASE=/data/backup/nextcloud-data/$NAME
-LOGDIR=/data/backup/nextcloud/logs
+# DATA_ROOT/LOGDIR überschreibbar, z. B. auf HP3: DATA_ROOT=/storage/nextcloud (je Instanz ein ZFS-Dataset).
+DATA_ROOT=${DATA_ROOT:-/data/backup/nextcloud-data}
+BASE=$DATA_ROOT/$NAME
+LOGDIR=${LOGDIR:-/data/backup/nextcloud/logs}
 TS=$(date +%Y-%m-%d_%H%M)
 # LogLevel=ERROR: kein Login-Banner der Server im Log, echte Fehler bleiben sichtbar.
 SSH="ssh -i $SSH_KEY -p $REMOTE_PORT -o BatchMode=yes -o LogLevel=ERROR -o ConnectTimeout=15 -o ServerAliveInterval=30"
