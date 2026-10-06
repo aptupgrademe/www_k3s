@@ -122,8 +122,18 @@ data:
         # -------------------------------------------------------
         # Static asset caching
         # -------------------------------------------------------
-        location ~* \.(css|js|png|jpg|jpeg|gif|ico|svg|webp|avif|woff2?|ttf|eot|otf)$ {
-            expires 30d;
+        # One Cache-Control header per response: "expires" would emit its own
+        # Cache-Control next to add_header (duplicate header, seen 2026-10-06).
+        # CSS/JS/fonts: 1 year + immutable - WordPress versions them (?ver=) and
+        # Autoptimize hashes its file names. Images: 30 days only, because an
+        # upload can be replaced in place under the same URL.
+        location ~* \.(css|js|woff2?|ttf|eot|otf)$ {
+            add_header Cache-Control "public, max-age=31536000, immutable";
+            log_not_found off;
+            access_log    off;
+        }
+
+        location ~* \.(png|jpg|jpeg|gif|ico|svg|webp|avif)$ {
             add_header Cache-Control "public, max-age=2592000";
             log_not_found off;
             access_log    off;

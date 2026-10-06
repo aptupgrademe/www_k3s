@@ -2077,7 +2077,7 @@ Both verified 2026-09-14.</p>
   </tr>
   <tr>
     <td>WordPress</td>
-    <td>Limit Login Attempts plugin, plugin updates via Ansible; Autoptimize (JS/CSS minified, 40 → 6 script tags)</td>
+    <td>Limit Login Attempts plugin, plugin updates via Ansible; Autoptimize (JS/CSS minified, 40 → 6 script tags, inline scripts not turned into <code>data:</code> URIs so the CSP stays clean); mu-plugin <code>performance-hints.php</code> (preloads the theme fonts against layout shift, loads the first post thumbnail eagerly as LCP image); browser cache: CSS/JS/fonts 1 year <code>immutable</code>, images 30 days (uploads can be replaced in place)</td>
     <td><code>blog_wordpress</code></td>
   </tr>
   <tr>

@@ -488,7 +488,7 @@
                 return;
             }
             printf(
-                '<div style="text-align:center;font-size:11px;color:#999;opacity:.8;padding:6px 0;">%s <a href="%s" style="color:inherit;text-decoration:underline;">%s</a></div>',
+                '<div style="text-align:center;font-size:11px;color:#595959;padding:6px 0;">%s <a href="%s" style="color:inherit;text-decoration:underline;">%s</a></div>',
                 esc_html__('Some text and images on this site are AI-assisted or AI-generated.'),
                 esc_url(get_permalink($page)),
                 esc_html__('Details')
@@ -504,6 +504,75 @@
   register: wp_mu_ai_disclosure
   changed_when: "'CHANGED' in wp_mu_ai_disclosure.stdout"
   # A PHP file: restart so the change is live at once (OPcache re-checks only every 60 s).
+  notify: Restart wordpress deployment (OPcache picks up changed PHP files)
+
+# Lighthouse (mobile, 2026-10-06): front page LCP 4.2 s because the theme marks
+# the first post thumbnail loading="lazy", and CLS 0.15 because the header title
+# jumps when the theme's web fonts swap in. Preloading the three fonts and
+# loading the first thumbnail eagerly with high priority fixes both.
+- name: WordPress | Deploy performance hints mu-plugin (font preload, eager LCP image)
+  ansible.builtin.command:
+    argv:
+      - k3s
+      - kubectl
+      - exec
+      - deployment/wordpress
+      - --namespace
+      - wordpress
+      - --container
+      - wordpress-fpm
+      - --
+      - sh
+      - -c
+      - |
+        F=/var/www/html/wp-content/mu-plugins/performance-hints.php
+        cat > "$F.new" << 'PHPEOF'
+        <?php
+        /**
+         * Front-end performance hints – managed by Ansible (blog_wordpress).
+         * - Preloads the theme fonts used above the fold, so the header title
+         *   does not shift when they swap in (layout shift / CLS).
+         * - Loads the first large post thumbnail of a page eagerly with high
+         *   fetch priority: it is the largest element in view (LCP), but the
+         *   theme marks every image loading="lazy" (its own filter at priority
+         *   10, so this one runs at 20). 150 px list thumbnails are skipped;
+         *   on single posts only the post's own featured image qualifies.
+         */
+        add_action('wp_head', function () {
+            $base = get_template_directory_uri() . '/assets/fonts/';
+            foreach (['open-sans/open-sans-regular.woff2', 'open-sans/open-sans-700.woff2', 'oswald/oswald-700.woff2'] as $font) {
+                printf("<link rel=\"preload\" href=\"%s\" as=\"font\" type=\"font/woff2\" crossorigin>\n", esc_url($base . $font));
+            }
+        }, 1);
+
+        add_filter('wp_get_attachment_image_attributes', function ($attr, $attachment, $size) {
+            static $done = false;
+            if ($done || is_admin() || is_feed()) {
+                return $attr;
+            }
+            if (empty($attr['class']) || strpos($attr['class'], 'wp-post-image') === false) {
+                return $attr;
+            }
+            if ($size === 'thumbnail' || (is_array($size) && max($size) <= 150)) {
+                return $attr;
+            }
+            if (is_singular() && (int) $attachment->ID !== (int) get_post_thumbnail_id(get_queried_object_id())) {
+                return $attr;
+            }
+            $done = true;
+            $attr['loading'] = 'eager';
+            $attr['fetchpriority'] = 'high';
+            return $attr;
+        }, 20, 3);
+        PHPEOF
+        # Same change-only pattern as security-hardening.php above.
+        if [ -f "$F" ] && [ "$(md5sum < "$F.new")" = "$(md5sum < "$F")" ]; then
+          rm -f "$F.new"
+        else
+          mv "$F.new" "$F" && chown www-data:www-data "$F" && echo CHANGED
+        fi
+  register: wp_mu_performance_hints
+  changed_when: "'CHANGED' in wp_mu_performance_hints.stdout"
   notify: Restart wordpress deployment (OPcache picks up changed PHP files)
 
 

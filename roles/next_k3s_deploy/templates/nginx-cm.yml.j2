@@ -151,14 +151,14 @@ data:
             types { }
             default_type text/javascript;
             try_files $uri /index.php$request_uri;
-            expires 6M;
             add_header Cache-Control "public, max-age=15552000, immutable";
             access_log off;
         }
 
+        # No "expires" here: it would emit a second Cache-Control header next to
+        # add_header (duplicate header, found on the blog 2026-10-06).
         location ~* \.(?:css|js|svg|gif|png|jpe?g|ico|webp|avif|woff2?|ttf|eot|otf)$ {
             try_files $uri /index.php$request_uri;
-            expires 6M;
             add_header Cache-Control "public, max-age=15552000, immutable";
             access_log off;
         }
