@@ -281,7 +281,7 @@
 <main>
 
 <h1>Nextcloud – Betriebs&shy;dokumentation</h1>
-<p class="subtitle">Nextcloud 34 auf K3s (AlmaLinux 9) &middot; Letzte Aktualisierung: Juli 2026</p>
+<p class="subtitle">Nextcloud 34 auf K3s (AlmaLinux 9) &middot; Letzte Aktualisierung: Oktober 2026</p>
 
 <!-- ─────────────────────────── ÜBERBLICK ─────────────────────────────── -->
 <section id="ueberblick">
@@ -297,7 +297,7 @@
 <div class="card-grid">
   <div class="card">
     <div class="label">Nextcloud</div>
-    <div class="value">34.0.3 (nextcloud:34.0.3-fpm)</div>
+    <div class="value">34.0.4 (nextcloud:34.0.4-fpm)</div>
   </div>
   <div class="card">
     <div class="label">Betriebssystem</div>
@@ -425,13 +425,13 @@
   schreiben.</p>
 
   <h4>Container 1: <code>nextcloud-fpm</code></h4>
-  <p>Das offizielle <code>nextcloud:34.0.3-fpm</code>-Image. Führt PHP-FPM auf Port 9000 aus.
+  <p>Das offizielle <code>nextcloud:34.0.4-fpm</code>-Image. Führt PHP-FPM auf Port 9000 aus.
   Bei einem leeren <code>/var/www/html</code> installiert der Docker-Entrypoint
   Nextcloud automatisch anhand der Umgebungsvariablen (DB, Admin, Redis).
   Bei einem Update läuft <code>occ upgrade</code> automatisch.</p>
 
   <h4>Container 2: <code>nginx</code></h4>
-  <p>nginx-Sidecar (<code>nginx:1.30.4-alpine</code>) auf Port 80. Beantwortet
+  <p>nginx-Sidecar (<code>nginx:1.30.5-alpine</code>) auf Port 80. Beantwortet
   statische Anfragen direkt aus dem gemeinsamen Volume; PHP-Anfragen werden per
   FastCGI an Port 9000 weitergeleitet. TLS ist bereits durch nginx-ingress (F5)
   terminiert – nginx spricht nur plain HTTP.</p>
@@ -852,8 +852,8 @@ k3s kubectl get secret nextcloud-secrets -n nextcloud \
 </p>
 
 <pre><code># inventory/group_vars/all.yml
-nextcloud_image_fpm:       "nextcloud:34.0.3-fpm"       # Nextcloud PHP-FPM
-nextcloud_image_nginx:     "nginx:1.30.4-alpine"        # nginx Sidecar
+nextcloud_image_fpm:       "nextcloud:34.0.4-fpm"       # Nextcloud PHP-FPM
+nextcloud_image_nginx:     "nginx:1.30.5-alpine"        # nginx Sidecar
 nextcloud_image_collabora: "collabora/code:26.04.3.1.1" # Collabora CODE
 nextcloud_image_busybox:   "busybox:1"                  # Init-Container</code></pre>
 
@@ -861,9 +861,9 @@ nextcloud_image_busybox:   "busybox:1"                  # Init-Container</code><
 <table>
   <tr><th>Tag-Format</th><th>Bedeutung</th><th>Beispiel</th></tr>
   <tr>
-    <td><code>34.0.3-fpm</code></td>
+    <td><code>34.0.4-fpm</code></td>
     <td>Exakter Nextcloud-Patch-Pin; wird manuell in <code>all.yml</code> hochgesetzt, sobald ein neuerer Build geprüft und bestätigt ist</td>
-    <td><code>nextcloud:34.0.3-fpm</code> (aktuell)</td>
+    <td><code>nextcloud:34.0.4-fpm</code> (aktuell)</td>
   </tr>
   <tr>
     <td><code>35.0.0-fpm</code></td>
@@ -873,7 +873,7 @@ nextcloud_image_busybox:   "busybox:1"                  # Init-Container</code><
   <tr>
     <td><code>1.30.4-alpine</code></td>
     <td>nginx-Stable-Branch, auf den exakten Patch gepinnt, damit ein Rebuild unter demselben Tag nicht stillschweigend übersprungen wird</td>
-    <td><code>nginx:1.30.4-alpine</code> (aktuell)</td>
+    <td><code>nginx:1.30.5-alpine</code> (aktuell)</td>
   </tr>
   <tr>
     <td><code>26.04.3.1.1</code></td>
@@ -884,10 +884,10 @@ nextcloud_image_busybox:   "busybox:1"                  # Init-Container</code><
 
 <div class="callout callout-warn">
   <strong>Rebuild ohne Tag-Änderung</strong>
-  Wenn Docker Hub <code>nextcloud:34.0.3-fpm</code> unter demselben Tag neu baut
+  Wenn Docker Hub <code>nextcloud:34.0.4-fpm</code> unter demselben Tag neu baut
   (z.B. ein Base-Image-Security-Patch), passiert auf dem Server <em>nichts
   automatisch</em>. Der Tag ist lokal gecacht. Manuell auffrischen:
-  <pre style="margin-top:8px"><code>crictl pull docker.io/library/nextcloud:34.0.3-fpm
+  <pre style="margin-top:8px"><code>crictl pull docker.io/library/nextcloud:34.0.4-fpm
 k3s kubectl rollout restart deployment/nextcloud -n nextcloud</code></pre>
 </div>
 </section>
@@ -1414,12 +1414,12 @@ k3s kubectl get pods -n nextcloud</code></pre>
 
 <h3>Container-Update: Rebuild innerhalb desselben Tags</h3>
 <p>
-  Wenn Docker Hub <code>nextcloud:34.0.3-fpm</code> selbst neu baut (z.B. ein
+  Wenn Docker Hub <code>nextcloud:34.0.4-fpm</code> selbst neu baut (z.B. ein
   Base-Image-Security-Patch) und der Tag im Ansible unverändert bleibt:
 </p>
 <ol class="steps">
   <li>Neues Image manuell pullen:
-    <pre><code>crictl pull docker.io/library/nextcloud:34.0.3-fpm</code></pre>
+    <pre><code>crictl pull docker.io/library/nextcloud:34.0.4-fpm</code></pre>
   </li>
   <li>Pod neu starten (nutzt jetzt das frisch gepullte Image):
     <pre><code>k3s kubectl rollout restart deployment/nextcloud -n nextcloud
@@ -1433,8 +1433,8 @@ k3s kubectl rollout status  deployment/nextcloud -n nextcloud --timeout=300s</co
 <h3>Container-Update: Versionssprung (Patch oder Major)</h3>
 <p>
   <code>nextcloud_image_fpm</code> ist auf einen exakten Patch gepinnt, nicht auf
-  einen gleitenden Major-Tag – ein Sprung auf einen neueren Patch (z.B. 34.0.3 →
-  34.0.4) läuft daher genauso ab wie ein Sprung auf eine neue Major-Version (z.B.
+  einen gleitenden Major-Tag – ein Sprung auf einen neueren Patch (z.B. 34.0.4 →
+  34.0.5) läuft daher genauso ab wie ein Sprung auf eine neue Major-Version (z.B.
   34 → 35): zuerst <code>https://hub.docker.com/_/nextcloud/tags</code> (Filter:
   <code>*-fpm</code>) auf den gewünschten Build prüfen, dann:
 </p>
@@ -1610,6 +1610,16 @@ cat /data/backup/nextcloud-data/cvjm/last-success</code></pre>
   (<code>nc_backup</code>) mailt, wenn die Datei älter als
   <code>monit_backup_max_days</code> (3) ist (geprüft stündlich in Minute 17–18; ein Ein-Minuten-Fenster wurde beim 2-Minuten-Takt je nach Startzeit nie getroffen, korrigiert 04.10.2026). Das deckt ein scheiterndes Backup
   und einen Backup-Rechner, der aus bleibt, gleichermaßen ab.
+</p>
+
+<p>
+  <strong>Getrennte Variante (seit Oktober 2026 im Einsatz):</strong> Ein dauerhaft laufendes NAS holt die
+  Sicherung selbst (systemd-Timer nachts, <code>DATA_ROOT</code>/<code>LOGDIR</code> überschrieben, Daten im eigenen
+  Speicher), der Backup-PC versioniert nur noch diese Kopie mit <code>SRC=root@&lt;nas&gt;::&lt;pfad&gt;</code>
+  (rdiff-backup über SSH, 30 Tage). Mit entfernter Quelle wartet <code>nc_rdiff.sh</code> auf einen laufenden Abruf
+  auf dem NAS und verweigert eine Quelle ohne <code>last-success</code> oder mit leeren Daten. Bei großen, bereits
+  komprimierten Dateien rdiff-backup mit einem <code>--remote-schema</code> ohne <code>ssh -C</code> aufrufen – die
+  Kompression kostet dort nur CPU. Details: <code>scripts/nextcloud-backup/README.md</code>.
 </p>
 
 <h3>Restore-Workflow</h3>
@@ -2230,6 +2240,8 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
     <td>Dynamische Blocklists</td>
     <td>Native nftables Sets (<code>banned4</code> / <code>banned6</code>) mit
         24h Auto-Expiry. fail2ban schreibt erkannte Angreifer direkt in diese Sets.
+        Jeder nftables-Reload legt die Tabelle neu an und leert dabei die Sets; ein Handler startet
+        fail2ban danach neu, das die aktiven Sperren aus seiner Datenbank wieder einträgt.
         Prüfen: <code>nft list set inet filter banned4</code></td>
   </tr>
   <tr>

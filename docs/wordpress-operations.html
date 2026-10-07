@@ -283,7 +283,7 @@
 <main>
 
 <h1>WordPress – Operations&shy;Guide</h1>
-<p class="subtitle">WordPress 7.1.0 on K3s (AlmaLinux 9) &middot; Last updated: September 2026</p>
+<p class="subtitle">WordPress 7.1.3 on K3s (AlmaLinux 9) &middot; Last updated: October 2026</p>
 
 <!-- ─────────────────────────── OVERVIEW ─────────────────────────────── -->
 <section id="ueberblick">
@@ -299,7 +299,7 @@
 <div class="card-grid">
   <div class="card">
     <div class="label">WordPress</div>
-    <div class="value">7.1.0 (wordpress:7.1.0-php8.4-fpm)</div>
+    <div class="value">7.1.3 core (minor releases via the nightly autoupdate) &middot; image wordpress:7.1.1-php8.4-fpm</div>
   </div>
   <div class="card">
     <div class="label">Operating System</div>
@@ -359,7 +359,7 @@
 <span class="c-pod">│  fastcgi       │ :9000                  │</span>
 <span class="c-pod">│  ┌─────────────▼─────────────────────┐  │</span>
 <span class="c-pod">│  │  wordpress-fpm  PHP-FPM 8.3       │  │</span>
-<span class="c-pod">│  │  wordpress:7.1.0-php8.4-fpm              │  │</span>
+<span class="c-pod">│  │  wordpress:7.1.1-php8.4-fpm              │  │</span>
 <span class="c-pod">│  └───────────────────────────────────┘  │</span>
 <span class="c-pod">└──────────────────────────────────────────┘</span>
         │
@@ -416,14 +416,14 @@
 <h3>WordPress Pod in Detail</h3>
 <div class="card">
   <h4>Container 1: <code>wordpress-fpm</code></h4>
-  <p>The official <code>wordpress:7.1.0-php8.4-fpm</code> image. Runs PHP-FPM on port 9000.
+  <p>The official <code>wordpress:7.1.1-php8.4-fpm</code> image. Runs PHP-FPM on port 9000.
   On first start, the Docker entrypoint automatically installs WordPress based on
   the environment variables (DB host, DB name, DB user, DB password).
   WordPress files are placed in <code>/var/www/html</code> on the shared
   HostPath volume.</p>
 
   <h4>Container 2: <code>nginx</code></h4>
-  <p>nginx sidecar (<code>nginx:1.30.4-alpine</code>) on port 80. Serves
+  <p>nginx sidecar (<code>nginx:1.30.5-alpine</code>) on port 80. Serves
   static requests directly from the shared volume; PHP requests are forwarded via
   FastCGI to port 9000. TLS is already terminated by nginx-ingress (F5)
   – this nginx only speaks plain HTTP.</p>
@@ -810,9 +810,9 @@ k3s kubectl get secret wordpress-secrets -n wordpress \
 </p>
 
 <pre><code># inventory/group_vars/all.yml
-blog_image_wordpress: "wordpress:7.1.0-php8.4-fpm"   # WordPress PHP-FPM
+blog_image_wordpress: "wordpress:7.1.1-php8.4-fpm"   # WordPress PHP-FPM
 blog_image_mariadb:   "mariadb:10.11.19"    # MariaDB (10.11 LTS)
-blog_image_nginx:     "nginx:1.30.4-alpine" # nginx Sidecar (1.30 stable)</code></pre>
+blog_image_nginx:     "nginx:1.30.5-alpine" # nginx Sidecar (1.30 stable)</code></pre>
 
 <h3>Tag Strategy</h3>
 <p>
@@ -828,9 +828,9 @@ blog_image_nginx:     "nginx:1.30.4-alpine" # nginx Sidecar (1.30 stable)</code>
 <table>
   <tr><th>Tag Format</th><th>Meaning</th><th>Example</th></tr>
   <tr>
-    <td><code>7.1.0-php8.4-fpm</code></td>
+    <td><code>7.1.1-php8.4-fpm</code></td>
     <td>Exact WordPress patch release; bumped manually in Ansible</td>
-    <td><code>wordpress:7.1.0-php8.4-fpm</code></td>
+    <td><code>wordpress:7.1.1-php8.4-fpm</code></td>
   </tr>
   <tr>
     <td><code>10.11.19</code></td>
@@ -840,7 +840,7 @@ blog_image_nginx:     "nginx:1.30.4-alpine" # nginx Sidecar (1.30 stable)</code>
   <tr>
     <td><code>1.30.4-alpine</code></td>
     <td>Exact nginx patch on the 1.30.x stable branch; bumped manually</td>
-    <td><code>nginx:1.30.4-alpine</code></td>
+    <td><code>nginx:1.30.5-alpine</code></td>
   </tr>
 </table>
 
@@ -856,10 +856,10 @@ blog_image_nginx:     "nginx:1.30.4-alpine" # nginx Sidecar (1.30 stable)</code>
 
 <div class="callout callout-warn">
   <strong>Rebuild without tag change</strong>
-  If Docker Hub rebuilds <code>wordpress:7.1.0-php8.4-fpm</code> under the same tag
+  If Docker Hub rebuilds <code>wordpress:7.1.1-php8.4-fpm</code> under the same tag
   (e.g. a base-image security patch), <em>nothing happens automatically</em> on the
   server. The tag is cached locally. Force a refresh:
-  <pre style="margin-top:8px"><code>crictl pull docker.io/library/wordpress:7.1.0-php8.4-fpm
+  <pre style="margin-top:8px"><code>crictl pull docker.io/library/wordpress:7.1.1-php8.4-fpm
 k3s kubectl rollout restart deployment/wordpress -n wordpress</code></pre>
 </div>
 </section>
@@ -1538,7 +1538,7 @@ k3s kubectl get pods -n wordpress</code></pre>
   by file (see OPcache under Performance). The restart makes every updated file live at once. The nightly job does not
   restart (no Kubernetes API access); its updates are active at most a minute after the job.
 </div>
-<h3>WordPress Update: Version Jump (e.g. 7.1.0 → 7.2)</h3>
+<h3>WordPress Update: Version Jump (e.g. 7.1.x → 7.2)</h3>
 
 <div class="callout callout-danger">
   <strong>Backup before every major update!</strong>
@@ -1547,7 +1547,7 @@ k3s kubectl get pods -n wordpress</code></pre>
 
 <ol class="steps">
   <li>Change the tag in <code>inventory/group_vars/all.yml</code>:
-    <pre><code>blog_image_wordpress: "wordpress:7.1.0-php8.4-fpm"</code></pre>
+    <pre><code>blog_image_wordpress: "wordpress:7.1.1-php8.4-fpm"</code></pre>
   </li>
   <li>Run the playbook – K3s pulls the new image and rolls out the pod:
     <pre><code>ansible-playbook blog.yml --limit www.apt-upgrade.me --ask-vault-pass</code></pre>
@@ -1586,7 +1586,7 @@ k3s kubectl get pods -n wordpress</code></pre>
   <code>wp-content</code>, <code>wp-config.php</code>), dumps the database inside the MariaDB pod
   (<code>mariadb-dump --single-transaction</code>, verified before it is kept), rsyncs the changes again, and
   versions everything with rdiff-backup for 30 days. Monit's <code>wp_backup</code> check alerts when the last
-  success is older than three days. Setup, layout and restore steps: <code>scripts/wordpress-backup/README.md</code>.
+  success is older than three days. Setup, layout and restore steps: <code>scripts/wordpress-backup/README.md</code>. Since October 2026 the pull can also run on an always-on NAS (systemd timers, <code>DATA_ROOT</code>), with the backup PC only versioning the NAS copy via <code>SRC=root@&lt;nas&gt;::&lt;path&gt;</code> – see “Split setup” in the same README.
 </p>
 <div class="callout callout-info">
   <strong>Requires the rsync client on the blog host</strong>
@@ -2062,7 +2062,7 @@ Both verified 2026-09-14.</p>
   </tr>
   <tr>
     <td>HTTP – Security Headers</td>
-    <td>HSTS (max-age=31536000), X-Frame-Options: SAMEORIGIN, X-Content-Type-Options: nosniff, Referrer-Policy: same-origin, X-Permitted-Cross-Domain-Policies: none, Permissions-Policy (geolocation/microphone/camera/payment disabled), X-XSS-Protection (legacy, no effect in modern browsers), Content-Security-Policy-Report-Only (observes violations only, not yet enforcing)</td>
+    <td>HSTS (max-age=31536000; includeSubDomains; preload – also on the apex redirect, which first goes to HTTPS on the same host, so the domain is preload-ready), X-Frame-Options: SAMEORIGIN, X-Content-Type-Options: nosniff, Referrer-Policy: same-origin, X-Permitted-Cross-Domain-Policies: none, Permissions-Policy (geolocation/microphone/camera/payment disabled), X-XSS-Protection (legacy, no effect in modern browsers), Content-Security-Policy-Report-Only (observes violations only, not yet enforcing)</td>
     <td><code>blog_k3s_deploy</code> (ingress location-snippets)</td>
   </tr>
   <tr>
@@ -2451,6 +2451,8 @@ Both verified 2026-09-14.</p>
     <td>Dynamic blocklists</td>
     <td>Native nftables sets (<code>banned4</code> / <code>banned6</code>) with
         24h auto-expiry. fail2ban writes detected attackers directly into these sets.
+        Every nftables reload recreates the table and empties the sets, so a handler restarts fail2ban
+        afterwards and it re-applies its active bans from its database.
         Check: <code>nft list set inet filter banned4</code></td>
   </tr>
   <tr>

@@ -283,7 +283,7 @@
 <main>
 
 <h1>WordPress – Betriebs&shy;dokumentation</h1>
-<p class="subtitle">WordPress 7.1.0 auf K3s (AlmaLinux 9) &middot; Letzte Aktualisierung: September 2026</p>
+<p class="subtitle">WordPress 7.1.3 auf K3s (AlmaLinux 9) &middot; Letzte Aktualisierung: Oktober 2026</p>
 
 <!-- ─────────────────────────── ÜBERBLICK ─────────────────────────────── -->
 <section id="ueberblick">
@@ -299,7 +299,7 @@
 <div class="card-grid">
   <div class="card">
     <div class="label">WordPress</div>
-    <div class="value">7.1.0 (wordpress:7.1.0-php8.4-fpm)</div>
+    <div class="value">7.1.3 Kern (Unterversionen per nächtlichem Autoupdate) &middot; Image wordpress:7.1.1-php8.4-fpm</div>
   </div>
   <div class="card">
     <div class="label">Betriebssystem</div>
@@ -359,7 +359,7 @@
 <span class="c-pod">│  fastcgi       │ :9000                  │</span>
 <span class="c-pod">│  ┌─────────────▼─────────────────────┐  │</span>
 <span class="c-pod">│  │  wordpress-fpm  PHP-FPM 8.3       │  │</span>
-<span class="c-pod">│  │  wordpress:7.1.0-php8.4-fpm              │  │</span>
+<span class="c-pod">│  │  wordpress:7.1.1-php8.4-fpm              │  │</span>
 <span class="c-pod">│  └───────────────────────────────────┘  │</span>
 <span class="c-pod">└──────────────────────────────────────────┘</span>
         │
@@ -416,14 +416,14 @@
 <h3>WordPress-Pod im Detail</h3>
 <div class="card">
   <h4>Container 1: <code>wordpress-fpm</code></h4>
-  <p>Das offizielle <code>wordpress:7.1.0-php8.4-fpm</code>-Image. Führt PHP-FPM auf Port 9000 aus.
+  <p>Das offizielle <code>wordpress:7.1.1-php8.4-fpm</code>-Image. Führt PHP-FPM auf Port 9000 aus.
   Beim ersten Start installiert der Docker-Entrypoint WordPress automatisch anhand
   der Umgebungsvariablen (DB-Host, DB-Name, DB-User, DB-Passwort).
   WordPress-Dateien werden in <code>/var/www/html</code> auf dem gemeinsamen
   HostPath-Volume abgelegt.</p>
 
   <h4>Container 2: <code>nginx</code></h4>
-  <p>nginx-Sidecar (<code>nginx:1.30.4-alpine</code>) auf Port 80. Beantwortet
+  <p>nginx-Sidecar (<code>nginx:1.30.5-alpine</code>) auf Port 80. Beantwortet
   statische Anfragen direkt aus dem gemeinsamen Volume; PHP-Anfragen werden per
   FastCGI an Port 9000 weitergeleitet. TLS ist bereits durch nginx-ingress (F5)
   terminiert – dieser nginx spricht nur plain HTTP.</p>
@@ -810,9 +810,9 @@ k3s kubectl get secret wordpress-secrets -n wordpress \
 </p>
 
 <pre><code># inventory/group_vars/all.yml
-blog_image_wordpress: "wordpress:7.1.0-php8.4-fpm"   # WordPress PHP-FPM
+blog_image_wordpress: "wordpress:7.1.1-php8.4-fpm"   # WordPress PHP-FPM
 blog_image_mariadb:   "mariadb:10.11.19"    # MariaDB (10.11 LTS)
-blog_image_nginx:     "nginx:1.30.4-alpine" # nginx Sidecar (1.30 stable)</code></pre>
+blog_image_nginx:     "nginx:1.30.5-alpine" # nginx Sidecar (1.30 stable)</code></pre>
 
 <h3>Tag-Strategie</h3>
 <p>
@@ -830,9 +830,9 @@ blog_image_nginx:     "nginx:1.30.4-alpine" # nginx Sidecar (1.30 stable)</code>
 <table>
   <tr><th>Tag-Format</th><th>Bedeutung</th><th>Beispiel</th></tr>
   <tr>
-    <td><code>7.1.0-php8.4-fpm</code></td>
+    <td><code>7.1.1-php8.4-fpm</code></td>
     <td>Exakter WordPress-Patch-Release; wird manuell in Ansible hochgesetzt</td>
-    <td><code>wordpress:7.1.0-php8.4-fpm</code></td>
+    <td><code>wordpress:7.1.1-php8.4-fpm</code></td>
   </tr>
   <tr>
     <td><code>10.11.19</code></td>
@@ -842,7 +842,7 @@ blog_image_nginx:     "nginx:1.30.4-alpine" # nginx Sidecar (1.30 stable)</code>
   <tr>
     <td><code>1.30.4-alpine</code></td>
     <td>Exakter nginx-Patch auf dem Stable-Branch 1.30.x; wird manuell hochgesetzt</td>
-    <td><code>nginx:1.30.4-alpine</code></td>
+    <td><code>nginx:1.30.5-alpine</code></td>
   </tr>
 </table>
 
@@ -858,10 +858,10 @@ blog_image_nginx:     "nginx:1.30.4-alpine" # nginx Sidecar (1.30 stable)</code>
 
 <div class="callout callout-warn">
   <strong>Rebuild ohne Tag-Änderung</strong>
-  Wenn Docker Hub <code>wordpress:7.1.0-php8.4-fpm</code> unter demselben Tag neu baut
+  Wenn Docker Hub <code>wordpress:7.1.1-php8.4-fpm</code> unter demselben Tag neu baut
   (z.B. ein Base-Image-Security-Patch), passiert auf dem Server <em>nichts automatisch</em>.
   Der Tag ist lokal gecacht. Refresh erzwingen:
-  <pre style="margin-top:8px"><code>crictl pull docker.io/library/wordpress:7.1.0-php8.4-fpm
+  <pre style="margin-top:8px"><code>crictl pull docker.io/library/wordpress:7.1.1-php8.4-fpm
 k3s kubectl rollout restart deployment/wordpress -n wordpress</code></pre>
 </div>
 </section>
@@ -1554,7 +1554,7 @@ k3s kubectl get pods -n wordpress</code></pre>
   auf einmal wirksam. Der nächtliche Job startet nicht neu (kein Zugriff auf die Kubernetes-API); seine Updates
   sind spätestens eine Minute nach dem Job aktiv.
 </div>
-<h3>WordPress-Update: Versionssprung (z.B. 7.1.0 → 7.2)</h3>
+<h3>WordPress-Update: Versionssprung (z.B. 7.1.x → 7.2)</h3>
 
 <div class="callout callout-danger">
   <strong>Backup vor jedem Major-Update!</strong>
@@ -1563,7 +1563,7 @@ k3s kubectl get pods -n wordpress</code></pre>
 
 <ol class="steps">
   <li>Tag in <code>inventory/group_vars/all.yml</code> ändern:
-    <pre><code>blog_image_wordpress: "wordpress:7.1.0-php8.4-fpm"</code></pre>
+    <pre><code>blog_image_wordpress: "wordpress:7.1.1-php8.4-fpm"</code></pre>
   </li>
   <li>Playbook ausführen – K3s zieht das neue Image und rollt den Pod durch:
     <pre><code>ansible-playbook blog.yml --limit www.apt-upgrade.me --ask-vault-pass</code></pre>
@@ -1602,7 +1602,7 @@ k3s kubectl get pods -n wordpress</code></pre>
   <code>wp-content</code>, <code>wp-config.php</code>) per rsync, erstellt den DB-Dump im MariaDB-Pod
   (<code>mariadb-dump --single-transaction</code>, vor dem Aufbewahren geprüft), synchronisiert die Änderungen erneut
   und versioniert alles 30 Tage lang mit rdiff-backup. Der Monit-Check <code>wp_backup</code> alarmiert, wenn der letzte
-  Erfolg älter als drei Tage ist. Einrichtung, Ablage und Wiederherstellung: <code>scripts/wordpress-backup/README.md</code>.
+  Erfolg älter als drei Tage ist. Einrichtung, Ablage und Wiederherstellung: <code>scripts/wordpress-backup/README.md</code>. Seit Oktober 2026 kann der Abruf auch auf einem dauerhaft laufenden NAS laufen (systemd-Timer, <code>DATA_ROOT</code>); der Backup-PC versioniert dann nur noch die NAS-Kopie über <code>SRC=root@&lt;nas&gt;::&lt;pfad&gt;</code> – siehe „Split setup“ in derselben README.
 </p>
 <div class="callout callout-info">
   <strong>Braucht den rsync-Client auf dem Blog-Server</strong>
@@ -2094,7 +2094,7 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   </tr>
   <tr>
     <td>HTTP – Security-Header</td>
-    <td>HSTS (max-age=31536000), X-Frame-Options: SAMEORIGIN, X-Content-Type-Options: nosniff, Referrer-Policy: same-origin, X-Permitted-Cross-Domain-Policies: none, Permissions-Policy (Geolocation/Mikrofon/Kamera/Payment deaktiviert), X-XSS-Protection (veraltet, in modernen Browsern wirkungslos), Content-Security-Policy-Report-Only (beobachtet Verstöße nur, erzwingt noch nichts)</td>
+    <td>HSTS (max-age=31536000; includeSubDomains; preload – auch auf der Weiterleitung der Apex-Domain, die zuerst auf HTTPS desselben Hosts geht; damit ist die Domain preload-fähig), X-Frame-Options: SAMEORIGIN, X-Content-Type-Options: nosniff, Referrer-Policy: same-origin, X-Permitted-Cross-Domain-Policies: none, Permissions-Policy (Geolocation/Mikrofon/Kamera/Payment deaktiviert), X-XSS-Protection (veraltet, in modernen Browsern wirkungslos), Content-Security-Policy-Report-Only (beobachtet Verstöße nur, erzwingt noch nichts)</td>
     <td><code>blog_k3s_deploy</code> (Ingress location-snippets)</td>
   </tr>
   <tr>
@@ -2489,6 +2489,8 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
     <td>Dynamische Blocklists</td>
     <td>Native nftables Sets (<code>banned4</code> / <code>banned6</code>) mit
         24h Auto-Expiry. fail2ban schreibt erkannte Angreifer direkt in diese Sets.
+        Jeder nftables-Reload legt die Tabelle neu an und leert dabei die Sets; ein Handler startet
+        fail2ban danach neu, das die aktiven Sperren aus seiner Datenbank wieder einträgt.
         Prüfen: <code>nft list set inet filter banned4</code></td>
   </tr>
   <tr>

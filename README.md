@@ -68,20 +68,27 @@ Internet
 - **Calico (policy-only mode)** – NetworkPolicy enforcement for Nextcloud;
   Collabora is restricted from ever reaching MariaDB/Redis directly, since
   K3s's default Flannel CNI does not enforce NetworkPolicy objects at all
-- **WordPress 7.1.1** with PHP-FPM, nginx sidecar, MariaDB pod and **Redis Object Cache** pod
+- **WordPress 7.1** (core 7.1.3 via the nightly minor updates, on the pinned `wordpress:7.1.1` image) with PHP-FPM,
+  nginx sidecar, MariaDB pod and **Redis Object Cache** pod
 - Automatic installation on first pod start via container env vars and WP-CLI
 - WordPress WP-Cron as Kubernetes CronJob (no HTTP trigger); the cron pods carry
   their own label (`app: wordpress-cron`) so the Services never route visitors to them
 - **Nightly WordPress updates** – CronJob `wordpress-autoupdate` (03:30 Europe/Berlin):
   DB dump first, then core minor releases, plugins, themes and all language packs via
-  WP-CLI, and an HTTP 200 check afterwards
+  WP-CLI, and an HTTP 200 check afterwards. `blog-update.yml` runs the same job on demand and
+  re-pulls rebuilt images; `nextcloud-update.yml` is its Nextcloud counterpart (both refuse to run
+  without `--limit`)
 - **Config changes roll the pod** – a `checksum/config` annotation on the Nextcloud and
   WordPress pod templates restarts the pod once when a rendered ConfigMap changes
   (subPath mounts never update inside a running pod)
 - **Pull backups with history** – a backup machine pulls every Nextcloud instance and
   the blog (rsync + verified DB dump, no maintenance mode) and keeps 30 days of versions
   with rdiff-backup; Monit alerts on the servers when the last success is older than
-  3 days (`scripts/nextcloud-backup/`, `scripts/wordpress-backup/`)
+  3 days (`scripts/nextcloud-backup/`, `scripts/wordpress-backup/`). Optional split setup: an always-on
+  NAS pulls at night, the backup PC only versions the NAS copy over SSH
+- **Anonymous visitor statistics** (`blog_visitor_stats`) – a daily count of visitors, page views,
+  countries (local DB-IP Lite lookup) and search-engine arrivals from the access logs; only the totals
+  are stored, no IPs, no cookies, no tracker
 - **Container health probes** – startup + readiness + liveness (tcpSocket) on
   every FPM, nginx and Collabora container, so a *wedged* (not crashed) container
   is restarted automatically while a slow `occ upgrade` or preview burst never
@@ -103,8 +110,9 @@ Internet
 | Feature | Where | Effect |
 |---|---|---|
 | **HTTP/2** | nginx-ingress | Multiplexing, HPACK header compression |
-| **Brotli compression** | nginx-ingress | 15–25% smaller responses vs. gzip |
-| **OCSP Stapling** | nginx-ingress | Saves one CA round-trip per TLS handshake |
+| **gzip compression** | nginx-ingress | Level 6 for HTML, CSS, JS, JSON, SVG (Brotli is not built into the F5 controller image) |
+| **Browser cache** | nginx sidecar (blog) | CSS/JS/fonts 1 year `immutable`, images 30 days, one `Cache-Control` header |
+| **Font preload + eager LCP image** | WordPress mu-plugin `performance-hints.php` | No layout shift from font swaps; the first large image loads at once |
 | **Redis Object Cache** | WordPress pod | DB queries replaced by Redis lookups |
 | **PHP OPcache** | PHP-FPM | Bytecode cached in memory |
 | **/tmp on RAM (tmpfs)** | WordPress / Nextcloud FPM | emptyDir – PHP temp files bypass disk |
@@ -170,9 +178,10 @@ Without it they silently kept watching a dead file.
 | Setting | Value |
 |---|---|
 | Protocols | TLS 1.2 + 1.3 only |
-| OCSP Stapling | on (resolver 1.1.1.1/8.8.8.8) |
+| Key exchange | ECDHE only; hybrid post-quantum `X25519MLKEM768` offered first (OpenSSL 3.5 default) |
+| OCSP Stapling | off on purpose – Let's Encrypt retired OCSP; revocation works via CRLs and short lifetimes |
 | `ssl_session_tickets` | off (Perfect Forward Secrecy) |
-| HSTS | `max-age=31536000; includeSubDomains; preload` |
+| HSTS | `max-age=31536000; includeSubDomains; preload`, also on the blog's apex redirect (preload-ready) |
 | Certificates | Let's Encrypt via cert-manager (HTTP-01), ECDSA P-256 |
 | Before issuance | Self-signed placeholder, so a host is never served a bare TLS reset |
 
@@ -371,14 +380,14 @@ The `common_version_check` role compares them against latest releases at every p
 ```yaml
 # Helm charts
 ingress_nginx_chart_version: "2.6.4"
-cert_manager_chart_version:  "1.21.1"
+cert_manager_chart_version:  "1.21.2"
 
 # Container images
-blog_image_wordpress: "wordpress:7.1.0-php8.4-fpm"
-nextcloud_image_fpm:  "nextcloud:34.0.3-fpm"
+blog_image_wordpress: "wordpress:7.1.1-php8.4-fpm"
+nextcloud_image_fpm:  "nextcloud:34.0.4-fpm"
 
 # Calico (Nextcloud policy-only NetworkPolicy enforcement)
-calico_version: "v3.32.1"
+calico_version: "v3.32.2"
 ```
 
 ---

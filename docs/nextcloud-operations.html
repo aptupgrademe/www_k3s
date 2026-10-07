@@ -281,7 +281,7 @@
 <main>
 
 <h1>Nextcloud – Operations Guide</h1>
-<p class="subtitle">Nextcloud 34 on K3s (AlmaLinux 9) &middot; Last updated: July 2026</p>
+<p class="subtitle">Nextcloud 34 on K3s (AlmaLinux 9) &middot; Last updated: October 2026</p>
 
 <!-- ─────────────────────────── OVERVIEW ─────────────────────────────── -->
 <section id="ueberblick">
@@ -297,7 +297,7 @@
 <div class="card-grid">
   <div class="card">
     <div class="label">Nextcloud</div>
-    <div class="value">34.0.3 (nextcloud:34.0.3-fpm)</div>
+    <div class="value">34.0.4 (nextcloud:34.0.4-fpm)</div>
   </div>
   <div class="card">
     <div class="label">Operating System</div>
@@ -424,13 +424,13 @@
   permissions. Without this step, Nextcloud cannot write anything to <code>/var/www/html</code>.</p>
 
   <h4>Container 1: <code>nextcloud-fpm</code></h4>
-  <p>The official <code>nextcloud:34.0.3-fpm</code> image. Runs PHP-FPM on port 9000.
+  <p>The official <code>nextcloud:34.0.4-fpm</code> image. Runs PHP-FPM on port 9000.
   If <code>/var/www/html</code> is empty, the Docker entrypoint automatically installs
   Nextcloud based on the environment variables (DB, Admin, Redis).
   During an update, <code>occ upgrade</code> runs automatically.</p>
 
   <h4>Container 2: <code>nginx</code></h4>
-  <p>nginx sidecar (<code>nginx:1.30.4-alpine</code>) on port 80. Serves
+  <p>nginx sidecar (<code>nginx:1.30.5-alpine</code>) on port 80. Serves
   static requests directly from the shared volume; PHP requests are forwarded via
   FastCGI to port 9000. TLS is already terminated by nginx-ingress (F5) –
   nginx only speaks plain HTTP.</p>
@@ -844,8 +844,8 @@ k3s kubectl get secret nextcloud-secrets -n nextcloud \
 </p>
 
 <pre><code># inventory/group_vars/all.yml
-nextcloud_image_fpm:       "nextcloud:34.0.3-fpm"       # Nextcloud PHP-FPM
-nextcloud_image_nginx:     "nginx:1.30.4-alpine"        # nginx Sidecar
+nextcloud_image_fpm:       "nextcloud:34.0.4-fpm"       # Nextcloud PHP-FPM
+nextcloud_image_nginx:     "nginx:1.30.5-alpine"        # nginx Sidecar
 nextcloud_image_collabora: "collabora/code:26.04.3.1.1" # Collabora CODE
 nextcloud_image_busybox:   "busybox:1"                  # Init container</code></pre>
 
@@ -853,9 +853,9 @@ nextcloud_image_busybox:   "busybox:1"                  # Init container</code><
 <table>
   <tr><th>Tag Format</th><th>Meaning</th><th>Example</th></tr>
   <tr>
-    <td><code>34.0.3-fpm</code></td>
+    <td><code>34.0.4-fpm</code></td>
     <td>Exact Nextcloud patch pin; bumped manually in <code>all.yml</code> once a newer build is checked and confirmed</td>
-    <td><code>nextcloud:34.0.3-fpm</code> (current)</td>
+    <td><code>nextcloud:34.0.4-fpm</code> (current)</td>
   </tr>
   <tr>
     <td><code>35.0.0-fpm</code></td>
@@ -865,7 +865,7 @@ nextcloud_image_busybox:   "busybox:1"                  # Init container</code><
   <tr>
     <td><code>1.30.4-alpine</code></td>
     <td>nginx stable branch, pinned to the exact patch so a rebuild under the same tag isn't silently skipped</td>
-    <td><code>nginx:1.30.4-alpine</code> (current)</td>
+    <td><code>nginx:1.30.5-alpine</code> (current)</td>
   </tr>
   <tr>
     <td><code>26.04.3.1.1</code></td>
@@ -876,10 +876,10 @@ nextcloud_image_busybox:   "busybox:1"                  # Init container</code><
 
 <div class="callout callout-warn">
   <strong>Rebuild Without Tag Change</strong>
-  If Docker Hub rebuilds <code>nextcloud:34.0.3-fpm</code> under the same tag
+  If Docker Hub rebuilds <code>nextcloud:34.0.4-fpm</code> under the same tag
   (e.g. a base-image security patch), <em>nothing happens automatically</em> on the
   server. The tag is cached locally. Force a refresh:
-  <pre style="margin-top:8px"><code>crictl pull docker.io/library/nextcloud:34.0.3-fpm
+  <pre style="margin-top:8px"><code>crictl pull docker.io/library/nextcloud:34.0.4-fpm
 k3s kubectl rollout restart deployment/nextcloud -n nextcloud</code></pre>
 </div>
 </section>
@@ -1398,12 +1398,12 @@ k3s kubectl get pods -n nextcloud</code></pre>
 
 <h3>Container Update: Rebuild Within the Same Tag</h3>
 <p>
-  When Docker Hub rebuilds <code>nextcloud:34.0.3-fpm</code> itself (e.g. a
+  When Docker Hub rebuilds <code>nextcloud:34.0.4-fpm</code> itself (e.g. a
   base-image security patch) and the tag in Ansible remains unchanged:
 </p>
 <ol class="steps">
   <li>Pull new image manually:
-    <pre><code>crictl pull docker.io/library/nextcloud:34.0.3-fpm</code></pre>
+    <pre><code>crictl pull docker.io/library/nextcloud:34.0.4-fpm</code></pre>
   </li>
   <li>Restart pod (now uses the freshly pulled image):
     <pre><code>k3s kubectl rollout restart deployment/nextcloud -n nextcloud
@@ -1417,7 +1417,7 @@ k3s kubectl rollout status  deployment/nextcloud -n nextcloud --timeout=300s</co
 <h3>Container Update: Version Bump (Patch or Major)</h3>
 <p>
   <code>nextcloud_image_fpm</code> is pinned to an exact patch, not a floating
-  major tag – so bumping to a newer patch (e.g. 34.0.3 → 34.0.4) or a new major
+  major tag – so bumping to a newer patch (e.g. 34.0.4 → 34.0.5) or a new major
   version (e.g. 34 → 35) both work the same way: check
   <code>https://hub.docker.com/_/nextcloud/tags</code> (filter: <code>*-fpm</code>)
   for the build to move to, then:
@@ -1590,6 +1590,16 @@ cat /data/backup/nextcloud-data/cvjm/last-success</code></pre>
   (<code>nc_backup</code>) mails when it is older than
   <code>monit_backup_max_days</code> (3; checked hourly in minutes 17–18 – a one-minute window could be missed for good by the 2-minute cycle depending on start time, fixed 2026-10-04), which catches both a failing backup
   and a backup machine that stayed off.
+</p>
+
+<p>
+  <strong>Split setup (in use since October 2026):</strong> an always-on NAS runs the pull itself
+  (systemd timers at night, <code>DATA_ROOT</code>/<code>LOGDIR</code> overrides, data in its own storage),
+  and the backup PC only versions that copy with <code>SRC=root@&lt;nas&gt;::&lt;path&gt;</code>
+  (rdiff-backup over SSH, 30 days). With a remote source, <code>nc_rdiff.sh</code> waits for a running pull on
+  the NAS and refuses a source without <code>last-success</code> or with empty data. For large, already
+  compressed files, call rdiff-backup with a <code>--remote-schema</code> without <code>ssh -C</code>: compression
+  only burns CPU there. Details: <code>scripts/nextcloud-backup/README.md</code>.
 </p>
 
 <h3>Restore Workflow</h3>
@@ -2201,6 +2211,8 @@ Both verified 2026-09-14.</p>
     <td>Dynamic blocklists</td>
     <td>Native nftables sets (<code>banned4</code> / <code>banned6</code>) with
         24h auto-expiry. fail2ban writes detected attackers directly into these sets.
+        Every nftables reload recreates the table and empties the sets, so a handler restarts fail2ban
+        afterwards and it re-applies its active bans from its database.
         Check: <code>nft list set inet filter banned4</code></td>
   </tr>
   <tr>

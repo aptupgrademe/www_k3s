@@ -113,7 +113,7 @@ prometheus_retention:  "30d"
 # Docker Hub rebuilds under that tag - inconsistent with every other image in
 # this file being pinned to an exact patch). Pinned to the current patch
 # 2026-08-20; check the URL above for newer 34.0.x builds periodically.
-nextcloud_image_fpm:       "nextcloud:34.0.3-fpm"
+nextcloud_image_fpm:       "nextcloud:34.0.4-fpm"
 # nginx stable branch (even minor). Was 1.31 (mainline) – moved to the stable
 # 1.30.x line for a production deployment. Pinned to the exact patch on purpose:
 # the floating 1.30-alpine tag stayed on a cached 1.30.3 under imagePullPolicy
