@@ -66,6 +66,14 @@ data:
         # ~ that gedit/emacs leave. A stray wp-config.php.save in the web root
         # would otherwise be served as plaintext, exposing the DB credentials.
         location ~* (\.(bak|orig|save|old|tmp|swp|swo|hta|sql|phar|phps)|~)$ { deny all; }
+        # Backups that keep a servable name, found 2026-10-06: All-in-One WP
+        # Migration writes complete site exports (database included) as
+        # *.wpress into wp-content/ai1wm-backups/ and relies on an .htaccess
+        # that nginx ignores; image
+        # optimisers keep originals as name.bak.jpg, which the rule above
+        # misses because the name ends in an image extension.
+        location ^~ /wp-content/ai1wm-backups/ { deny all; }
+        location ~* (\.wpress|\.bak\.[a-z0-9]+)$ { deny all; }
         # Block username enumeration via ?author= parameter
         if ($arg_author != "") { return 403; }
 

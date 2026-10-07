@@ -2072,7 +2072,7 @@ Both verified 2026-09-14.</p>
   </tr>
   <tr>
     <td>HTTP – Information Disclosure</td>
-    <td><code>/readme.html</code> and <code>/license.txt</code> blocked, <code>?author=</code> parameter → 403 (username enumeration), REST API <code>/wp/v2/users</code> disabled for unauthenticated users</td>
+    <td><code>/readme.html</code> and <code>/license.txt</code> blocked, <code>?author=</code> parameter → 403 (username enumeration), REST API <code>/wp/v2/users</code> disabled for unauthenticated users; backup files never served: editor/backup suffixes (<code>.bak</code>, <code>.sql</code>, <code>.save</code>, …), copies that keep an image extension (<code>name.bak.jpg</code>), All-in-One WP Migration exports (<code>*.wpress</code>, <code>/wp-content/ai1wm-backups/</code>)</td>
     <td><code>blog_k3s_deploy</code> (nginx), <code>blog_wordpress</code> (mu-plugin)</td>
   </tr>
   <tr>

@@ -2104,7 +2104,7 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   </tr>
   <tr>
     <td>HTTP – Informations-Disclosure</td>
-    <td><code>/readme.html</code> und <code>/license.txt</code> geblockt, <code>?author=</code>-Parameter → 403 (Username-Enumeration), REST-API <code>/wp/v2/users</code> für nicht-angemeldete Benutzer deaktiviert</td>
+    <td><code>/readme.html</code> und <code>/license.txt</code> geblockt, <code>?author=</code>-Parameter → 403 (Username-Enumeration), REST-API <code>/wp/v2/users</code> für nicht-angemeldete Benutzer deaktiviert; Sicherungsdateien werden nie ausgeliefert: Editor-/Backup-Endungen (<code>.bak</code>, <code>.sql</code>, <code>.save</code>, …), Kopien mit Bild-Endung (<code>name.bak.jpg</code>), Exporte von All-in-One WP Migration (<code>*.wpress</code>, <code>/wp-content/ai1wm-backups/</code>)</td>
     <td><code>blog_k3s_deploy</code> (nginx), <code>blog_wordpress</code> (mu-plugin)</td>
   </tr>
   <tr>
