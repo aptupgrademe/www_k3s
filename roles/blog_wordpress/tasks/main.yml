@@ -313,7 +313,25 @@
             background: #202020 !important;
         }
         .site-title a, .site-title a:hover { color: #ffffff !important; }
-        .site-description { color: #ffffff !important; }';
+        .site-description { color: #ffffff !important; }
+
+        /* Smartphone + Tablet (bis 1024px, dort stapelt das Theme alles
+           untereinander): Startseite zeigt nur die letzten Beiträge
+           (posts_per_page = 5) mit Seitennavigation, Suche und Kategorien.
+           Ausgeblendet: Laufband "Latest Posts", Banner (Main News,
+           Latest/Popular/Update, Trending Now), "Featured Posts", "You may have
+           missed" und die Sidebar-Blöcke "Recent Posts" + "Archive" - sonst
+           kommen vor und nach den Artikeln mehrere Bildschirmlängen
+           Wiederholungen. Die Sidebar-Blöcke werden über ihren Inhalt
+           (Block-Typ) gefunden, nicht über die wechselnde Widget-ID. */
+        @media screen and (max-width: 1024px) {
+            body.home .banner-exclusive-posts-wrapper,
+            body.home .aft-main-banner-section,
+            body.home .af-main-banner-featured-posts,
+            body.home .above-footer-widget-section,
+            body.home #secondary .widget:has(.wp-block-latest-posts),
+            body.home #secondary .widget:has(.wp-block-archives-list) { display: none !important; }
+        }';
         $existing = wp_get_custom_css_post('morenews');
         if ($existing) {
             wp_update_post(['ID' => $existing->ID, 'post_content' => $css]);
@@ -510,6 +528,9 @@
 # the first post thumbnail loading="lazy", and CLS 0.15 because the header title
 # jumps when the theme's web fonts swap in. Preloading the three fonts and
 # loading the first thumbnail eagerly with high priority fixes both.
+# 2026-10-08: phones/tablets now show only the post list on the front page
+# (custom CSS above); the LCP there moved to the first list image, which was
+# still lazy (LCP 3.4 s) - the plugin now prioritises that one on the front page.
 - name: WordPress | Deploy performance hints mu-plugin (font preload, eager LCP image)
   ansible.builtin.command:
     argv:
@@ -537,6 +558,16 @@
          *   theme marks every image loading="lazy" (its own filter at priority
          *   10, so this one runs at 20). 150 px list thumbnails are skipped;
          *   on single posts only the post's own featured image qualifies.
+         * - Front page: phones/tablets hide the banner by CSS (custom CSS,
+         *   max-width 1024px), so there the first post of the main list is the
+         *   LCP image; on desktop it is the banner slider. The first list image
+         *   gets eager + high priority, the first banner image only eager
+         *   (normal priority, so on a phone the hidden copy does not compete).
+         *   Banner images are rendered before the main loop starts, which is
+         *   how in_the_loop() tells the two apart.
+         * - The theme echoes post images through wp_kses_post(), whose img
+         *   whitelist lacks fetchpriority, so the attribute was silently
+         *   dropped (seen 2026-10-08) - allow it.
          */
         add_action('wp_head', function () {
             $base = get_template_directory_uri() . '/assets/fonts/';
@@ -559,11 +590,26 @@
             if (is_singular() && (int) $attachment->ID !== (int) get_post_thumbnail_id(get_queried_object_id())) {
                 return $attr;
             }
+            if (is_home() && !in_the_loop()) {
+                static $banner_done = false;
+                if (!$banner_done) {
+                    $banner_done = true;
+                    $attr['loading'] = 'eager';
+                }
+                return $attr;
+            }
             $done = true;
             $attr['loading'] = 'eager';
             $attr['fetchpriority'] = 'high';
             return $attr;
         }, 20, 3);
+
+        add_filter('wp_kses_allowed_html', function ($tags, $context) {
+            if ($context === 'post' && isset($tags['img'])) {
+                $tags['img']['fetchpriority'] = true;
+            }
+            return $tags;
+        }, 20, 2);
         PHPEOF
         # Same change-only pattern as security-hardening.php above.
         if [ -f "$F" ] && [ "$(md5sum < "$F.new")" = "$(md5sum < "$F")" ]; then
