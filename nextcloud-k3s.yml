@@ -59,7 +59,6 @@
   # virtual facts (interfaces, virtualization type) aren't referenced by any
   # role, so skipping them saves the interface-enumeration/dmidecode time
   # without losing anything actually used.
-  # Full facts are cached to /tmp/ansible_facts_cache for 1 h (see ansible.cfg).
   gather_facts: true
   gather_subset:
     - min

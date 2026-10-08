@@ -103,7 +103,7 @@ Internet
   `nextcloud_notify_push_enabled` (live on the production Nextcloud host,
   `occ notify_push:self-test` 6/6)
 - **Pre-flight version check** (`common_version_check`) shows installed vs. latest versions
-- **Ansible pipelining**, fact caching (1 h), SSH ControlPersist 600 s
+- **Ansible pipelining**, SSH ControlPersist 600 s, host key checking (accept-new), updates host by host (`serial: 1`)
 
 ### Performance
 

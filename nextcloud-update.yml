@@ -34,6 +34,12 @@
   hosts: nextcloud
   gather_facts: false
   become: false
+  # One host completely, then the next (--limit cvjm,sofie). Without serial the
+  # linear strategy would run each task on every host before the next task, so
+  # a failure halfway would leave all instances half-updated. A failed host
+  # aborts the play before the next one is touched.
+  serial: 1
+  max_fail_percentage: 0
 
   tasks:
 

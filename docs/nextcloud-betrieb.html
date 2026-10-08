@@ -2327,11 +2327,13 @@ systemctl reload nftables</code></pre>
   und den DB-User-Grant (<code>'nextcloud'@'10.42.%'</code>). Niemals Port 3306
   öffentlich freigeben.
 </div>
-<div class="callout callout-warn">
-  <strong>StrictHostKeyChecking=no in ansible.cfg</strong>
-  Deaktiviert die Host-Key-Prüfung beim SSH-Verbindungsaufbau. Geeignet für
-  Testserver mit wechselnden IPs, aber nicht für Produktionsserver empfohlen.
-  Für Produktion: <code>StrictHostKeyChecking=accept-new</code> setzen.
+<div class="callout callout-info">
+  <strong>Host-Key-Prüfung in ansible.cfg</strong>
+  <code>host_key_checking = True</code> mit <code>StrictHostKeyChecking=accept-new</code>:
+  Ein neuer Host wird beim ersten Kontakt übernommen, ein <em>geänderter</em> Schlüssel
+  eines bekannten Hosts bricht ab (Schutz vor Man-in-the-Middle bei root-Verbindungen).
+  Nach einer bewussten Neuinstallation den alten Eintrag entfernen:
+  <code>ssh-keygen -R "[&lt;ip&gt;]:10022"</code> (für den ersten Lauf zusätzlich <code>&lt;ip&gt;</code> auf Port 22).
 </div>
 </section>
 

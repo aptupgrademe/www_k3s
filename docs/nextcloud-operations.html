@@ -2295,11 +2295,13 @@ systemctl reload nftables</code></pre>
   Protection is provided exclusively by nftables (only pod CIDR allowed)
   and the DB user grant (<code>'nextcloud'@'10.42.%'</code>). Never expose port 3306 publicly.
 </div>
-<div class="callout callout-warn">
-  <strong>StrictHostKeyChecking=no in ansible.cfg</strong>
-  Disables host key verification when establishing SSH connections. Suitable for
-  test servers with changing IPs, but not recommended for production servers.
-  For production: set <code>StrictHostKeyChecking=accept-new</code>.
+<div class="callout callout-info">
+  <strong>Host key checking in ansible.cfg</strong>
+  <code>host_key_checking = True</code> with <code>StrictHostKeyChecking=accept-new</code>:
+  a new host is accepted on first contact, a <em>changed</em> key of a known host
+  aborts (protection against man-in-the-middle on root connections).
+  After deliberately reimaging a host, remove the old entry:
+  <code>ssh-keygen -R "[&lt;ip&gt;]:10022"</code> (for the first run also <code>&lt;ip&gt;</code> on port 22).
 </div>
 </section>
 
