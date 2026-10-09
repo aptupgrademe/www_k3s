@@ -48,6 +48,16 @@
     line: "!/var/log/pods"
     insertafter: "^/var/log LOG$"
 
+# /var/log/containers holds one symlink per container pointing into
+# /var/log/pods - same churn, and when a CronJob pod is cleaned up while the
+# check runs, the link dangles and the daily mail starts with "WARNING: failed
+# to access '/var/log/pods/...' / '/var/log/containers/...'" (seen 2026-10-09).
+- name: CIS | Exclude /var/log/containers from AIDE (symlinks into /var/log/pods)
+  ansible.builtin.lineinfile:
+    path: /etc/aide.conf
+    line: "!/var/log/containers"
+    insertafter: '^!/var/log/pods$'
+
 - name: CIS | Check whether the AIDE database already exists
   ansible.builtin.stat:
     path: /var/lib/aide/aide.db.gz
