@@ -621,6 +621,65 @@
   changed_when: "'CHANGED' in wp_mu_performance_hints.stdout"
   notify: Restart wordpress deployment (OPcache picks up changed PHP files)
 
+# Polylang (2026-10-09): its language switcher sits in the main menu, which
+# phones hide behind the hamburger icon. This line above a translated post
+# makes the other languages visible right at the article - only languages
+# with a PUBLISHED translation of this very post, nothing on untranslated ones.
+- name: WordPress | Deploy language links mu-plugin ("Also available in")
+  ansible.builtin.command:
+    argv:
+      - k3s
+      - kubectl
+      - exec
+      - deployment/wordpress
+      - --namespace
+      - wordpress
+      - --container
+      - wordpress-fpm
+      - --
+      - sh
+      - -c
+      - |
+        F=/var/www/html/wp-content/mu-plugins/language-links.php
+        cat > "$F.new" << 'PHPEOF'
+        <?php
+        /**
+         * "Also available in" line above translated posts - managed by Ansible (blog_wordpress).
+         * Shows only languages that have a published translation of this post
+         * (Polylang); does nothing when Polylang is inactive.
+         */
+        add_filter('the_content', function ($content) {
+            if (!function_exists('pll_the_languages') || !is_singular('post') || !in_the_loop() || !is_main_query()) {
+                return $content;
+            }
+            $langs = pll_the_languages(['raw' => 1, 'hide_if_no_translation' => 1, 'hide_current' => 1]);
+            $links = [];
+            foreach ((array) $langs as $l) {
+                if (empty($l['url']) || !empty($l['no_translation'])) {
+                    continue;
+                }
+                $links[] = sprintf('<a href="%s" hreflang="%s" lang="%s">%s</a>',
+                    esc_url($l['url']), esc_attr($l['slug']), esc_attr($l['slug']), esc_html($l['name']));
+            }
+            if (!$links) {
+                return $content;
+            }
+            $labels = ['en' => 'Also available in', 'de' => 'Auch auf', 'fr' => 'Aussi en', 'es' => 'También en'];
+            $label = $labels[pll_current_language()] ?? $labels['en'];
+            return '<p class="pll-also-in" style="font-size:0.9em;margin:0 0 1.2em;">🌐 ' . esc_html($label) . ': '
+                . implode(' · ', $links) . '</p>' . $content;
+        }, 5);
+        PHPEOF
+        # Same change-only pattern as security-hardening.php above.
+        if [ -f "$F" ] && [ "$(md5sum < "$F.new")" = "$(md5sum < "$F")" ]; then
+          rm -f "$F.new"
+        else
+          mv "$F.new" "$F" && chown www-data:www-data "$F" && echo CHANGED
+        fi
+  register: wp_mu_language_links
+  changed_when: "'CHANGED' in wp_mu_language_links.stdout"
+  notify: Restart wordpress deployment (OPcache picks up changed PHP files)
+
 
 # -----------------------------------------------------------------------------
 # Close public self-registration
