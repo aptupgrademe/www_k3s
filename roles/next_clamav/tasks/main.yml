@@ -60,7 +60,13 @@
 # are not hiding in multi-hundred-MB blobs, and scanning them wastes time).
 # appdata_*/preview is skipped: Nextcloud renders those thumbnails itself
 # from files that are scanned anyway (64 GB on cvjm, a full single-core
-# sweep took ~16 h with them).
+# sweep took ~16 h with them). Media files listed in clamav_skip_extensions
+# are skipped as well (see defaults/main.yml for the trade-off).
+- name: ClamAV | Build the case-insensitive exclude pattern for media files
+  ansible.builtin.set_fact:
+    clamav_skip_regex: >-
+      \.({% for e in clamav_skip_extensions %}{% for ch in e %}{% if ch.isalpha() %}[{{ ch }}{{ ch | upper }}]{% else %}{{ ch }}{% endif %}{% endfor %}{% if not loop.last %}|{% endif %}{% endfor %})$
+
 - name: ClamAV | Deploy nightly scan script
   ansible.builtin.copy:
     dest: /usr/local/sbin/nextcloud-clamav-scan.sh
@@ -80,6 +86,7 @@
       nice -n 19 ionice -c3 clamscan --recursive --infected --no-summary \
         --max-filesize=200M --max-scansize=200M \
         --exclude-dir="^${DATA_DIR}/appdata_[^/]+/preview" \
+        --exclude='{{ clamav_skip_regex }}' \
         "$DATA_DIR" > "$SCAN_LOG" 2>&1
       RC=$?
 
