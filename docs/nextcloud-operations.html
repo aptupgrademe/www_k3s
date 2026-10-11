@@ -2011,7 +2011,7 @@ Both verified 2026-09-14.</p>
   </tr>
   <tr>
     <td>Virus scan</td>
-    <td>ClamAV: nightly scan of the Nextcloud user data at 02:30; signature updates via freshclam; mail only on a hit (silent on a clean scan)</td>
+    <td>ClamAV: nightly scan of the Nextcloud user data at 04:30 (after the 03:30 reboot window and the 04:00 AIDE refresh, so an update reboot no longer kills the scan); Nextcloud previews (<code>appdata_*/preview</code>) and pure image/video/audio files (<code>clamav_skip_extensions</code>, case-insensitive) are skipped – documents, archives, executables, scripts and files without an extension are still scanned; signature updates via freshclam; mail only on a hit (silent on a clean scan)</td>
     <td><code>next_clamav</code></td>
   </tr>
   <tr>

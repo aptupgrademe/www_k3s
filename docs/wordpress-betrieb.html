@@ -927,6 +927,7 @@ define('WP_SITEURL', 'https://www.apt-upgrade.me');</code></pre>
   <tr><td><code>wp-super-cache</code></td><td>Seiten-Cache – nginx liefert die vorgerenderte HTML direkt aus und überspringt PHP-FPM bei Cache-Hits</td></tr>
   <tr><td><code>wordpress-seo</code> (Yoast)</td><td>SEO, Meta-Tags, XML-Sitemap, robots.txt</td></tr>
   <tr><td><code>easy-table-of-contents</code></td><td>Automatisches Inhaltsverzeichnis in Beiträgen</td></tr>
+  <tr><td><code>polylang</code></td><td>Mehrsprachiger Blog (en/de/fr/es), siehe unten</td></tr>
   <tr><td><code>akismet</code>, <code>hello</code></td><td>mit WordPress ausgeliefert, inaktiv</td></tr>
 </table>
 <div class="callout callout-info">
@@ -934,6 +935,45 @@ define('WP_SITEURL', 'https://www.apt-upgrade.me');</code></pre>
   Manuell installierte Plugins tauchen in <code>blog_wordpress_plugins</code> nicht auf.
   Wer sie reproduzierbar haben möchte (z.&nbsp;B. für einen Neuaufbau von Grund auf),
   trägt sie dort nach – dann installiert das Playbook sie automatisch mit.
+</div>
+
+<h3>Mehrsprachige Inhalte (Polylang)</h3>
+<p>
+  Seit Oktober 2026 gibt es den Blog auf Englisch (Original und Standardsprache, ohne
+  URL-Präfix), Deutsch, Französisch und Spanisch (<code>/de/</code>, <code>/fr/</code>,
+  <code>/es/</code>). Das kostenlose Plugin <strong>Polylang</strong> übernimmt die Sprachen,
+  den Sprachumschalter im Menü, die <code>hreflang</code>-Verweise und zusammen mit Yoast die
+  übersetzten Einträge in der XML-Sitemap. Wie die Plugins oben wurde es im Admin installiert
+  und eingerichtet und ist <strong>nicht</strong> Teil des Playbooks. Verwendete Einstellungen:
+  Standardsprache Englisch, ohne URL-Präfix, Sprache aus dem Verzeichnis, Browser-Erkennung aus,
+  Medien-Übersetzung aus, ein Hauptmenü je Sprache.
+</p>
+<p>
+  Was das Repository enthält: das Mu-Plugin <code>language-links.php</code> (Rolle
+  <code>blog_wordpress</code>). Es zeigt über Beiträgen und Seiten die Zeile „🌐 Auch auf: …“,
+  aber nur für Sprachen, in denen es eine veröffentlichte Übersetzung gibt, und tut nichts,
+  wenn Polylang nicht aktiv ist.
+</p>
+<div class="callout callout-warn">
+  <strong>Die Übersetzungen selbst sind nicht in diesem Repository</strong>
+  Jeder übersetzte Beitrag und jede übersetzte Seite ist normaler WordPress-Inhalt in der
+  Datenbank. Der Autor hat sie mit <strong>Claude</strong> (Anthropic) in einem separaten,
+  lokalen Ablauf erstellen lassen: ein Übersetzungs-Agent pro Beitrag mit Styleguide und
+  Glossar, ein unabhängiger Prüf-Agent, automatische Checks, dass Codeblöcke, Links und Befehle
+  unverändert bleiben, danach der Import per WP-CLI. Weder dieser Ablauf noch die Texte sind
+  Teil des Repositorys. Wer das Repository für einen eigenen Blog nutzt, bekommt die
+  Infrastruktur (nachdem er Polylang selbst installiert hat); die Übersetzungen muss er aber
+  unabhängig von diesem Code erstellen – von Hand, mit einem Übersetzungsdienst oder mit einem
+  eigenen KI-Ablauf. Der KI-Hinweis des Blogs sagt, dass die Übersetzungen mit KI entstanden
+  sind und das englische Original maßgeblich ist.
+</div>
+<div class="callout callout-info">
+  <strong>Falle: eindeutige Slugs</strong>
+  Das kostenlose Polylang braucht für jede Sprachfassung einer Seite einen eigenen Slug.
+  Bekommt eine Übersetzung denselben Slug wie das Original (z.&nbsp;B. <code>impressum</code>),
+  benennt WordPress das Original beim nächsten Speichern stillschweigend in
+  <code>impressum-2</code> um. Die Übersetzung deshalb mit eigenem Slug anlegen
+  (z.&nbsp;B. <code>impressum-de</code>).
 </div>
 
 <h3>Datenbank direkt abfragen</h3>
@@ -1951,6 +1991,11 @@ rm -f ~/.ansible/cp/*</code></pre>
     <td>TTL 3600 s statt 120 s – PHP löst Dateipfade seltener neu auf</td>
     <td><code>blog_k3s_deploy</code> → ConfigMap <code>wordpress-php-config</code></td>
   </tr>
+  <tr>
+    <td>LCP &amp; Startseite</td>
+    <td>Das Mu-Plugin lädt die Theme-Schriften vor und lädt das erste große Bild eines Beitrags sofort mit <code>fetchpriority="high"</code>; auf der Startseite ist das das erste Bild der Beitragsliste. Auf Handys und Tablets zeigt die Startseite nur die Beitragsliste, die übrigen Blöcke der Startseite sind ausgeblendet.</td>
+    <td><code>blog_wordpress</code> → Mu-Plugin <code>performance-hints.php</code> + eigenes CSS</td>
+  </tr>
 </table>
 
 <h3>TCP BBR im Detail</h3>
@@ -2256,6 +2301,8 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
         Baseline aus ~51.000 gefingerprinteten Dateien. Erkennt Manipulation,
         die rkhunter/ClamAV nicht abdecken (z.B. ein verändertes
         <code>/etc/passwd</code> oder eine ausgetauschte Systembinary).
+        Die Container-Logverzeichnisse (<code>/var/log/pods</code>, <code>/var/log/containers</code>) sind ausgenommen:
+        Sie ändern sich ständig, und dort hängende Links haben früher den täglichen Bericht gestört.
         Still bei sauberem Lauf, mailt <code>aide_mail</code> (default:
         gemeinsame <code>email</code>-Vault-Variable) nur bei tatsächlichem
         Fund – siehe Hinweis unten, die erste Version mailte an ein bloßes

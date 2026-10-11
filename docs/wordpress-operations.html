@@ -925,6 +925,7 @@ define('WP_SITEURL', 'https://www.apt-upgrade.me');</code></pre>
   <tr><td><code>wp-super-cache</code></td><td>Page cache – nginx serves the pre-rendered HTML directly, skipping PHP-FPM on cache hits</td></tr>
   <tr><td><code>wordpress-seo</code> (Yoast)</td><td>SEO, meta tags, XML sitemap, robots.txt</td></tr>
   <tr><td><code>easy-table-of-contents</code></td><td>Automatic table of contents in posts</td></tr>
+  <tr><td><code>polylang</code></td><td>Multilingual blog (en/de/fr/es), see below</td></tr>
   <tr><td><code>akismet</code>, <code>hello</code></td><td>ship with WordPress, inactive</td></tr>
 </table>
 <div class="callout callout-info">
@@ -932,6 +933,43 @@ define('WP_SITEURL', 'https://www.apt-upgrade.me');</code></pre>
   Manually installed plugins do not appear in <code>blog_wordpress_plugins</code>.
   To make them reproducible (e.g. for a from-scratch rebuild), add them there and
   the playbook will install them automatically.
+</div>
+
+<h3>Multilingual content (Polylang)</h3>
+<p>
+  Since October 2026 the blog is available in English (the original and default language,
+  without a URL prefix), German, French and Spanish (<code>/de/</code>, <code>/fr/</code>,
+  <code>/es/</code>). The free <strong>Polylang</strong> plugin handles the languages, the
+  language switcher in the menu, the <code>hreflang</code> alternates and, together with Yoast,
+  the translated entries in the XML sitemap. Like the plugins above, it was installed and
+  configured in the admin and is <strong>not</strong> part of the playbook. Settings used:
+  default language English, no URL prefix for it, language set from the directory, browser
+  language detection off, media translation off, one main menu per language.
+</p>
+<p>
+  What the repository does contain: the mu-plugin <code>language-links.php</code>
+  (role <code>blog_wordpress</code>). It prints a line "🌐 Also available in: …" above posts and
+  pages, but only for languages in which that post or page has a published translation, and
+  does nothing when Polylang is inactive.
+</p>
+<div class="callout callout-warn">
+  <strong>The translations themselves are not in this repository</strong>
+  Every translated post and page is ordinary WordPress content in the database. The author
+  had them created with <strong>Claude</strong> (Anthropic) in a separate, local workflow:
+  one translator agent per post with a style guide and glossary, an independent review agent,
+  automatic checks that code blocks, links and commands stay unchanged, then an import via
+  WP-CLI. Neither that workflow nor the texts are part of this repository. If you reuse the
+  repository for your own blog, you get the infrastructure (after installing Polylang
+  yourself), but the translations have to be created independently of this code: by hand,
+  with a translation service or with your own AI workflow. The blog's AI Usage Notice states
+  that the translations are AI-made and that the English original is authoritative.
+</div>
+<div class="callout callout-info">
+  <strong>Gotcha: unique slugs</strong>
+  Free Polylang needs a different slug for each language version of a page. When a
+  translation gets the same slug as the original (e.g. <code>impressum</code>), WordPress
+  silently renames the original to <code>impressum-2</code> on its next save. Give the
+  translation its own slug (e.g. <code>impressum-de</code>).
 </div>
 
 <h3>Query the Database Directly</h3>
@@ -1931,6 +1969,11 @@ rm -f ~/.ansible/cp/*</code></pre>
     <td>TTL 3600 s instead of 120 s – PHP resolves file paths less frequently</td>
     <td><code>blog_k3s_deploy</code> → ConfigMap <code>wordpress-php-config</code></td>
   </tr>
+  <tr>
+    <td>LCP &amp; front page</td>
+    <td>The mu-plugin preloads the theme fonts and loads the first large image of a post eagerly with <code>fetchpriority="high"</code>; on the front page that is the first image of the post list. On phones and tablets the front page shows only the post list; the other front-page blocks are hidden.</td>
+    <td><code>blog_wordpress</code> → mu-plugin <code>performance-hints.php</code> + custom CSS</td>
+  </tr>
 </table>
 
 <h3>TCP BBR</h3>
@@ -2222,6 +2265,8 @@ Both verified 2026-09-14.</p>
     <td>File integrity monitoring – daily cron check against a baseline
         built from ~51,000 fingerprinted files. Catches tampering rkhunter/ClamAV
         don't (e.g. an edited <code>/etc/passwd</code> or a swapped system binary).
+        Container log directories (<code>/var/log/pods</code>, <code>/var/log/containers</code>) are excluded:
+        they change constantly and dangling links there used to break the daily report.
         Silent on a clean run, e-mails <code>aide_mail</code> (defaults to the
         shared <code>email</code> vault var) only when the exit code signals an
         actual difference – see the callout below, the first version mailed

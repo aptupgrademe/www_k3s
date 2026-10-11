@@ -86,6 +86,11 @@ Internet
   with rdiff-backup; Monit alerts on the servers when the last success is older than
   3 days (`scripts/nextcloud-backup/`, `scripts/wordpress-backup/`). Optional split setup: an always-on
   NAS pulls at night, the backup PC only versions the NAS copy over SSH
+- **Multilingual blog** – English original plus German, French and Spanish via the free Polylang
+  plugin (installed in the admin, not by the playbook); the mu-plugin `language-links.php`
+  (`blog_wordpress`) adds an "Also available in" line to posts and pages. The translations are
+  content in the WordPress database, created by the author with Claude in a separate workflow –
+  **they are not part of this repository**, so a fork has to produce its own translations
 - **Anonymous visitor statistics** (`blog_visitor_stats`) – a daily count of visitors, page views,
   countries (local DB-IP Lite lookup) and search-engine arrivals from the access logs; only the totals
   are stored, no IPs, no cookies, no tracker
@@ -201,11 +206,13 @@ issuance succeeds.
   false`, and **read-only root filesystems** on the nginx/exporter sidecars
 - **auditd** with security-relevant rules
 - **rkhunter** daily scan with email alerts
-- **ClamAV** nightly scan of Nextcloud user data / WordPress uploads, email alerts
+- **ClamAV** nightly scan of Nextcloud user data / WordPress uploads, email alerts; on the Nextcloud
+  hosts the scan skips Nextcloud previews and pure image/video/audio files (`clamav_skip_extensions`)
 - **dnf-automatic** for auto security updates, automatic reboot if required.
   The night runs in a fixed order: AIDE check 00:00, updates 01:00-02:00,
-  reboot if needed 03:30, AIDE baseline refresh 04:00 - so an update never
-  triggers a false AIDE alert
+  reboot if needed 03:30, AIDE baseline refresh 04:00, ClamAV data scan 04:30
+  (Nextcloud hosts) - so an update never triggers a false AIDE alert and a
+  reboot never cuts a scan short
 - **systemd hardening** drop-ins for sshd, node_exporter, prometheus
 - **CIS AlmaLinux 9 Benchmark** hardening (AIDE file integrity, kernel module
   blacklist, cron/sudo permissions, `nodev,nosuid,noexec` mount options)

@@ -2038,7 +2038,7 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   </tr>
   <tr>
     <td>Virenscan</td>
-    <td>ClamAV: nächtlicher Scan der Nextcloud-Nutzerdaten um 02:30 Uhr; Signatur-Updates via freshclam; Mail nur bei Fund (still bei sauberem Scan)</td>
+    <td>ClamAV: nächtlicher Scan der Nextcloud-Nutzerdaten um 04:30 Uhr (nach dem Neustartfenster um 03:30 und dem AIDE-Refresh um 04:00, damit ein Update-Neustart den Scan nicht mehr abbricht); Vorschaubilder (<code>appdata_*/preview</code>) und reine Bild-, Video- und Audiodateien (<code>clamav_skip_extensions</code>, ohne Rücksicht auf Groß-/Kleinschreibung) werden übersprungen – Dokumente, Archive, ausführbare Dateien, Skripte und Dateien ohne Endung werden weiter gescannt; Signatur-Updates via freshclam; Mail nur bei Fund (still bei sauberem Scan)</td>
     <td><code>next_clamav</code></td>
   </tr>
   <tr>
