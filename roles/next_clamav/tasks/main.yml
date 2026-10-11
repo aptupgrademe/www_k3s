@@ -58,6 +58,9 @@
 # nice/ionice keep the scan from competing with Nextcloud/K3s during the
 # night; --max-filesize/--max-scansize skip implausibly large files (viruses
 # are not hiding in multi-hundred-MB blobs, and scanning them wastes time).
+# appdata_*/preview is skipped: Nextcloud renders those thumbnails itself
+# from files that are scanned anyway (64 GB on cvjm, a full single-core
+# sweep took ~16 h with them).
 - name: ClamAV | Deploy nightly scan script
   ansible.builtin.copy:
     dest: /usr/local/sbin/nextcloud-clamav-scan.sh
@@ -76,6 +79,7 @@
 
       nice -n 19 ionice -c3 clamscan --recursive --infected --no-summary \
         --max-filesize=200M --max-scansize=200M \
+        --exclude-dir="^${DATA_DIR}/appdata_[^/]+/preview" \
         "$DATA_DIR" > "$SCAN_LOG" 2>&1
       RC=$?
 
@@ -85,10 +89,13 @@
 
       exit 0
 
+# 04:30: after the 03:30 reboot-if-needed and the 04:00 AIDE refresh (see
+# common_dnf_automatic). At 02:30 the reboot killed the scan on every update
+# night, so the data was only fully scanned on nights without one.
 - name: ClamAV | Configure nightly cron scan
   ansible.builtin.cron:
     name: "clamav nightly Nextcloud data scan"
-    hour: "2"
+    hour: "4"
     minute: "30"
     job: "/usr/local/sbin/nextcloud-clamav-scan.sh"
     user: root
