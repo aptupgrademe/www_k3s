@@ -1,0 +1,38 @@
+---
+# Runs the Kubernetes-facing task files of common_k3s, common_calico,
+# blog_k3s_deploy and next_k3s_deploy against the API-only test cluster.
+# Started by run.sh, which sets ANSIBLE_ROLES_PATH (old or new roles) and
+# passes WORK / overrides via -e.
+- name: K8s apply test
+  hosts: testnode
+  gather_facts: true
+  vars_files:
+    - ../../inventory/group_vars/all.yml
+    - ../../inventory/host_vars/test/vars.yml.example
+    - ../../inventory/host_vars/test/vault.yml.example
+  environment:
+    PATH: "{{ work }}/bin:{{ ansible_env.PATH }}"
+    KUBECONFIG: "{{ work }}/kubeconfig"
+    HELM_CACHE_HOME: "{{ work }}/helm/cache"
+    HELM_CONFIG_HOME: "{{ work }}/helm/config"
+    HELM_DATA_HOME: "{{ work }}/helm/data"
+    K3S_TEST_CONTAINER: "{{ container }}"
+  tasks:
+    - name: Ingress controller
+      ansible.builtin.include_role: { name: common_k3s, tasks_from: nginx_ingress.yml }
+    - name: cert-manager
+      ansible.builtin.include_role: { name: common_k3s, tasks_from: cert_manager.yml }
+    - name: Default ServiceAccount hardening
+      ansible.builtin.include_role: { name: common_k3s, tasks_from: default_sa_hardening.yml }
+    - name: Calico
+      ansible.builtin.include_role: { name: common_calico }
+    - name: Blog workloads
+      ansible.builtin.include_role: { name: blog_k3s_deploy, tasks_from: "{{ task_file }}" }
+      loop_control: { loop_var: task_file }   # the roles' own loops use "item"
+      loop: [namespace_secrets.yml, mariadb.yml, external_services.yml, redis.yml, wordpress.yml,
+             ingress.yml, cronjob.yml, exporters.yml, networkpolicy.yml, image_policy.yml]
+    - name: Nextcloud workloads
+      ansible.builtin.include_role: { name: next_k3s_deploy, tasks_from: "{{ task_file }}" }
+      loop_control: { loop_var: task_file }
+      loop: [namespace_secrets.yml, external_services.yml, nextcloud.yml, collabora.yml, networkpolicy.yml,
+             image_policy.yml, ingress.yml, cronjob.yml, exporters.yml, notify_push.yml]

@@ -61,9 +61,12 @@
   # rkhunter ships usable data files with the package.
   failed_when: false
 
+# Refreshing a derived database, not a configuration change: reporting it as
+# "changed" made every run look like drift (and the dnf plugin below refreshes
+# it after package updates anyway).
 - name: rkhunter | Build / refresh file-properties database
   ansible.builtin.command: rkhunter --propupd --nocolors
-  changed_when: true
+  changed_when: false
   failed_when: false
 
 

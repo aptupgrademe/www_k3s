@@ -87,8 +87,16 @@
       enabled=1
     mode: "0644"
 
+- name: Packages | Is the AppStream mariadb module already disabled?
+  ansible.builtin.command: dnf -q module list --disabled mariadb
+  register: mariadb_module_disabled
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false  # rc 1 = no disabled mariadb module (yet)
+
 - name: Packages | Disable the AppStream mariadb module (prevents shadowing the Community packages)
   ansible.builtin.command: dnf -y module disable mariadb
+  when: "'[x]' not in mariadb_module_disabled.stdout"
   changed_when: true
   failed_when: false
 

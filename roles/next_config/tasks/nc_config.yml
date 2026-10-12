@@ -71,67 +71,61 @@
 # Nextcloud was already installed (env vars only apply during first-boot setup).
 # mail_smtppassword comes from vault.yml; no_log prevents it appearing in logs.
 # -----------------------------------------------------------------------------
-- name: Config | Set mail_smtpmode to smtp
-  ansible.builtin.command: >
-    {{ occ_exec }}
-    runuser -u www-data -- php /var/www/html/occ
-    config:system:set mail_smtpmode --value="smtp"
-  changed_when: false
-
-- name: Config | Set mail_smtphost
-  ansible.builtin.command: >
-    {{ occ_exec }}
-    runuser -u www-data -- php /var/www/html/occ
-    config:system:set mail_smtphost --value="{{ mail_smtphost }}"
-  changed_when: false
-
-- name: Config | Set mail_smtpport
-  ansible.builtin.command: >
-    {{ occ_exec }}
-    runuser -u www-data -- php /var/www/html/occ
-    config:system:set mail_smtpport --type=integer --value="{{ mail_smtpport }}"
-  changed_when: false
-
-- name: Config | Set mail_smtpsecure to tls (STARTTLS on port 587)
-  ansible.builtin.command: >
-    {{ occ_exec }}
-    runuser -u www-data -- php /var/www/html/occ
-    config:system:set mail_smtpsecure --value="tls"
-  changed_when: false
-
-- name: Config | Enable mail_smtpauth
-  ansible.builtin.command: >
-    {{ occ_exec }}
-    runuser -u www-data -- php /var/www/html/occ
-    config:system:set mail_smtpauth --type=boolean --value="true"
-  changed_when: false
-
-- name: Config | Set mail_smtpname (SMTP login)
-  ansible.builtin.command: >
-    {{ occ_exec }}
-    runuser -u www-data -- php /var/www/html/occ
-    config:system:set mail_smtpname --value="{{ mail_smtpname }}"
-  changed_when: false
+# Read first, write only what differs: the former "config:system:set" tasks
+# rewrote all nine values on every run and reported "ok" either way, so a
+# changed SMTP host or password never showed up as a change.
+- name: Config | Mail settings wanted in config.php
+  ansible.builtin.set_fact:
+    nc_mail_settings:
+      - { key: mail_smtpmode,     value: "smtp" }
+      - { key: mail_smtphost,     value: "{{ mail_smtphost }}" }
+      - { key: mail_smtpport,     value: "{{ mail_smtpport }}", type: integer }
+      - { key: mail_smtpsecure,   value: "tls" }   # STARTTLS on port 587
+      - { key: mail_smtpauth,     value: "true", type: boolean }
+      - { key: mail_smtpname,     value: "{{ mail_smtpname }}", secret: true }
+      - { key: mail_smtppassword, value: "{{ mail_smtppassword }}", secret: true }
+      - { key: mail_from_address, value: "{{ mail_from_address }}" }
+      - { key: mail_domain,       value: "{{ mail_domain }}" }
   no_log: true
 
-- name: Config | Set mail_smtppassword
+- name: Config | Read current mail settings
   ansible.builtin.command: >
     {{ occ_exec }}
     runuser -u www-data -- php /var/www/html/occ
-    config:system:set mail_smtppassword --value="{{ mail_smtppassword }}"
+    config:system:get {{ item.key }}
+  loop: "{{ nc_mail_settings }}"
+  loop_control:
+    label: "{{ item.key }}"
+  register: nc_mail_current
   changed_when: false
-  no_log: true
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false  # rc 1 = not set yet
+  no_log: "{{ item.secret | default(false) }}"
 
-- name: Config | Set mail_from_address
-  ansible.builtin.command: >
-    {{ occ_exec }}
-    runuser -u www-data -- php /var/www/html/occ
-    config:system:set mail_from_address --value="{{ mail_from_address }}"
-  changed_when: false
+# argv instead of a command string: values go to occ verbatim, a quote or
+# space in the password cannot break the command line.
+- name: Config | Set mail settings that differ
+  ansible.builtin.command:
+    argv: >-
+      {{ occ_exec.split() + ['runuser', '-u', 'www-data', '--', 'php', '/var/www/html/occ',
+         'config:system:set', item.item.key, '--value=' ~ item.item.value]
+         + (['--type=' ~ item.item.type] if item.item.type is defined else []) }}
+  loop: "{{ nc_mail_current.results }}"
+  loop_control:
+    label: "{{ item.item.key }}"
+  when: item.rc != 0 or (item.stdout | trim) != (item.item.value | string)
+  changed_when: true
+  no_log: "{{ item.item.secret | default(false) }}"
 
-- name: Config | Set mail_domain
-  ansible.builtin.command: >
-    {{ occ_exec }}
-    runuser -u www-data -- php /var/www/html/occ
-    config:system:set mail_domain --value="{{ mail_domain }}"
-  changed_when: false
+# A --check run skips the command above (it writes), so it would hide the
+# pending change; this reports it instead.
+- name: Config | Report mail settings a real run would change (--check only)
+  ansible.builtin.debug:
+    msg: "{{ item.item.key }} would be updated"
+  loop: "{{ nc_mail_current.results }}"
+  loop_control:
+    label: "{{ item.item.key }}"
+  when:
+    - ansible_check_mode
+    - item.rc != 0 or (item.stdout | trim) != (item.item.value | string)
+  changed_when: true

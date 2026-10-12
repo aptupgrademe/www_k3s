@@ -49,3 +49,6 @@ __pycache__/
 
 # Internal explainer PDFs for non-IT readers (German only) - never published.
 docs/intern/
+
+# Scratch dir of the K8s apply test (tests/k8s/run.sh)
+tests/k8s/.work/

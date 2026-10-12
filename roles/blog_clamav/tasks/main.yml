@@ -33,8 +33,13 @@
 
 # First run can take a few minutes (full signature database download).
 # Needed before the very first scan can find anything at all.
+# creates: freshclam writes freshclam.dat on its first successful run. Later
+# updates are the clamav-freshclam service's job - running freshclam on every
+# play reported "changed" every time and only duplicated that service.
 - name: ClamAV | Initial virus signature download
   ansible.builtin.command: freshclam
+  args:
+    creates: /var/lib/clamav/freshclam.dat
   changed_when: true
   failed_when: false
 

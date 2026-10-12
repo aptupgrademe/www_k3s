@@ -1,0 +1,13 @@
+---
+# Valid stand-ins for the CHANGE_ME placeholders of host_vars/test/*.example
+# (Kubernetes rejects "CHANGE_ME" as a hostname or IP). RFC 5737/2606 values.
+server_ipv4: "192.0.2.10"
+server_ipv6: "2001:db8::10"
+nextcloud_ipv4: "192.0.2.10"
+blog_ipv4: "192.0.2.10"
+nextcloud_hostname: "cloud.example.test"
+collabora_hostname: "office.example.test"
+blog_hostname: "www.example.test"
+blog_title: "Test Blog"
+mail_domain: "example.test"
+mail_smtphost: "smtp.example.test"

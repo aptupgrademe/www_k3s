@@ -1,0 +1,26 @@
+#!/bin/bash
+# Test stand-in for "k3s kubectl ..." (put first in PATH by run.sh).
+# Forwards kubectl calls to the API-only K3s container. Commands that need
+# running pods (exec, logs, rollout, wait) are answered with success: the
+# test cluster has no agent, so no pod ever runs.
+[ "$1" = kubectl ] || { echo "k3s-stub: only 'k3s kubectl' is supported" >&2; exit 0; }
+shift
+verb=""; prev=""
+for a in "$@"; do
+  case "$prev" in -n|--namespace) prev=""; continue;; esac
+  case "$a" in -*) prev="$a";; *) verb="$a"; break;; esac
+done
+# Both old and new roles wait for cert-manager right before the ClusterIssuer:
+# drop its admission webhook there, it has no pod behind it in this cluster.
+if [ "$verb" = wait ]; then
+  podman exec "$K3S_TEST_CONTAINER" kubectl delete validatingwebhookconfiguration,mutatingwebhookconfiguration \
+    cert-manager-webhook --ignore-not-found >/dev/null 2>&1 || true
+fi
+case "$verb" in exec|logs|rollout|wait) echo "stub: kubectl $*"; exit 0;; esac
+args=(); file=""
+while [ $# -gt 0 ]; do
+  if [ "$1" = -f ] && [ "$2" != - ]; then file=$2; shift 2; args+=(-f -); continue; fi
+  args+=("$1"); shift
+done
+if [ -n "$file" ]; then exec podman exec -i "$K3S_TEST_CONTAINER" kubectl "${args[@]}" < "$file"; fi
+exec podman exec -i "$K3S_TEST_CONTAINER" kubectl "${args[@]}"

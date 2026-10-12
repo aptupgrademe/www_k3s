@@ -47,6 +47,36 @@
 # in the pod any more). Both are shell-quoted, and no_log keeps them out of
 # the Ansible log. CREATE OR REPLACE makes this idempotent and also rotates
 # the password if blog_db_exporter_pass changed in the vault.
+# Idempotent: compare first, so the CREATE OR REPLACE below only runs (and
+# only reports "changed") when the user is missing, has another password or
+# lost its performance_schema grant. Expected count: 2 users + 2 db grants.
+- name: MariaDB | Check the mysqld_exporter database user
+  ansible.builtin.command:
+    argv:
+      - k3s
+      - kubectl
+      - exec
+      - deployment/mariadb
+      - --namespace=wordpress
+      - --container=mariadb
+      - --
+      - sh
+      - -c
+      - >-
+        mariadb -N -u root -p"$(cat /etc/secrets/db-root-password)" -e "
+        SELECT
+          (SELECT COUNT(*) FROM mysql.user WHERE User = 'exporter'
+             AND Host IN ('localhost', '127.0.0.1')
+             AND authentication_string = PASSWORD('{{ blog_db_exporter_pass }}'))
+        + (SELECT COUNT(*) FROM mysql.db WHERE User = 'exporter'
+             AND Host IN ('localhost', '127.0.0.1') AND Db = 'performance_schema'
+             AND Select_priv = 'Y');"
+  register: exporter_user_check
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false
+  no_log: true
+
 - name: MariaDB | Create least-privilege mysqld_exporter database user
   ansible.builtin.command:
     argv:
@@ -72,4 +102,5 @@
         FLUSH PRIVILEGES;"
   register: exporter_user
   changed_when: exporter_user.rc == 0
+  when: exporter_user_check.stdout | default('') | trim != '4'
   no_log: true
