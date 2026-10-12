@@ -1,0 +1,44 @@
+---
+# =============================================================================
+# common_verify: HTTPS reachability, response headers, /.env blocked
+# Inputs: verify_url (public https URL), verify_hostname (its host name).
+# Shared by blog_verify and nextcloud_verify (imported from their checks.yml).
+# Read-only: every check registers its result (_v_*) with failed_when: false;
+# the calling role turns them into the report and the final assert.
+# =============================================================================
+
+# External connectivity test only – GET / returns 200, never triggers fail2ban.
+- name: Verify | HTTPS – external connectivity (HTTP 200)
+  ansible.builtin.uri:
+    url: "{{ verify_url }}/"
+    method: GET
+    validate_certs: true
+    timeout: "{{ verify_http_timeout }}"
+    status_code: 200
+    return_content: false
+  register: _v_https
+  failed_when: false
+  delegate_to: localhost
+  become: false
+
+- name: Verify | HTTPS – response headers via 127.0.0.1 (HSTS, Server, X-Powered-By)
+  ansible.builtin.shell: |
+    set -o pipefail
+    curl -sk --max-time {{ verify_http_timeout }} \
+      --resolve "{{ verify_hostname }}:443:127.0.0.1" \
+      -I "https://{{ verify_hostname }}/" 2>/dev/null | tr '[:upper:]' '[:lower:]'
+  register: _v_headers
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false
+
+- name: Verify | Security – /.env blocked?
+  ansible.builtin.shell: |
+    curl -sk --max-time {{ verify_http_timeout }} \
+      --resolve "{{ verify_hostname }}:443:127.0.0.1" \
+      -o /dev/null -w "%{http_code}" \
+      "https://{{ verify_hostname }}/.env" 2>/dev/null || echo 200
+  register: _v_env
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false

@@ -1,0 +1,12 @@
+---
+galaxy_info:
+  role_name: common_selinux
+  author: raphael
+  description: SELinux enforcing + container_file_t contexts for the K3s HostPath volumes of one stack
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: EL
+      versions:
+        - "9"
+dependencies: []

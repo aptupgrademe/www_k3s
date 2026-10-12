@@ -1,0 +1,77 @@
+---
+# What to scan - set by the playbook (blog.yml: wordpress, nextcloud-k3s.yml:
+# nextcloud). Selects one of the profiles below.
+clamav_target: ""
+
+# Passed to the nightly scan's alert email; uses the host's 'email' variable
+# from vault (same pattern as rkhunter_mail in common_rkhunter).
+# Override if a separate monitoring address is desired:
+# clamav_mail: "monitoring@example.com"
+clamav_mail: "{{ email }}"
+
+# Per-stack settings. Script, log and cron entry names derive from the
+# target and the label, and are exactly the ones the former blog_clamav /
+# next_clamav roles used - the cron module matches entries by name, so a new
+# name would leave the old entry behind and scan twice.
+#   label         used in the cron entry name and the alert mail subject
+#   scan_dir      directory scanned (recursively)
+#   exclude_dirs  clamscan --exclude-dir regexes
+#   skip_media    skip clamav_skip_extensions (see below)
+#   hour/minute   cron time
+clamav_profiles:
+  wordpress:
+    label: WordPress uploads
+    scan_dir: "{{ blog_k3s_www_dir | default('') }}/wp-content/uploads"
+    exclude_dirs: []
+    skip_media: false
+    hour: "2"
+    minute: "45"
+  # 04:30: after the 03:30 reboot-if-needed and the 04:00 AIDE refresh (see
+  # common_dnf_automatic). At 02:30 the reboot killed the scan on every update
+  # night, so the data was only fully scanned on nights without one.
+  # appdata_*/preview is skipped: Nextcloud renders those thumbnails itself
+  # from files that are scanned anyway (64 GB on cvjm, a full single-core
+  # sweep took ~16 h with them).
+  nextcloud:
+    label: Nextcloud data
+    scan_dir: "{{ nextcloud_data_dir | default('') }}"
+    exclude_dirs:
+      - "^{{ nextcloud_data_dir | default('') }}/appdata_[^/]+/preview"
+    skip_media: true
+    hour: "4"
+    minute: "30"
+
+# Pure image/video/audio formats the nightly scan skips (matched on the file
+# extension, case-insensitive). They make up most of the data volume (on cvjm
+# ~260 of ~320 GB) but are rarely a malware carrier; documents, archives,
+# executables, scripts and files without an extension are still scanned.
+# Trade-off: a file disguised with such an extension (evil.exe -> evil.jpg)
+# is skipped too.
+clamav_skip_extensions:
+  - jpg
+  - jpeg
+  - png
+  - gif
+  - webp
+  - heic
+  - heif
+  - nef
+  - cr2
+  - cr3
+  - arw
+  - dng
+  - mp4
+  - m4v
+  - mov
+  - mts
+  - m2ts
+  - avi
+  - mkv
+  - webm
+  - lrv
+  - mp3
+  - m4a
+  - wav
+  - flac
+  - ogg
+  - aac

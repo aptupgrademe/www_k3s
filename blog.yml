@@ -84,7 +84,7 @@
     - { role: common_firewall,      tags: [common_firewall] }       # nftables IPv4/IPv6 rules
     - { role: common_sysctl,        tags: [common_sysctl] }         # Kernel tuning: TCP BBR, connection timeouts, backlog
     - { role: common_cis_hardening, tags: [common_cis_hardening] }  # CIS AlmaLinux 9 Benchmark: AIDE, kernel modules, cron/sudo, mount options
-    - { role: blog_selinux,         tags: [blog_selinux] }          # SELinux enforcing + container_file_t for HostPath  ← before deploy!
+    - { role: common_selinux,       tags: [blog_selinux], selinux_target: wordpress }  # SELinux enforcing + container_file_t for HostPath  ← before deploy!
     - { role: common_k3s,           tags: [common_k3s] }            # K3s + Helm + cert-manager + nginx-ingress (F5)
     - { role: common_calico,        tags: [common_calico] }         # Calico policy-only mode: NetworkPolicy enforcement (Flannel alone ignores it)
     - { role: blog_k3s_deploy,      tags: [blog_k3s_deploy] }       # WordPress K8s manifests applied (pods start in background)
@@ -97,7 +97,7 @@
     - { role: common_msmtp,         tags: [common_msmtp] }          # msmtp sendmail relay (rkhunter, cron, dnf-automatic)
     - { role: common_dnf_automatic, tags: [common_dnf_automatic] }  # Automatic security-only updates via dnf-automatic
     - { role: common_rkhunter,      tags: [common_rkhunter] }       # Rootkit detection with daily scan
-    - { role: blog_clamav,          tags: [blog_clamav] }           # ClamAV: nightly antivirus scan of WordPress uploads
+    - { role: common_clamav,        tags: [blog_clamav], clamav_target: wordpress }  # ClamAV: nightly antivirus scan of WordPress uploads
     - { role: blog_visitor_stats,   tags: [blog_visitor_stats] }    # Daily anonymous visitor trend + monthly GeoIP (DB-IP), computed on the host
     - { role: common_auditd,        tags: [common_auditd] }         # Linux Audit Daemon with security-relevant rules
     - { role: common_logrotate,     tags: [common_logrotate] }      # Log rotation for Grafana, Prometheus, fail2ban, rkhunter

@@ -1,7 +1,7 @@
 ---
 # Create HostPath directories on the host node.
 # The K3s containerd runtime mounts these into the respective pods.
-# SELinux context (container_file_t) is applied by role blog_selinux.
+# SELinux context (container_file_t) is applied by role common_selinux.
 
 # Owner is www-data's uid (33), not root - matters because this task runs on
 # every Ansible run, not just once. Each deployment's own init container

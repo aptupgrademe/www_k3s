@@ -1,0 +1,37 @@
+---
+# =============================================================================
+# common_verify: cluster-wide pod checks (ingress-nginx, cert-manager, pods in error state)
+# Shared by blog_verify and nextcloud_verify (imported from their checks.yml).
+# Read-only: every check registers its result (_v_*) with failed_when: false;
+# the calling role turns them into the report and the final assert.
+# =============================================================================
+
+- name: Verify | K8s – ingress-nginx pods
+  ansible.builtin.shell: |
+    set -o pipefail
+    k3s kubectl get pods -n ingress-nginx --no-headers 2>/dev/null | \
+      awk '{print $3}' | sort | uniq -c | awk '{print $2": "$1"x"}'
+  register: _v_ingress_pods
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false
+
+- name: Verify | K8s – cert-manager pods
+  ansible.builtin.shell: |
+    set -o pipefail
+    k3s kubectl get pods -n cert-manager --no-headers 2>/dev/null | \
+      awk '{print $3}' | sort | uniq -c | awk '{print $2": "$1"x"}'
+  register: _v_cm_pods
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false
+
+- name: Verify | K8s – pods in error state (any namespace)?
+  ansible.builtin.shell: |
+    set -o pipefail
+    k3s kubectl get pods -A --no-headers 2>/dev/null | \
+      grep -E 'CrashLoopBackOff|OOMKilled|Error' | awk '{print $1"/"$2}' || true
+  register: _v_error_pods
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false

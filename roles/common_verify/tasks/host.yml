@@ -1,0 +1,79 @@
+---
+# =============================================================================
+# common_verify: host checks (nftables, fail2ban, K3s, auditd, SELinux, TCP BBR)
+# Shared by blog_verify and nextcloud_verify (imported from their checks.yml).
+# Read-only: every check registers its result (_v_*) with failed_when: false;
+# the calling role turns them into the report and the final assert.
+# =============================================================================
+
+- name: Verify | nftables – service active?
+  ansible.builtin.command: systemctl is-active nftables
+  register: _v_nft_svc
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false
+
+- name: Verify | nftables – inet filter table loaded?
+  ansible.builtin.command: nft list tables
+  register: _v_nft_tables
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false
+
+- name: Verify | nftables – policy drop present?
+  ansible.builtin.shell: |
+    set -o pipefail
+    nft list chain inet filter input 2>/dev/null | grep -c 'policy drop'
+  register: _v_nft_policy
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false
+
+- name: Verify | nftables – banned4 set exists?
+  ansible.builtin.command: nft list set inet filter banned4
+  register: _v_nft_banned4
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false
+
+- name: Verify | fail2ban – service active?
+  ansible.builtin.command: systemctl is-active fail2ban
+  register: _v_f2b_svc
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false
+
+- name: Verify | fail2ban – jail status
+  ansible.builtin.command: fail2ban-client status
+  register: _v_f2b_status
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false
+
+- name: Verify | k3s – service active?
+  ansible.builtin.command: systemctl is-active k3s
+  register: _v_k3s_svc
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false
+
+- name: Verify | auditd – service active?
+  ansible.builtin.command: systemctl is-active auditd
+  register: _v_auditd_svc
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false
+
+- name: Verify | SELinux – enforcing mode?
+  ansible.builtin.command: getenforce
+  register: _v_selinux
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false
+
+- name: Verify | Performance – TCP BBR active?
+  ansible.builtin.command: sysctl -n net.ipv4.tcp_congestion_control
+  register: _v_bbr
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false

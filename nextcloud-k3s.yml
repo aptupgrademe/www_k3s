@@ -80,7 +80,7 @@
     # was introduced) has pods authenticating against a Redis that does not
     # expect a password yet, which Redis rejects outright.
     - { role: next_redis,            tags: [next_redis] }            # Redis (host service) – must precede the pods that authenticate to it
-    - { role: next_selinux,          tags: [next_selinux] }          # SELinux enforcing + container_file_t contexts for K3s HostPath vols  ← before deploy!
+    - { role: common_selinux,        tags: [next_selinux], selinux_target: nextcloud }  # SELinux enforcing + container_file_t contexts for K3s HostPath vols  ← before deploy!
     - { role: common_k3s,            tags: [common_k3s] }            # K3s single-node cluster + Helm + cert-manager + nginx-ingress (F5)
     - { role: common_calico,         tags: [common_calico] }         # Calico policy-only mode: NetworkPolicy enforcement (Flannel alone ignores it)
     - { role: next_k3s_deploy,       tags: [next_k3s_deploy] }       # Nextcloud + Collabora K8s workloads applied (pods start in background)
@@ -94,7 +94,7 @@
     - { role: common_msmtp,          tags: [common_msmtp] }          # msmtp sendmail relay (used by rkhunter, cron, dnf-automatic)
     - { role: common_dnf_automatic,  tags: [common_dnf_automatic] }  # Automatic security-only updates via dnf-automatic
     - { role: common_rkhunter,       tags: [common_rkhunter] }       # Rootkit detection with daily scan
-    - { role: next_clamav,           tags: [next_clamav] }           # ClamAV: nightly antivirus scan of Nextcloud user data
+    - { role: common_clamav,         tags: [next_clamav], clamav_target: nextcloud }  # ClamAV: nightly antivirus scan of Nextcloud user data
     - { role: common_auditd,         tags: [common_auditd] }         # Linux Audit Daemon with security-relevant rules
     - { role: common_logrotate,      tags: [common_logrotate] }      # Log rotation for Grafana, Prometheus, fail2ban, rkhunter
     - { role: common_monit,          tags: [common_monit] }          # Watchdog: emails on service/resource failures, auto-restarts fail2ban

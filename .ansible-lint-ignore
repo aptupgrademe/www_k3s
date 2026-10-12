@@ -11,3 +11,5 @@ roles/blog_verify/tasks/checks.yml command-instead-of-module skip
 roles/nextcloud_verify/tasks/checks.yml command-instead-of-module skip
 roles/common_monit/tasks/main.yml command-instead-of-module skip
 roles/common_firewall/handlers/main.yml command-instead-of-module skip
+roles/common_verify/tasks/host.yml command-instead-of-module skip
+roles/common_verify/tasks/http.yml command-instead-of-module skip

@@ -1,0 +1,4 @@
+---
+# HTTP timeout for URL checks (seconds) - same value as in blog_verify and
+# nextcloud_verify, which keep their own copy for their remaining checks.
+verify_http_timeout: 15

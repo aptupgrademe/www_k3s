@@ -1,0 +1,100 @@
+---
+# =============================================================================
+# Role: common_selinux
+# Purpose: SELinux enforcing mode + file contexts for the K3s HostPath volumes
+#          of one stack (selinux_target: wordpress | nextcloud). In K3s mode
+#          nginx and PHP-FPM run inside containers, so no httpd_* types are
+#          needed; instead the HostPath directories must carry
+#          container_file_t so containerd can read and write them while
+#          SELinux is enforcing.
+#          Replaces the former blog_selinux and next_selinux roles, which were
+#          identical apart from the directories now in selinux_profiles.
+# Target:  AlmaLinux 9
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Packages
+# -----------------------------------------------------------------------------
+- name: SELinux | Ensure SELinux tools are installed (semanage/restorecon)
+  ansible.builtin.dnf:
+    name:
+      - policycoreutils
+      - policycoreutils-python-utils
+      - selinux-policy-targeted
+      - container-selinux   # K3s container SELinux policy
+    state: present
+
+# ansible.posix, not ansible.builtin: the selinux module lives in the collection.
+# "ansible.builtin.selinux" only works because ansible-core still redirects the
+# old name, and that redirect will not last forever.
+- name: SELinux | Ensure SELinux is enforcing (targeted policy)
+  ansible.posix.selinux:
+    policy: targeted
+    state: enforcing
+
+
+# -----------------------------------------------------------------------------
+# HostPath volume directories (owner/mode: see defaults/main.yml)
+# -----------------------------------------------------------------------------
+- name: SELinux | Ensure the HostPath directories exist
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop: "{{ selinux_profiles[selinux_target] }}"
+  loop_control:
+    label: "{{ item.label }}"
+
+
+# -----------------------------------------------------------------------------
+# SELinux file contexts for K3s HostPath volumes
+# -----------------------------------------------------------------------------
+# container_file_t allows the container runtime (containerd) to read/write
+# these directories while SELinux is enforcing.
+- name: SELinux | Label the HostPath directories as container_file_t
+  ansible.builtin.command: >
+    semanage fcontext -a -t container_file_t "{{ item.path }}(/.*)?"
+  loop: "{{ selinux_profiles[selinux_target] }}"
+  loop_control:
+    label: "{{ item.label }}"
+  register: semanage_dirs
+  changed_when: semanage_dirs.rc == 0 and "already defined" not in (semanage_dirs.stderr | default(""))
+  failed_when: semanage_dirs.rc != 0 and "already defined" not in (semanage_dirs.stderr | default(""))
+
+- name: SELinux | Apply the SELinux context to the HostPath directories
+  ansible.builtin.command: restorecon -Rv "{{ item.path }}"
+  loop: "{{ selinux_profiles[selinux_target] }}"
+  loop_control:
+    label: "{{ item.label }}"
+  changed_when: false
+
+
+# -----------------------------------------------------------------------------
+# SELinux boolean: allow containers to make outbound network connections
+# (container -> MariaDB / Redis on the host, SMTP, WordPress HTTP calls)
+# -----------------------------------------------------------------------------
+- name: SELinux | Allow container processes to make outbound network connections
+  ansible.posix.seboolean:
+    name: container_manage_cgroup
+    state: true
+    persistent: true
+  failed_when: false   # boolean may not exist on all policy versions
+
+
+# -----------------------------------------------------------------------------
+# Sanity check (only when selinux_debug is true)
+# -----------------------------------------------------------------------------
+- name: SELinux | Show SELinux contexts on the HostPath directories
+  ansible.builtin.command: >
+    ls -Zd {{ selinux_profiles[selinux_target] | map(attribute='path') | join(' ') }}
+  register: selinux_ctx
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  when: selinux_debug | bool
+
+- name: SELinux | Print contexts
+  ansible.builtin.debug:
+    var: selinux_ctx.stdout_lines
+  when: selinux_debug | bool

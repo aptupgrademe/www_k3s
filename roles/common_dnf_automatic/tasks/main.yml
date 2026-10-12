@@ -34,7 +34,7 @@
 # The night is planned around this window: AIDE check 00:00
 # (common_cis_hardening), updates 01:00-02:00, reboot-if-needed 03:30,
 # AIDE baseline refresh 04:00, ClamAV data scan 04:30 (Nextcloud hosts,
-# next_clamav), reboot-required check 06:00. The packaged
+# common_clamav), reboot-required check 06:00. The packaged
 # timer fires at 06:00 + up to 60 min, i.e. AFTER the reboot and the AIDE
 # refresh - found 2026-10-01: every security update (gawk) mailed an AIDE
 # alert the following midnight, and a new kernel waited ~21 h for the next
