@@ -519,16 +519,20 @@ K3s API with the <code>kubernetes.core.k8s</code> module:</p>
     state: present
     apply: true
     definition: "{{ item }}"
-  loop: "{{ lookup('ansible.builtin.template', 'redis-deployment.yml.j2') | ansible.builtin.from_yaml_all | select | list }}"
+  loop: "{{ k8s_objects if ansible_diff_mode else [k8s_objects] }}"
   loop_control:
-    label: "{{ item.kind }}/{{ item.metadata.name }}"
+    label: "{{ (item.kind ~ '/' ~ item.metadata.name) if item is mapping else ((item | length) ~ ' objects') }}"
+  vars:
+    k8s_objects: "{{ lookup('ansible.builtin.template', 'redis-deployment.yml.j2') | ansible.builtin.from_yaml_all | select | list }}"
   register: redis_apply</code></pre>
 <ul>
   <li><code>lookup('template', …)</code> renders the template in memory; <code>from_yaml_all</code> splits it into the
     single objects. Nothing ends up in <code>/tmp</code> – no Secrets either.</li>
   <li><code>apply: true</code> behaves like <code>kubectl apply</code> (via the <code>last-applied-configuration</code>
     annotation), so it is compatible with the existing objects.</li>
-  <li>The <strong>loop per object</strong> is deliberate: only then does <code>--diff</code> show each object's change, and
+  <li><strong>One call or one per object:</strong> on normal runs all objects of a template go to the API in
+    <em>one</em> call (Calico: under 2 instead of ~30 seconds). Only with <code>--diff</code> (i.e. in
+    <code>check-drift.sh</code>) does the loop run per object – only then does the diff show each object's change, and
     the output names <code>Deployment/redis</code>, <code>Service/redis</code>.</li>
   <li>The module only reports <code>changed</code> when the object really changes. Follow-up tasks such as "wait for the
     rollout" depend on <code>redis_apply.changed</code>.</li>

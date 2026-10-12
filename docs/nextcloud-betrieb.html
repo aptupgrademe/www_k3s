@@ -1456,7 +1456,7 @@ k3s kubectl rollout status  deployment/nextcloud -n nextcloud --timeout=300s</co
 <div class="callout callout-danger">
   <strong>Backup vor jedem Versionssprung!</strong>
   Ein fehlgeschlagenes DB-Schema-Upgrade kann die Installation beschädigen.
-  Immer zuerst ein Backup ausführen (<code>/data/backup/nextcloud/&lt;env&gt;_backup.sh</code> auf dem Backup-Rechner).
+  Immer zuerst ein Backup machen. In meinem Setup ist das ein Pull-Backup auf einem Rechner in meinem Homelab, nicht auf den Servern (<code>scripts/nextcloud-backup/</code>, falls du etwas Eigenes aufbauen willst).
 </div>
 
 <ol class="steps">
@@ -1552,6 +1552,7 @@ k3s kubectl rollout status  deployment/nextcloud -n nextcloud --timeout=300s</co
 
 <h3>Was wird gesichert</h3>
 <p>
+  <em>Das ist mein lokales Setup: Die Sicherung läuft auf Rechnern in meinem Homelab, außerhalb der Server. Die Skripte liegen im Repo für alle, die etwas Ähnliches aufbauen wollen.</em>
   Ein <strong>Backup-Rechner</strong> holt jede Instanz per SSH als root ab
   (<code>scripts/nextcloud-backup/</code>, siehe dortige <code>README.md</code>).
   Die Skripte laufen dort aus <code>/data/backup/nextcloud/</code>, per cron

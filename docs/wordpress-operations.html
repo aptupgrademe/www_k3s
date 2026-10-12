@@ -784,11 +784,16 @@ ansible-vault encrypt inventory/host_vars/www.apt-upgrade.me/vault.yml
 ansible-vault edit inventory/host_vars/www.apt-upgrade.me/vault.yml</code></pre>
 
 <h3>Typical vault.yml Contents</h3>
-<pre><code>blog_db_root_pass: "..."       # MariaDB root password
-blog_db_pass:      "..."       # WordPress DB user password
-blog_admin_pass:   "..."       # WordPress admin password
-mail_smtppass:     "..."       # SMTP password for mail delivery
-grafana_admin_pass: "..."      # Grafana admin password</code></pre>
+<pre><code>email:                   "..."   # admin e-mail (alerts, Let's Encrypt)
+mysql_root_password:     "..."   # MariaDB root password
+blog_db_pass:            "..."   # WordPress DB user password
+blog_db_exporter_pass:   "..."   # least-privilege DB user of mysqld_exporter
+blog_admin_user:         "..."   # WordPress admin login
+blog_admin_pass:         "..."   # WordPress admin password
+grafana_basic_auth_user: "..."   # basic-auth user / password in front of Grafana
+grafana_admin_pass:      "..."
+mail_smtpname:           "..."   # SMTP login / password for mail delivery
+mail_smtppassword:       "..."</code></pre>
 
 <h3>Secrets in the K8s Cluster</h3>
 <p>
@@ -1630,6 +1635,7 @@ k3s kubectl get pods -n wordpress</code></pre>
 
 <h3>Automatic Pull Backup (backup machine)</h3>
 <p>
+  <em>My local setup, in my homelab outside the servers – the scripts are in the repo if you want your own.</em>
   Since 2026-09-28 the backup machine that already pulls the Nextcloud instances also pulls the blog, daily and
   after every boot: <code>scripts/wordpress-backup/</code>. It rsyncs <code>/srv/wordpress-www</code> (core,
   <code>wp-content</code>, <code>wp-config.php</code>), dumps the database inside the MariaDB pod
@@ -2015,7 +2021,7 @@ sysctl net.ipv4.tcp_congestion_control</code></pre>
 
 <h3>Redis Object Cache</h3>
 <p>
-  The Redis pod (<code>redis:7-alpine</code>) runs in the <code>wordpress</code> namespace
+  The Redis pod (<code>redis:7.4.11-alpine</code>) runs in the <code>wordpress</code> namespace
   as a dedicated in-memory cache. PHP accesses it via the <code>redis-cache</code> plugin,
   which implements the WP Object Cache API.
   The drop-in <code>wp-content/object-cache.php</code> is automatically activated during

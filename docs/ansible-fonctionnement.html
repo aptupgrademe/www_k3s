@@ -527,17 +527,21 @@ directement à l'API K3s avec le module <code>kubernetes.core.k8s</code> :</p>
     state: present
     apply: true
     definition: "{{ item }}"
-  loop: "{{ lookup('ansible.builtin.template', 'redis-deployment.yml.j2') | ansible.builtin.from_yaml_all | select | list }}"
+  loop: "{{ k8s_objects if ansible_diff_mode else [k8s_objects] }}"
   loop_control:
-    label: "{{ item.kind }}/{{ item.metadata.name }}"
+    label: "{{ (item.kind ~ '/' ~ item.metadata.name) if item is mapping else ((item | length) ~ ' objects') }}"
+  vars:
+    k8s_objects: "{{ lookup('ansible.builtin.template', 'redis-deployment.yml.j2') | ansible.builtin.from_yaml_all | select | list }}"
   register: redis_apply</code></pre>
 <ul>
   <li><code>lookup('template', …)</code> génère le template en mémoire ; <code>from_yaml_all</code> le découpe en objets
     individuels. Rien n'atterrit dans <code>/tmp</code> – pas même les Secrets.</li>
   <li><code>apply: true</code> se comporte comme <code>kubectl apply</code> (via l'annotation
     <code>last-applied-configuration</code>), donc compatible avec les objets existants.</li>
-  <li>La <strong>boucle par objet</strong> est voulue : c'est la seule façon pour <code>--diff</code> de montrer la
-    modification de chaque objet, et la sortie nomme <code>Deployment/redis</code>, <code>Service/redis</code>.</li>
+  <li><strong>Un appel ou un par objet :</strong> lors des exécutions normales, tous les objets d'un template partent
+    vers l'API en <em>un seul</em> appel (Calico : moins de 2 secondes au lieu de ~30). Ce n'est qu'avec
+    <code>--diff</code> (donc dans <code>check-drift.sh</code>) que la boucle tourne par objet – c'est la seule façon de
+    montrer la modification de chaque objet, et la sortie nomme <code>Deployment/redis</code>, <code>Service/redis</code>.</li>
   <li>Le module ne renvoie <code>changed</code> que si l'objet change vraiment. Les tâches suivantes, comme « attendre le
     rollout », dépendent de <code>redis_apply.changed</code>.</li>
   <li>Les requêtes passent par <code>kubernetes.core.k8s_info</code> (le Secret existe-t-il déjà ?).</li>

@@ -784,11 +784,16 @@ ansible-vault encrypt inventory/host_vars/www.apt-upgrade.me/vault.yml
 ansible-vault edit inventory/host_vars/www.apt-upgrade.me/vault.yml</code></pre>
 
 <h3>Typischer Inhalt vault.yml</h3>
-<pre><code>blog_db_root_pass: "..."       # MariaDB root-Passwort
-blog_db_pass:      "..."       # WordPress DB-Benutzer-Passwort
-blog_admin_pass:   "..."       # WordPress Admin-Passwort
-mail_smtppass:     "..."       # SMTP-Passwort für Mail-Versand
-grafana_admin_pass: "..."      # Grafana Admin-Passwort</code></pre>
+<pre><code>email:                   "..."   # Admin-E-Mail (Alarme, Let's Encrypt)
+mysql_root_password:     "..."   # MariaDB-root-Passwort
+blog_db_pass:            "..."   # Passwort des WordPress-DB-Benutzers
+blog_db_exporter_pass:   "..."   # DB-Benutzer mit minimalen Rechten für mysqld_exporter
+blog_admin_user:         "..."   # WordPress-Admin-Login
+blog_admin_pass:         "..."   # WordPress-Admin-Passwort
+grafana_basic_auth_user: "..."   # Basic-Auth-Benutzer / Passwort vor Grafana
+grafana_admin_pass:      "..."
+mail_smtpname:           "..."   # SMTP-Login / Passwort für den Mailversand
+mail_smtppassword:       "..."</code></pre>
 
 <h3>Secrets im K8s-Cluster</h3>
 <p>
@@ -1648,6 +1653,7 @@ k3s kubectl get pods -n wordpress</code></pre>
 
 <h3>Automatisches Pull-Backup (Backup-Maschine)</h3>
 <p>
+  <em>Mein lokales Setup im Homelab, außerhalb der Server – die Skripte liegen im Repo, falls du ein eigenes willst.</em>
   Seit 2026-09-28 zieht die Backup-Maschine, die schon die Nextcloud-Instanzen sichert, auch den Blog – täglich und
   nach jedem Start: <code>scripts/wordpress-backup/</code>. Sie synchronisiert <code>/srv/wordpress-www</code> (Core,
   <code>wp-content</code>, <code>wp-config.php</code>) per rsync, erstellt den DB-Dump im MariaDB-Pod
@@ -2041,7 +2047,7 @@ ss -tin dst www.apt-upgrade.me | grep bbr</code></pre>
 
 <h3>Redis Object Cache</h3>
 <p>
-  Der Redis-Pod (<code>redis:7-alpine</code>) läuft im <code>wordpress</code>-Namespace
+  Der Redis-Pod (<code>redis:7.4.11-alpine</code>) läuft im <code>wordpress</code>-Namespace
   als dedizierter In-Memory-Cache. PHP greift darauf über das Plugin
   <code>redis-cache</code> zu, das das WP-Objekt-Cache-API implementiert.
   Das Drop-in <code>wp-content/object-cache.php</code> wird beim Playbook-Lauf

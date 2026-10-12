@@ -82,7 +82,7 @@ Internet
 - **Config changes roll the pod** – a `checksum/config` annotation on the Nextcloud and
   WordPress pod templates restarts the pod once when a rendered ConfigMap changes
   (subPath mounts never update inside a running pod)
-- **Pull backups with history** – a backup machine pulls every Nextcloud instance and
+- **Pull backups with history** (my local setup, running in my homelab) – a backup machine pulls every Nextcloud instance and
   the blog (rsync + verified DB dump, no maintenance mode) and keeps 30 days of versions
   with rdiff-backup; Monit alerts on the servers when the last success is older than
   3 days (`scripts/nextcloud-backup/`, `scripts/wordpress-backup/`). Optional split setup: an always-on

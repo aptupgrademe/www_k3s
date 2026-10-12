@@ -1444,7 +1444,7 @@ k3s kubectl rollout status  deployment/nextcloud -n nextcloud --timeout=300s</co
 <div class="callout callout-danger">
   <strong>Backup before every version bump!</strong>
   A failed DB schema upgrade can damage the installation.
-  Always run a backup first (<code>/data/backup/nextcloud/&lt;env&gt;_backup.sh</code> on the backup machine).
+  Always take a backup first. In my setup that is a pull backup running on a machine in my homelab, not on the servers (<code>scripts/nextcloud-backup/</code> if you want to build your own).
 </div>
 
 <ol class="steps">
@@ -1536,6 +1536,7 @@ k3s kubectl rollout status  deployment/nextcloud -n nextcloud --timeout=300s</co
 
 <h3>What Is Backed Up</h3>
 <p>
+  <em>This is my local setup: the backup runs on machines in my homelab, outside the servers. The scripts are in the repo for anyone who wants to build something similar.</em>
   A <strong>backup machine</strong> pulls each instance over SSH as root
   (<code>scripts/nextcloud-backup/</code>, see its <code>README.md</code>). The
   scripts run from <code>/data/backup/nextcloud/</code> on that machine,

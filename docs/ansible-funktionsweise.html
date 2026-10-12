@@ -522,17 +522,21 @@ die Unterschiede. Damit das hier aussagekräftig ist:</p>
     state: present
     apply: true
     definition: "{{ item }}"
-  loop: "{{ lookup('ansible.builtin.template', 'redis-deployment.yml.j2') | ansible.builtin.from_yaml_all | select | list }}"
+  loop: "{{ k8s_objects if ansible_diff_mode else [k8s_objects] }}"
   loop_control:
-    label: "{{ item.kind }}/{{ item.metadata.name }}"
+    label: "{{ (item.kind ~ '/' ~ item.metadata.name) if item is mapping else ((item | length) ~ ' objects') }}"
+  vars:
+    k8s_objects: "{{ lookup('ansible.builtin.template', 'redis-deployment.yml.j2') | ansible.builtin.from_yaml_all | select | list }}"
   register: redis_apply</code></pre>
 <ul>
   <li><code>lookup('template', …)</code> rendert das Template im Speicher; <code>from_yaml_all</code> zerlegt es in die
     einzelnen Objekte. Nichts landet in <code>/tmp</code> – auch keine Secrets.</li>
   <li><code>apply: true</code> verhält sich wie <code>kubectl apply</code> (über die Annotation
     <code>last-applied-configuration</code>), ist also mit den bestehenden Objekten kompatibel.</li>
-  <li>Die <strong>Schleife pro Objekt</strong> ist Absicht: Nur so zeigt <code>--diff</code> die Änderung jedes Objekts,
-    und die Ausgabe nennt <code>Deployment/redis</code>, <code>Service/redis</code>.</li>
+  <li><strong>Ein Aufruf oder einer pro Objekt:</strong> Bei normalen Läufen gehen alle Objekte eines Templates in
+    <em>einem</em> Aufruf an die API (Calico: unter 2 statt ~30 Sekunden). Nur mit <code>--diff</code> (also bei
+    <code>check-drift.sh</code>) läuft die Schleife pro Objekt – nur so zeigt der Diff die Änderung jedes Objekts, und die
+    Ausgabe nennt <code>Deployment/redis</code>, <code>Service/redis</code>.</li>
   <li>Das Modul meldet <code>changed</code> nur, wenn sich am Objekt wirklich etwas ändert. Folgetasks wie
     „Rollout abwarten“ hängen an <code>redis_apply.changed</code>.</li>
   <li>Abfragen laufen über <code>kubernetes.core.k8s_info</code> (gibt es das Secret schon?).</li>
