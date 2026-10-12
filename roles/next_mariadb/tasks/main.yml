@@ -299,8 +299,8 @@
     login_password: "{{ mysql_root_password }}"
   loop:
     - localhost
-    - "{{ ansible_fqdn }}"
-    - "{{ ansible_hostname }}"
+    - "{{ ansible_facts['fqdn'] }}"
+    - "{{ ansible_facts['hostname'] }}"
   no_log: true
 
 - name: MariaDB | Remove the unused 'test' database

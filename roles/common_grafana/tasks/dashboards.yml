@@ -83,7 +83,7 @@
     # We write a small Python script to the server, run it, then delete it.
     - name: Grafana | Write Node Exporter Full variable patch script
       ansible.builtin.copy:
-        dest: /tmp/gf_patch_1860.py
+        dest: /usr/local/libexec/grafana/gf_patch_1860.py
         mode: "0700"
         owner: root
         content: |
@@ -128,7 +128,7 @@
           print(r.get("status", "?"))
 
     - name: Grafana | Patch Node Exporter Full variable defaults
-      ansible.builtin.command: python3 /tmp/gf_patch_1860.py
+      ansible.builtin.command: python3 /usr/local/libexec/grafana/gf_patch_1860.py
       environment:
         GF_USER:     "{{ grafana_basic_auth_user }}"
         GF_PASS:     "{{ grafana_admin_pass }}"
@@ -137,10 +137,8 @@
       changed_when: false
       no_log: true
 
-    - name: Grafana | Remove Node Exporter Full patch script
-      ansible.builtin.file:
-        path: /tmp/gf_patch_1860.py
-        state: absent
+    # Kept in /usr/local/libexec/grafana (no secrets in it - they come via environment), so it is
+    # only rewritten when its content changes instead of on every run.
 
 
     # -----------------------------------------------------------------------------

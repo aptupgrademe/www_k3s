@@ -135,7 +135,7 @@ run old old                         # state as <BASE_REF> leaves it
 run new check1 --check
 run new real1                       # one-time migration run
 run new real2                       # must be idempotent now
-run new check2 --check
+run new check2 --check --diff        # per-object mode (normal runs use one call per template)
 
 if grep -vE "$ALLOW_CHANGED" "$WORK/real2.changed" | grep -q .; then
   echo "!! second run still changed:"; grep -vE "$ALLOW_CHANGED" "$WORK/real2.changed" | sed 's/^/     /'; FAIL=1

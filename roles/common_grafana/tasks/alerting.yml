@@ -112,7 +112,7 @@
 
 - name: Grafana | Write alert provisioning script
   ansible.builtin.copy:
-    dest: /tmp/gf_alerts.py
+    dest: /usr/local/libexec/grafana/gf_alerts.py
     mode: "0700"
     owner: root
     content: |
@@ -256,7 +256,7 @@
       print("Fertig.")
 
 - name: Grafana | Apply alert rules
-  ansible.builtin.command: python3 /tmp/gf_alerts.py
+  ansible.builtin.command: python3 /usr/local/libexec/grafana/gf_alerts.py
   environment:
     GF_USER:  "{{ grafana_basic_auth_user }}"
     GF_PASS:  "{{ grafana_admin_pass }}"
@@ -264,7 +264,5 @@
   changed_when: false
   no_log: true
 
-- name: Grafana | Remove alert provisioning script
-  ansible.builtin.file:
-    path: /tmp/gf_alerts.py
-    state: absent
+# Kept in /usr/local/libexec/grafana (no secrets in it - they come via environment), so it is
+# only rewritten when its content changes instead of on every run.

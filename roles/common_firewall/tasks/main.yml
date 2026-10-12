@@ -219,7 +219,7 @@
   ansible.builtin.file:
     path: /etc/nftables.conf
     state: absent
-  when: ansible_distribution == 'AlmaLinux'
+  when: ansible_facts['distribution'] == 'AlmaLinux'
 
 - name: Firewall | Enable nftables (starts automatically on the next boot)
   ansible.builtin.service:

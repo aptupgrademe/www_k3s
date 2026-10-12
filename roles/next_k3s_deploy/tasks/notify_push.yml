@@ -54,17 +54,18 @@
     state: present
     apply: true
     definition: "{{ item }}"
-  # One loop item per object in the template, so --diff shows each
-  # object's change (with a list definition the module reports no diff).
-  # The loop is evaluated before "when", so it must not render the template
-  # (which needs np_version) when notify_push is disabled.
+  # With --diff (check-drift.sh): one loop item per object, so the diff shows
+  # each object's change; otherwise one call for all objects (see the other
+  # Apply tasks). The loop is evaluated before "when", so it must not render
+  # the template (which needs np_version) when notify_push is disabled.
   loop: >-
-    {{ (lookup('ansible.builtin.template', 'notify-push-deployment.yml.j2') | ansible.builtin.from_yaml_all | select | list)
-       if nextcloud_notify_push_enabled | bool else [] }}
+    {{ [] if not (nextcloud_notify_push_enabled | bool)
+       else (k8s_objects if ansible_diff_mode else [k8s_objects]) }}
   loop_control:
-    label: "{{ item.kind }}/{{ item.metadata.name }}"
+    label: "{{ (item.kind ~ '/' ~ item.metadata.name) if item is mapping else ((item | length) ~ ' objects') }}"
   vars:
     notify_push_app_version: "{{ np_version.stdout | trim }}"
+    k8s_objects: "{{ lookup('ansible.builtin.template', 'notify-push-deployment.yml.j2') | ansible.builtin.from_yaml_all | select | list }}"
   register: np_apply
   when: nextcloud_notify_push_enabled | bool
 

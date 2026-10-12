@@ -125,7 +125,7 @@
     update_repo_cache: true
     values: "{{ lookup('ansible.builtin.template', 'ingress-nginx-values.yml.j2') | ansible.builtin.from_yaml }}"
     wait: true
-    wait_timeout: 300s
+    timeout: 300s
 
 - name: ingress-nginx | Wait for nginx-ingress DaemonSet pod to be ready
   ansible.builtin.command: >

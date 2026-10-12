@@ -22,50 +22,60 @@
     path: /var/lib/aide/aide.db.gz
   register: aide_db
 
-- name: AIDE refresh | Check current state against the baseline
-  ansible.builtin.command: systemd-run --wait --pipe --quiet --collect -- aide --check
-  register: aide_check
-  changed_when: false
+# One scan instead of two: "aide --update" compares the filesystem with the
+# baseline AND writes the new database in the same pass. The former
+# "aide --check" followed by "aide --update" scanned everything twice on
+# every run that changed anything - which is nearly every run, because the
+# package upgrade alone touches watched files (one scan: ~30 s, up to ~3 min
+# measured on the blog).
+#
+# The exit code is a bitmask of what differed: 1 added, 2 removed, 4 changed
+# (so 1-7 = differences found and recorded - normal right after a playbook
+# run that changed something, not a security finding), 0 = identical,
+# 14 and up = an AIDE error. failed_when: false is deliberate - a non-zero
+# code is NOT a failure here. Got this wrong on the first version of this
+# role: a live run legitimately found package-upgrade-driven changes, but the
+# task treated rc != 0 as a failure and aborted the play before the next task
+# could activate the new database (verified live 2026-08-26).
+- name: AIDE refresh | Compare with the baseline and write the new database (one scan)
+  ansible.builtin.command: systemd-run --wait --pipe --quiet --collect -- aide --update
+  register: aide_update
+  changed_when: false   # the change is the activation below
   failed_when: false
   when: aide_db.stat.exists
 
-# aide --check exits non-zero when the filesystem no longer matches the
-# baseline - which, right after a playbook run that changed something, is
-# expected and not a security finding. See role purpose note above.
-#
-# aide --update ALSO exits non-zero whenever it finds and records
-# differences - that is normal, documented AIDE behaviour (the return code
-# is a bitmask of added/removed/changed, e.g. rc=7 just means "found and
-# wrote all three kinds of changes"), not a failure. failed_when: false here
-# is deliberate: trust the presence of aide.db.new.gz afterwards as the real
-# success signal, not the exit code. Got this wrong on the first version of
-# this role - a live run legitimately found package-upgrade-driven changes,
-# aide --update handled them fine and wrote the new db, but the task still
-# treated the non-zero rc as a failure and aborted the whole play *before*
-# the next task could activate the new database (verified live 2026-08-26).
-- name: AIDE refresh | Rebuild the baseline (state changed since last check)
-  ansible.builtin.command: systemd-run --wait --pipe --quiet --collect -- aide --update
-  changed_when: true
-  failed_when: false
-  when:
-    - aide_db.stat.exists
-    - aide_check.rc is defined
-    - aide_check.rc != 0
-
-- name: AIDE refresh | Check the rebuilt database was actually written
+- name: AIDE refresh | Check the new database was actually written
   ansible.builtin.stat:
     path: /var/lib/aide/aide.db.new.gz
   register: aide_db_new
   when:
     - aide_db.stat.exists
-    - aide_check.rc is defined
-    - aide_check.rc != 0
+    - aide_update.rc is defined
 
-- name: AIDE refresh | Activate the rebuilt baseline
+# rc 1-7: this run (or something since the last refresh) changed watched files.
+- name: AIDE refresh | Activate the new baseline (differences were found)
   ansible.builtin.command: mv /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz
   changed_when: true
   when:
     - aide_db.stat.exists
-    - aide_check.rc is defined
-    - aide_check.rc != 0
+    - aide_update.rc is defined
+    - aide_update.rc in range(1, 8)
     - aide_db_new.stat.exists
+
+# rc 0: nothing differs - the new database equals the old one.
+- name: AIDE refresh | Drop the identical new database (no differences)
+  ansible.builtin.file:
+    path: /var/lib/aide/aide.db.new.gz
+    state: absent
+  when:
+    - aide_db.stat.exists
+    - aide_update.rc is defined
+    - aide_update.rc == 0
+
+- name: AIDE refresh | Report an AIDE error (baseline left unchanged)
+  ansible.builtin.debug:
+    msg: "aide --update ended with rc={{ aide_update.rc }} (error, not a difference) - baseline not refreshed: {{ aide_update.stderr | default('') }}"
+  when:
+    - aide_db.stat.exists
+    - aide_update.rc is defined
+    - aide_update.rc >= 14

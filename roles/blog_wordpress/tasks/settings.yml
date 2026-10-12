@@ -21,13 +21,28 @@
 # -----------------------------------------------------------------------------
 # Disable WP-Cron HTTP trigger
 # The K8s CronJob (blog_k3s_deploy) runs wp-cron.php on a schedule instead.
+# Read first, write only if needed: the former task rewrote wp-config.php on
+# every run and always reported "ok", so a reverted setting was fixed silently.
+# As www-data (wp-config.php is owned by 33): no root-owned files.
 # -----------------------------------------------------------------------------
+- name: WordPress | Read DISABLE_WP_CRON from wp-config.php
+  ansible.builtin.command: >
+    k3s kubectl exec deployment/wordpress
+    --namespace wordpress
+    --container wordpress-fpm --
+    su -s /bin/sh www-data -c
+    'php /usr/local/lib/wp-cli/wp-cli.phar --path=/var/www/html config get DISABLE_WP_CRON --format=json'
+  register: wp_cron_setting
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false  # rc 1 = constant not defined yet
+
 - name: WordPress | Disable WP-Cron HTTP trigger (K8s CronJob handles scheduling)
   ansible.builtin.command: >
     k3s kubectl exec deployment/wordpress
     --namespace wordpress
     --container wordpress-fpm --
-    php /usr/local/lib/wp-cli/wp-cli.phar config set DISABLE_WP_CRON true --raw
-    --path=/var/www/html
-    --allow-root
-  changed_when: false
+    su -s /bin/sh www-data -c
+    'php /usr/local/lib/wp-cli/wp-cli.phar --path=/var/www/html config set DISABLE_WP_CRON true --raw'
+  when: wp_cron_setting.stdout | trim != 'true'
+  changed_when: true

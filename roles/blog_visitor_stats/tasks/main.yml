@@ -85,7 +85,7 @@
 # never duplicated; days the logs no longer cover just fail quietly.
 - name: Visitor stats | Backfill the days still in the logs
   ansible.builtin.command: >-
-    /usr/local/sbin/visitor-stats --date {{ '%Y-%m-%d' | strftime(ansible_date_time.epoch | int - item * 86400) }}
+    /usr/local/sbin/visitor-stats --date {{ '%Y-%m-%d' | strftime(ansible_facts['date_time']['epoch'] | int - item * 86400) }}
     --record {{ visitor_stats_dir }}/daily.jsonl
     {% for net in visitor_stats_exclude %} --exclude {{ net }}{% endfor %}
   loop: [1, 2, 3, 4, 5]

@@ -75,7 +75,7 @@
 - name: Packages | Check whether the running kernel's module directory still exists
   ansible.builtin.command: >-
     systemd-run --wait --pipe --quiet --
-    test -d /lib/modules/{{ ansible_kernel }}
+    test -d /lib/modules/{{ ansible_facts['kernel'] }}
   register: running_kernel_modules
   changed_when: false
   check_mode: false   # read-only query, also runs in --check

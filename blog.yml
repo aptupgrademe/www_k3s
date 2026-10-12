@@ -66,8 +66,9 @@
 - name: Install and configure WordPress blog
   hosts: blog
   # gather_subset: only "min" – the sole facts actually used anywhere in
-  # this repo are ansible_kernel (blog_packages reboot check) and
-  # ansible_distribution (common_firewall), both part of "min". network/
+  # this repo are kernel (blog_packages reboot check), distribution (common_firewall),
+  # fqdn/hostname (monit, MariaDB) and date_time, all part of "min" - read as
+  # ansible_facts['...'], not as top-level ansible_* variables (deprecated). network/
   # virtual facts (interfaces, virtualization type) aren't referenced by any
   # role, so skipping them saves the interface-enumeration/dmidecode time
   # without losing anything actually used.

@@ -107,3 +107,14 @@
   until: grafana_health.status == 200
   retries: 30
   delay: 3
+
+# Helper scripts for the dashboard patch and the alert rules (dashboards.yml,
+# alerting.yml). Persistent instead of /tmp, so they only change with their
+# content; root-only, the credentials come in via environment at run time.
+- name: Grafana | Directory for the API helper scripts
+  ansible.builtin.file:
+    path: /usr/local/libexec/grafana
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"

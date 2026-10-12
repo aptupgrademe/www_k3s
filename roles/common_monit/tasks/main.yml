@@ -47,7 +47,7 @@
          | zip(monit_unit_check.results)
          | selectattr('1.rc', 'equalto', 0)
          | map(attribute='0') | list }}
-    monit_hostname: "{{ ansible_fqdn | default(inventory_hostname) }}"
+    monit_hostname: "{{ ansible_facts['fqdn'] | default(inventory_hostname) }}"
 
 - name: Monit | Deploy check-program helper scripts
   ansible.builtin.copy:

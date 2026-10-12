@@ -202,6 +202,7 @@
             timeout: 30
           delegate_to: localhost
           register: home
+          check_mode: false   # read-only GET, also runs in --check
           retries: 6
           delay: 10
           until: home.status == 200
