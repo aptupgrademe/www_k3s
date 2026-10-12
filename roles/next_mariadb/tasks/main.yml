@@ -328,7 +328,10 @@
     # credentials: anyone who could read that file could log in as
     # root@localhost and ignore these restrictions entirely.
     password: "{{ nextcloud_db_exporter_pass }}"
-    priv: "*.*:PROCESS,REPLICATION CLIENT,SELECT"
+    # BINLOG MONITOR is what MariaDB >= 10.5 calls REPLICATION CLIENT and what
+    # SHOW GRANTS returns - with the old name the module saw a difference and
+    # re-granted (reported "changed") on every run.
+    priv: "*.*:PROCESS,BINLOG MONITOR,SELECT"
     state: present
     column_case_sensitive: false
     login_unix_socket: "{{ mariadb_socket }}"

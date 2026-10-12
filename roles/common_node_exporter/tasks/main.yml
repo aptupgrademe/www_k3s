@@ -22,7 +22,21 @@
 # -----------------------------------------------------------------------------
 # Binary installation
 # -----------------------------------------------------------------------------
+# Download/extract/install only when the installed binary is not the pinned
+# version: the archive lives in /tmp, which a reboot empties - before, every
+# run after a reboot downloaded it again and reported "changed" although the
+# right version was already installed.
+- name: Node Exporter | Installed version
+  ansible.builtin.shell: |
+    set -o pipefail
+    /usr/local/bin/node_exporter --version 2>&1 | head -1 | awk '{print $3}'
+  register: node_exporter_installed_version
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false  # not installed yet -> empty, so it gets installed
+
 - name: Node Exporter | Download archive
+  when: (node_exporter_installed_version.stdout | trim) != node_exporter_version
   ansible.builtin.get_url:
     url: "https://github.com/prometheus/node_exporter/releases/download/\
           v{{ node_exporter_version }}/\
@@ -31,6 +45,7 @@
     mode: "0644"
 
 - name: Node Exporter | Extract archive
+  when: (node_exporter_installed_version.stdout | trim) != node_exporter_version
   ansible.builtin.unarchive:
     src: "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
     dest: /tmp
@@ -38,6 +53,7 @@
     creates: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
 
 - name: Node Exporter | Install binary
+  when: (node_exporter_installed_version.stdout | trim) != node_exporter_version
   ansible.builtin.copy:
     src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
     dest: /usr/local/bin/node_exporter

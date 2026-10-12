@@ -23,7 +23,21 @@
 # -----------------------------------------------------------------------------
 # Binary installation
 # -----------------------------------------------------------------------------
+# Download/extract/install only when the installed binary is not the pinned
+# version: the archive lives in /tmp, which a reboot empties - before, every
+# run after a reboot downloaded it again and reported "changed" although the
+# right version was already installed.
+- name: mysqld_exporter | Installed version
+  ansible.builtin.shell: |
+    set -o pipefail
+    /usr/local/bin/mysqld_exporter --version 2>&1 | head -1 | awk '{print $3}'
+  register: mysqld_exporter_installed_version
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false  # not installed yet -> empty, so it gets installed
+
 - name: mysqld_exporter | Download archive
+  when: (mysqld_exporter_installed_version.stdout | trim) != mysqld_exporter_version
   ansible.builtin.get_url:
     url: "https://github.com/prometheus/mysqld_exporter/releases/download/\
           v{{ mysqld_exporter_version }}/\
@@ -32,6 +46,7 @@
     mode: "0644"
 
 - name: mysqld_exporter | Extract archive
+  when: (mysqld_exporter_installed_version.stdout | trim) != mysqld_exporter_version
   ansible.builtin.unarchive:
     src: "/tmp/mysqld_exporter-{{ mysqld_exporter_version }}.tar.gz"
     dest: /tmp
@@ -39,6 +54,7 @@
     creates: "/tmp/mysqld_exporter-{{ mysqld_exporter_version }}.linux-amd64/mysqld_exporter"
 
 - name: mysqld_exporter | Install binary
+  when: (mysqld_exporter_installed_version.stdout | trim) != mysqld_exporter_version
   ansible.builtin.copy:
     src: "/tmp/mysqld_exporter-{{ mysqld_exporter_version }}.linux-amd64/mysqld_exporter"
     dest: /usr/local/bin/mysqld_exporter

@@ -34,7 +34,21 @@
 # -----------------------------------------------------------------------------
 # Binary installation
 # -----------------------------------------------------------------------------
+# Download/extract/install only when the installed binary is not the pinned
+# version: the archive lives in /tmp, which a reboot empties - before, every
+# run after a reboot downloaded it again and reported "changed" although the
+# right version was already installed.
+- name: Prometheus | Installed version
+  ansible.builtin.shell: |
+    set -o pipefail
+    /usr/local/bin/prometheus --version 2>&1 | head -1 | awk '{print $3}'
+  register: prometheus_installed_version
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false  # not installed yet -> empty, so it gets installed
+
 - name: Prometheus | Download archive
+  when: (prometheus_installed_version.stdout | trim) != prometheus_version
   ansible.builtin.get_url:
     url: "https://github.com/prometheus/prometheus/releases/download/\
           v{{ prometheus_version }}/\
@@ -43,6 +57,7 @@
     mode: "0644"
 
 - name: Prometheus | Extract archive
+  when: (prometheus_installed_version.stdout | trim) != prometheus_version
   ansible.builtin.unarchive:
     src: "/tmp/prometheus-{{ prometheus_version }}.tar.gz"
     dest: /tmp
@@ -50,6 +65,7 @@
     creates: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64/prometheus"
 
 - name: Prometheus | Install binaries
+  when: (prometheus_installed_version.stdout | trim) != prometheus_version
   ansible.builtin.copy:
     src: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64/{{ item }}"
     dest: "/usr/local/bin/{{ item }}"
