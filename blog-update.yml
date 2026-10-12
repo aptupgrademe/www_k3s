@@ -120,6 +120,7 @@
     # -------------------------------------------------------------------------
     - name: Update | Pull current tags and compare with the running images
       ansible.builtin.shell: |
+        set -o pipefail
         set -e
         deploy={{ item.key }}
         running=$(k3s kubectl get pod -n {{ wp_ns }} -l app=$deploy \

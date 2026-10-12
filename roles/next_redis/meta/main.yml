@@ -1,3 +1,4 @@
+---
 galaxy_info:
   author: raphael
   description: Install and secure Redis (localhost-only binding, protected-mode) on AlmaLinux 9

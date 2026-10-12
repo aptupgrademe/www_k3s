@@ -29,6 +29,7 @@
     openssl genrsa -traditional 2048 2>/dev/null \
       | k3s kubectl -n nextcloud create secret generic collabora-proof-key --from-file=proof_key=/dev/stdin
   when: _collabora_proof_key.resources | length == 0
+  changed_when: true   # only runs when the Secret is missing, so it always creates it
   no_log: true
 
 - name: Collabora | Apply Deployment + Service

@@ -39,7 +39,9 @@
   failed_when: false
 
 - name: Verify | nftables – policy drop present?
-  ansible.builtin.shell: nft list chain inet filter input 2>/dev/null | grep -c 'policy drop'
+  ansible.builtin.shell: |
+    set -o pipefail
+    nft list chain inet filter input 2>/dev/null | grep -c 'policy drop'
   register: _v_nft_policy
   changed_when: false
   check_mode: false   # read-only query, also runs in --check
@@ -94,6 +96,7 @@
 
 - name: Verify | K8s – wordpress namespace pods
   ansible.builtin.shell: |
+    set -o pipefail
     k3s kubectl get pods -n wordpress --no-headers 2>/dev/null | \
       awk '{print $3}' | sort | uniq -c | awk '{print $2": "$1"x"}'
   register: _v_wp_pods
@@ -103,6 +106,7 @@
 
 - name: Verify | K8s – ingress-nginx pods
   ansible.builtin.shell: |
+    set -o pipefail
     k3s kubectl get pods -n ingress-nginx --no-headers 2>/dev/null | \
       awk '{print $3}' | sort | uniq -c | awk '{print $2": "$1"x"}'
   register: _v_ingress_pods
@@ -112,6 +116,7 @@
 
 - name: Verify | K8s – cert-manager pods
   ansible.builtin.shell: |
+    set -o pipefail
     k3s kubectl get pods -n cert-manager --no-headers 2>/dev/null | \
       awk '{print $3}' | sort | uniq -c | awk '{print $2": "$1"x"}'
   register: _v_cm_pods
@@ -121,6 +126,7 @@
 
 - name: Verify | K8s – pods in error state (any namespace)?
   ansible.builtin.shell: |
+    set -o pipefail
     k3s kubectl get pods -A --no-headers 2>/dev/null | \
       grep -E 'CrashLoopBackOff|OOMKilled|Error' | awk '{print $1"/"$2}' || true
   register: _v_error_pods
@@ -152,6 +158,7 @@
 
 - name: Verify | HTTPS – response headers via 127.0.0.1 (HSTS, Server, X-Powered-By)
   ansible.builtin.shell: |
+    set -o pipefail
     curl -sk --max-time {{ verify_http_timeout }} \
       --resolve "{{ blog_hostname }}:443:127.0.0.1" \
       -I "https://{{ blog_hostname }}/" 2>/dev/null | tr '[:upper:]' '[:lower:]'
@@ -215,6 +222,7 @@
 
 - name: Verify | Security – REST API /wp/v2/users (no username leak)
   ansible.builtin.shell: |
+    set -o pipefail
     _tmp=$(mktemp)
     _status=$(curl -sk --max-time {{ verify_http_timeout }} \
       --resolve "{{ blog_hostname }}:443:127.0.0.1" \
@@ -421,6 +429,7 @@
 
 - name: Verify | Send deployment result email
   ansible.builtin.shell: |
+    set -o pipefail
     {
       echo "Blog deployment on $(hostname -f) finished."
       echo ""

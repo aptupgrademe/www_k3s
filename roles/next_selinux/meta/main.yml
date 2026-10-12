@@ -1,3 +1,4 @@
+---
 galaxy_info:
   author: raphael
   description: Apply SELinux contexts and booleans for Nextcloud on AlmaLinux 9 (enforcing, targeted policy)

@@ -59,7 +59,7 @@
     state: present
 
 - name: Packages | Enable module_hotfixes for EPEL (prevents modular filtering errors)
-  ansible.builtin.ini_file:
+  community.general.ini_file:
     path: /etc/yum.repos.d/epel.repo
     section: epel
     option: module_hotfixes
@@ -103,7 +103,7 @@
 # kernel there always fails. Security kernel updates still land via
 # dnf-automatic (common_dnf_automatic), which runs locally via a systemd
 # timer, outside the SSH session and thus unaffected by that sandboxing.
-- name: Packages | Upgrade all system packages to the latest version
+- name: Packages | Upgrade all system packages to the latest version  # noqa: package-latest - a full update is the point of this task
   ansible.builtin.dnf:
     name: "*"
     state: latest

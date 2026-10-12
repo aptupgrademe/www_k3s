@@ -1,0 +1,43 @@
+---
+# Checks that run on every "git commit" in this repo (once per clone):
+#   pip install pre-commit   (or: pipx install pre-commit)
+#   pre-commit install
+# Run them over the whole repo by hand:   pre-commit run --all-files
+# The same checks run on GitHub for every push (.github/workflows/lint.yml).
+repos:
+  # Secret scanner on what is being committed (staged changes only). The
+  # gitignored vault/vars files and the impressum PGP key are never staged,
+  # so they never trigger it. Accepted findings: .gitleaksignore
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      # Not on *.j2: a template's trailing newline ends up in the rendered
+      # file on the server, so "fixing" it would change deployed configs.
+      - id: end-of-file-fixer
+        files: \.(ya?ml|md)$
+      - id: trailing-whitespace
+        files: \.ya?ml$
+
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.38.0
+    hooks:
+      - id: yamllint
+        # no --strict: long lines are warnings by design (.yamllint)
+        exclude: ^inventory/host_vars/
+
+  # Uses .ansible-lint, .ansible-lint-ignore and installs the collections
+  # pinned in requirements.yml into its own environment.
+  - repo: https://github.com/ansible/ansible-lint
+    rev: v26.10.0
+    hooks:
+      - id: ansible-lint
+        # The hook asks for the newest Python by default; any 3.11+ will do
+        # (Debian 13 ships 3.13).
+        language_version: python3

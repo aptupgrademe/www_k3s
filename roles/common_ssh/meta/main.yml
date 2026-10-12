@@ -1,3 +1,4 @@
+---
 galaxy_info:
   author: raphael
   description: Configure SSH hardening, custom port (10022) and SELinux port labeling for AlmaLinux 9

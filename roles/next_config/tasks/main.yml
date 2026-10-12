@@ -17,7 +17,11 @@
     --timeout=300s
   changed_when: false
 
-- ansible.builtin.import_tasks: nc_config.yml
-- ansible.builtin.import_tasks: db_maintenance.yml
-- ansible.builtin.import_tasks: apps.yml
-- ansible.builtin.import_tasks: wopi.yml
+- name: next_config | occ system config (domains, mail, ...)
+  ansible.builtin.import_tasks: nc_config.yml
+- name: next_config | Database maintenance (indices, repairs)
+  ansible.builtin.import_tasks: db_maintenance.yml
+- name: next_config | Apps (occ app list, richdocuments)
+  ansible.builtin.import_tasks: apps.yml
+- name: next_config | Collabora/WOPI settings
+  ansible.builtin.import_tasks: wopi.yml

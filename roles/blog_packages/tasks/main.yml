@@ -47,7 +47,7 @@
 # kernel there always fails. Security kernel updates still land via
 # dnf-automatic (common_dnf_automatic), which runs locally via a systemd
 # timer, outside the SSH session and thus unaffected by that sandboxing.
-- name: Packages | Upgrade all system packages
+- name: Packages | Upgrade all system packages  # noqa: package-latest - a full update is the point of this task
   ansible.builtin.dnf:
     name: "*"
     state: latest

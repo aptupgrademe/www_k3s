@@ -7,8 +7,13 @@
 # Target:  AlmaLinux 9 (SELinux enforcing)
 # =============================================================================
 
-- ansible.builtin.import_tasks: install_k3s.yml
-- ansible.builtin.import_tasks: install_helm.yml
-- ansible.builtin.import_tasks: cert_manager.yml
-- ansible.builtin.import_tasks: nginx_ingress.yml
-- ansible.builtin.import_tasks: default_sa_hardening.yml
+- name: common_k3s | K3s install/upgrade
+  ansible.builtin.import_tasks: install_k3s.yml
+- name: common_k3s | Helm install/upgrade
+  ansible.builtin.import_tasks: install_helm.yml
+- name: common_k3s | cert-manager + Let's Encrypt ClusterIssuer
+  ansible.builtin.import_tasks: cert_manager.yml
+- name: common_k3s | F5 nginx-ingress controller
+  ansible.builtin.import_tasks: nginx_ingress.yml
+- name: common_k3s | Default ServiceAccount hardening (CIS 5.1.5)
+  ansible.builtin.import_tasks: default_sa_hardening.yml

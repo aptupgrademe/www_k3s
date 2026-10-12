@@ -1,0 +1,4 @@
+# Accepted gitleaks findings (fingerprint = commit:file:rule:line).
+# vault.yml.example of the former hp1 NAS playbook: the "key" is the
+# placeholder PASTE_CONTENT_OF_id_rsa_HERE between BEGIN/END lines.
+de2e1e4f89b96e2dc2b1c42f7535cf88d863a0ad:inventory/host_vars/hp1/vault.yml.example:private-key:10

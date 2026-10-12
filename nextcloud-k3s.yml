@@ -1,3 +1,4 @@
+---
 # =============================================================================
 # Playbook: nextcloud-k3s.yml
 # Purpose:  Full infrastructure deployment and configuration.

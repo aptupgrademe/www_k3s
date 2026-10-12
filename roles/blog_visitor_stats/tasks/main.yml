@@ -99,5 +99,6 @@
   ansible.builtin.file:
     path: "{{ visitor_stats_dir }}/.backfilled"
     state: touch
+    mode: "0644"
     modification_time: preserve
     access_time: preserve

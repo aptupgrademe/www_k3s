@@ -183,7 +183,9 @@
 # Empty string (not installed) never equals k3s_version, so this correctly
 # triggers a download on first install too.
 - name: K3s | Check installed k3s version
-  ansible.builtin.shell: k3s --version 2>/dev/null | awk '{print $3}'
+  ansible.builtin.shell: |
+    set -o pipefail
+    k3s --version 2>/dev/null | awk '{print $3}'
   register: k3s_installed_version
   changed_when: false
   check_mode: false   # read-only query, also runs in --check
@@ -231,7 +233,9 @@
 # mounts /tmp with noexec (CIS), which blocks direct execution but not reading
 # the script as an sh argument.
 - name: K3s | Run K3s installer (skip binary download, flags from config.yaml)
-  ansible.builtin.shell: INSTALL_K3S_SKIP_DOWNLOAD=true sh /tmp/k3s-install.sh
+  ansible.builtin.command: sh /tmp/k3s-install.sh
+  environment:
+    INSTALL_K3S_SKIP_DOWNLOAD: "true"
   args:
     creates: /etc/systemd/system/k3s.service
   when: not k3s_unit.stat.exists

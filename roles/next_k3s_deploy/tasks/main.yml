@@ -8,15 +8,27 @@
 # Target:  K3s single-node on AlmaLinux 9
 # =============================================================================
 
-- ansible.builtin.import_tasks: dirs.yml
-- ansible.builtin.import_tasks: namespace_secrets.yml
-- ansible.builtin.import_tasks: external_services.yml
-- ansible.builtin.import_tasks: nextcloud.yml
-- ansible.builtin.import_tasks: collabora.yml
-- ansible.builtin.import_tasks: networkpolicy.yml
-- ansible.builtin.import_tasks: image_policy.yml
-- ansible.builtin.import_tasks: ingress.yml
-- ansible.builtin.import_tasks: cronjob.yml
-- ansible.builtin.import_tasks: exporters.yml
-- ansible.builtin.import_tasks: apps.yml
-- ansible.builtin.import_tasks: notify_push.yml
+- name: next_k3s_deploy | HostPath directories
+  ansible.builtin.import_tasks: dirs.yml
+- name: next_k3s_deploy | Namespace, Secret, ConfigMaps
+  ansible.builtin.import_tasks: namespace_secrets.yml
+- name: next_k3s_deploy | External Services (host MariaDB, Redis, Grafana)
+  ansible.builtin.import_tasks: external_services.yml
+- name: next_k3s_deploy | Nextcloud Deployment + Service
+  ansible.builtin.import_tasks: nextcloud.yml
+- name: next_k3s_deploy | Collabora Deployment + Service
+  ansible.builtin.import_tasks: collabora.yml
+- name: next_k3s_deploy | NetworkPolicy (requires common_calico)
+  ansible.builtin.import_tasks: networkpolicy.yml
+- name: next_k3s_deploy | Image registry allowlist (ValidatingAdmissionPolicy)
+  ansible.builtin.import_tasks: image_policy.yml
+- name: next_k3s_deploy | Ingress + TLS
+  ansible.builtin.import_tasks: ingress.yml
+- name: next_k3s_deploy | Background-job CronJob
+  ansible.builtin.import_tasks: cronjob.yml
+- name: next_k3s_deploy | Exporter NodePort Services
+  ansible.builtin.import_tasks: exporters.yml
+- name: next_k3s_deploy | Apps (enable/disable after the pod is up)
+  ansible.builtin.import_tasks: apps.yml
+- name: next_k3s_deploy | notify_push (High Performance Backend)
+  ansible.builtin.import_tasks: notify_push.yml

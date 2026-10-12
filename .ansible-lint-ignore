@@ -1,0 +1,13 @@
+# Accepted findings, per file (see .ansible-lint for the rule-wide skips).
+#
+# command-instead-of-module: the verify roles check the running system the
+# way an admin would - "systemctl is-active" returns the state string that
+# goes into the report, and curl needs --resolve <host>:443:127.0.0.1 to hit
+# the local ingress with the right SNI name, which the uri module cannot do.
+# Monit: "systemctl cat" (does the unit exist?) has no module equivalent.
+# Firewall handler: "systemctl try-restart" (restart only if running) has no
+# module equivalent either.
+roles/blog_verify/tasks/main.yml command-instead-of-module skip
+roles/nextcloud_verify/tasks/main.yml command-instead-of-module skip
+roles/common_monit/tasks/main.yml command-instead-of-module skip
+roles/common_firewall/handlers/main.yml command-instead-of-module skip

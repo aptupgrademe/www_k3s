@@ -1,3 +1,4 @@
+---
 - name: Validate sshd config
   ansible.builtin.command: sshd -t
   changed_when: false

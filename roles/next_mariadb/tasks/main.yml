@@ -209,6 +209,7 @@
 # -----------------------------------------------------------------------------
 - name: MariaDB | Check if the Nextcloud database exists
   ansible.builtin.shell: |
+    set -o pipefail
     mysql --protocol=socket --socket="{{ mariadb_socket }}" -u root -p"{{ mysql_root_password }}" \
         -e "SHOW DATABASES LIKE '{{ nextcloud_db }}';" | grep -Fx "{{ nextcloud_db }}"
   register: db_check
@@ -334,5 +335,3 @@
     login_user: root
     login_password: "{{ mysql_root_password }}"
   no_log: true
-
-

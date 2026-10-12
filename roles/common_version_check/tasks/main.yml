@@ -31,14 +31,18 @@
 # =============================================================================
 
 - name: Versions | K3s – installed version
-  ansible.builtin.shell: k3s --version 2>/dev/null | awk '{print $3}' || echo 'not installed'
+  ansible.builtin.shell: |
+    set -o pipefail
+    k3s --version 2>/dev/null | awk '{print $3}' || echo 'not installed'
   register: _vc_k3s_inst
   changed_when: false
   check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Versions | Helm – installed version
-  ansible.builtin.shell: helm version --short 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo 'not installed'
+  ansible.builtin.shell: |
+    set -o pipefail
+    helm version --short 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo 'not installed'
   register: _vc_helm_inst
   changed_when: false
   check_mode: false   # read-only query, also runs in --check
@@ -46,6 +50,7 @@
 
 - name: Versions | nginx-ingress – deployed chart version
   ansible.builtin.shell: |
+    set -o pipefail
     helm list -n ingress-nginx -o json 2>/dev/null | python3 -c "
     import sys, json
     data = json.load(sys.stdin)
@@ -61,6 +66,7 @@
 
 - name: Versions | cert-manager – deployed chart version
   ansible.builtin.shell: |
+    set -o pipefail
     helm list -n cert-manager -o json 2>/dev/null | python3 -c "
     import sys, json
     data = json.load(sys.stdin)
@@ -84,7 +90,9 @@
 # =============================================================================
 
 - name: Versions | Helm repo – update cache
-  ansible.builtin.shell: helm repo update 2>&1 | tail -2 || true
+  ansible.builtin.shell: |
+    set -o pipefail
+    helm repo update 2>&1 | tail -2 || true
   register: _vc_repo_update
   changed_when: false
   check_mode: false   # read-only query, also runs in --check
@@ -92,6 +100,7 @@
 
 - name: Versions | nginx-ingress – latest chart version in repo
   ansible.builtin.shell: |
+    set -o pipefail
     helm search repo nginx-stable/nginx-ingress -o json 2>/dev/null | python3 -c "
     import sys, json
     data = json.load(sys.stdin)
@@ -104,6 +113,7 @@
 
 - name: Versions | cert-manager – latest chart version in repo
   ansible.builtin.shell: |
+    set -o pipefail
     helm search repo jetstack/cert-manager -o json 2>/dev/null | python3 -c "
     import sys, json
     data = json.load(sys.stdin)

@@ -1,0 +1,33 @@
+---
+# ansible-lint config. Run locally:  ansible-lint
+# Runs automatically via pre-commit (.pre-commit-config.yaml) and on GitHub
+# (.github/workflows/lint.yml).
+
+exclude_paths:
+  - .cache/
+  - .github/
+  - docs/
+  - notes/
+  - scripts/
+  # Real host_vars are gitignored and vault-encrypted; the *.example files
+  # are templates with CHANGE_ME placeholders, not runnable vars.
+  - inventory/host_vars/
+  # Gitignored (real IPs); hosts.yml.example is the tracked template.
+  - inventory/hosts.yml
+
+skip_list:
+  # Role variables are shared on purpose: group_vars/host_vars set e.g.
+  # nextcloud_hostname once for several roles. A per-role prefix would mean
+  # renaming ~380 variables, including the ones in every host's vars.yml.
+  - var-naming[no-role-prefix]
+  # Task names start with the component, which is often lower-case by its
+  # own spelling: "cert-manager | ...", "notify_push | ...", "ingress-nginx | ...".
+  - name[casing]
+  # "when: x.changed" instead of a handler is deliberate where order matters:
+  # wait for a rollout right after the apply, not at the end of the play.
+  - no-handler
+  # Plays use the default linear strategy; run_once is exact there.
+  - run-once[task]
+
+warn_list:
+  - yaml[line-length]

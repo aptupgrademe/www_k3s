@@ -1,0 +1,27 @@
+---
+# yamllint config - used by ansible-lint (yaml[...] rules) and pre-commit.
+extends: default
+
+rules:
+  # Values are aligned in columns on purpose (group_vars, role defaults, the
+  # role lists in the playbooks) - easier to scan than "key: value" ragged.
+  colons:
+    max-spaces-after: -1
+  commas:
+    max-spaces-after: -1
+  # Long Jinja expressions and regexes read worse when wrapped; warn only.
+  line-length:
+    max: 160
+    level: warning
+  # Settings ansible-lint expects from a yamllint config:
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: false
+  braces:
+    max-spaces-inside: 1
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
+  truthy:
+    allowed-values: ["true", "false"]
+    check-keys: false

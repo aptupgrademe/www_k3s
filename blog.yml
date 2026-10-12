@@ -1,3 +1,4 @@
+---
 # =============================================================================
 # Playbook: blog.yml
 # Provisions a WordPress blog on a fresh AlmaLinux 9 server.

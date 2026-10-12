@@ -602,4 +602,3 @@
   ansible.builtin.file:
     path: /tmp/gf_alerts.py
     state: absent
-
