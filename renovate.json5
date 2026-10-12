@@ -1,0 +1,153 @@
+// Renovate: proposes version bumps as pull requests - the pins that were
+// checked by hand so far (inventory/group_vars/all/versions.yml), plus the
+// collections (requirements.yml), the GitHub Action and the pre-commit hooks.
+// Nothing is merged automatically: every PR is reviewed, then rolled out with
+// the playbooks (--check --diff first, see docs/*-operations.html).
+// Needs the Renovate GitHub app installed for this repository.
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: ["config:recommended"],
+  timezone: "Europe/Berlin",
+  schedule: ["before 6am on monday"],
+  prConcurrentLimit: 5,
+  dependencyDashboard: true,
+  labels: ["dependencies"],
+  "pre-commit": { enabled: true },
+
+  customManagers: [
+    // Container images:  blog_image_redis: "redis:7.4.11-alpine"
+    {
+      customType: "regex",
+      description: "Container images in group_vars",
+      managerFilePatterns: ["/^inventory/group_vars/all/versions\\.yml$/"],
+      matchStrings: ['\\n[a-z_]+_image_[a-z_]+:\\s+"(?<depName>[^":]+):(?<currentValue>[^"]+)"'],
+      datasourceTemplate: "docker",
+    },
+    // K3s: v1.36.5+k3s1
+    {
+      customType: "regex",
+      description: "K3s",
+      managerFilePatterns: ["/^inventory/group_vars/all/versions\\.yml$/"],
+      matchStrings: ['\\nk3s_version:\\s+"(?<currentValue>[^"]+)"'],
+      datasourceTemplate: "github-releases",
+      depNameTemplate: "k3s-io/k3s",
+      versioningTemplate: "regex:^v(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)\\+k3s(?<build>\\d+)$",
+    },
+    // Binaries pinned with a leading "v" (same form as the release tag)
+    {
+      customType: "regex",
+      description: "Helm",
+      managerFilePatterns: ["/^inventory/group_vars/all/versions\\.yml$/"],
+      matchStrings: ['\\nhelm_version:\\s+"(?<currentValue>v[^"]+)"'],
+      depNameTemplate: "helm/helm",
+      datasourceTemplate: "github-releases",
+    },
+    {
+      customType: "regex",
+      description: "Calico (policy-only manifest is vendored - re-derive it for a minor/major, see versions.yml notes)",
+      managerFilePatterns: ["/^inventory/group_vars/all/versions\\.yml$/"],
+      matchStrings: ['\\ncalico_version:\\s+"(?<currentValue>v[^"]+)"'],
+      depNameTemplate: "projectcalico/calico",
+      datasourceTemplate: "github-releases",
+    },
+    // Binaries pinned without the release tag's "v": node_exporter 1.12.1 <- tag v1.12.1
+    {
+      customType: "regex",
+      description: "Binaries with unprefixed pins",
+      managerFilePatterns: ["/^inventory/group_vars/all/versions\\.yml$/"],
+      matchStrings: [
+        '\\n(?<depName>node_exporter|prometheus|mysqld_exporter)_version:\\s+"(?<currentValue>[^"]+)"',
+      ],
+      packageNameTemplate: "prometheus/{{{depName}}}",
+      datasourceTemplate: "github-releases",
+      extractVersionTemplate: "^v(?<version>.+)$",
+    },
+    {
+      customType: "regex",
+      description: "WP-CLI",
+      managerFilePatterns: ["/^inventory/group_vars/all/versions\\.yml$/"],
+      matchStrings: ['\\nblog_wp_cli_version:\\s+"(?<currentValue>[^"]+)"'],
+      depNameTemplate: "wp-cli/wp-cli",
+      datasourceTemplate: "github-releases",
+      extractVersionTemplate: "^v(?<version>.+)$",
+    },
+    // Helm charts
+    {
+      customType: "regex",
+      description: "F5 nginx-ingress chart",
+      managerFilePatterns: ["/^inventory/group_vars/all/versions\\.yml$/"],
+      matchStrings: ['\\ningress_nginx_chart_version:\\s+"(?<currentValue>[^"]+)"'],
+      depNameTemplate: "nginx-ingress",
+      registryUrlTemplate: "https://helm.nginx.com/stable",
+      datasourceTemplate: "helm",
+    },
+    {
+      customType: "regex",
+      description: "cert-manager chart (repo versions are v-prefixed, the pin is not)",
+      managerFilePatterns: ["/^inventory/group_vars/all/versions\\.yml$/"],
+      matchStrings: ['\\ncert_manager_chart_version:\\s+"(?<currentValue>[^"]+)"'],
+      depNameTemplate: "cert-manager",
+      registryUrlTemplate: "https://charts.jetstack.io",
+      datasourceTemplate: "helm",
+      extractVersionTemplate: "^v?(?<version>.+)$",
+    },
+  ],
+
+  packageRules: [
+    // Keep the image variant: nextcloud:34.0.4-fpm stays -fpm, nginx stays
+    // -alpine, wordpress stays -php8.4-fpm (Renovate's docker versioning
+    // treats the suffix as compatibility marker already - stated explicitly).
+    {
+      matchDatasources: ["docker"],
+      versioning: "docker",
+    },
+    // nginx: stay on the stable branch (even minor: 1.30, 1.32, ...); odd
+    // minors are mainline (see the nginx note in versions.yml).
+    {
+      matchDatasources: ["docker"],
+      matchPackageNames: ["nginx"],
+      allowedVersions: "/^\\d+\\.\\d*[02468]\\.\\d+-alpine$/",
+    },
+    // Floating tag on purpose (busybox:1 for init containers).
+    {
+      matchDatasources: ["docker"],
+      matchPackageNames: ["busybox"],
+      enabled: false,
+    },
+    // WP-CLI is pinned together with its SHA-512 (blog_wp_cli_sha512), which
+    // Renovate cannot compute. Merging a version-only PR would make the blog's
+    // init container reject the download. Needs approval + manual checksum.
+    {
+      matchPackageNames: ["wp-cli/wp-cli"],
+      dependencyDashboardApproval: true,
+      prBodyNotes: [
+        "**Also update `blog_wp_cli_sha512`** from the `.sha512` asset of this release - otherwise the WordPress init container rejects the phar.",
+      ],
+    },
+    // A K3s minor is a Kubernetes minor upgrade (one at a time, read the
+    // upstream notes); a Calico minor needs the vendored policy-only manifest
+    // re-derived (versions.yml notes). Neither is a routine bump.
+    {
+      matchPackageNames: ["k3s-io/k3s", "projectcalico/calico"],
+      matchUpdateTypes: ["minor"],
+      dependencyDashboardApproval: true,
+      labels: ["dependencies", "minor - not routine"],
+      prBodyNotes: [
+        "K3s: Kubernetes minor upgrade, one minor at a time. Calico: re-derive `roles/common_calico/templates/calico-policy-only.yml.j2` from the new manifest instead of only bumping the version (see versions.yml notes).",
+      ],
+    },
+    // Host binary and sidecar image of mysqld_exporter move together.
+    {
+      matchPackageNames: ["prometheus/mysqld_exporter", "prom/mysqld-exporter"],
+      groupName: "mysqld_exporter",
+    },
+    // Majors are never routine here: Nextcloud must go one major at a time
+    // (34 -> 35, never skipping), MariaDB 10.11 -> 11.x is a migration,
+    // Helm/K3s majors change CLI/APIs. Separate PR, clearly labelled.
+    {
+      matchUpdateTypes: ["major"],
+      labels: ["dependencies", "major - read the release notes"],
+      dependencyDashboardApproval: true,
+    },
+  ],
+}
