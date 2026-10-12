@@ -64,7 +64,7 @@ mail_smtpport:     "587"
 mail_smtpauth:     true
 
 # ===========================================================================
-# RESOURCE SIZING (optional per-host overrides; defaults in group_vars/all.yml)
+# RESOURCE SIZING (optional per-host overrides; defaults in group_vars/all/main.yml)
 # ===========================================================================
 # Example values for a roomy host (8 vCPU / 24 GB). A smaller host lowers these
 # instead (see inventory/host_vars/sofie/vars.yml.example).
@@ -78,7 +78,7 @@ nextcloud_fpm_start_servers: 6
 nextcloud_fpm_min_spare:    4
 nextcloud_fpm_max_spare:    12
 
-# K3s container requests/limits (defaults in group_vars/all.yml reproduce the
+# K3s container requests/limits (defaults in group_vars/all/main.yml reproduce the
 # previous hardcoded values). This host is roomy enough to keep the defaults, so
 # they are left commented; uncomment and adjust to override:
 # nextcloud_fpm_mem_request: "512Mi"

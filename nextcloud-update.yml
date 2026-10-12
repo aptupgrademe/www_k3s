@@ -17,7 +17,7 @@
 #     → pulls latest images for current tags, restarts pods, updates apps
 #
 #   Step 2 – Version bumps (nextcloud-k3s.yml), only when tags were changed:
-#     Edit inventory/group_vars/all.yml:
+#     Edit inventory/group_vars/all/versions.yml:
 #       nextcloud_image_fpm, nextcloud_image_nginx, nextcloud_image_collabora,
 #       ingress_nginx_chart_version, cert_manager_chart_version
 #     ansible-playbook nextcloud-k3s.yml --limit <host>

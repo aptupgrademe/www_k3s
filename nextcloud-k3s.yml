@@ -8,7 +8,7 @@
 #   - Provision a new server from scratch
 #   - Apply configuration changes (vars, templates, occ settings)
 #   - Roll out new image tags or Helm chart versions after editing
-#     inventory/group_vars/all.yml
+#     inventory/group_vars/all/versions.yml
 #
 # -----------------------------------------------------------------------------
 # Update workflow – see also nextcloud-update.yml:
@@ -16,7 +16,7 @@
 #   Patch update (same tag, e.g. 33.0.2 → 33.0.3):
 #     → ansible-playbook nextcloud-update.yml --limit <host>
 #
-#   Version bump (tag/chart change in group_vars/all.yml):
+#   Version bump (tag/chart change in group_vars/all/versions.yml):
 #     → ansible-playbook nextcloud-k3s.yml --limit <host>
 #
 #   Full maintenance cycle (patch + version bumps):

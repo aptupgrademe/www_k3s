@@ -48,7 +48,7 @@ spec:
       # a 7 MB download to anyone who asks. It lives in its own emptyDir
       # instead, shared with the fpm container but outside the web root.
       #
-      # The download is pinned to a version + SHA-512 (group_vars/all.yml):
+      # The download is pinned to a version + SHA-512 (group_vars/all/versions.yml):
       # busybox wget does not verify TLS certificates, and the blog_wordpress
       # role runs this phar with --allow-root, so an unverified binary would
       # be arbitrary root-level code execution. A hash mismatch aborts the

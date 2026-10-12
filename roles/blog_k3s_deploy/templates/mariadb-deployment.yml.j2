@@ -1,6 +1,6 @@
 # MariaDB Deployment + Service – managed by Ansible (blog_k3s_deploy)
 # Data is persisted on the host via HostPath volume ({{ blog_k3s_db_dir }}).
-# Image version is controlled by blog_image_mariadb in group_vars/all.yml.
+# Image version is controlled by blog_image_mariadb in group_vars/all/versions.yml.
 ---
 apiVersion: apps/v1
 kind: Deployment

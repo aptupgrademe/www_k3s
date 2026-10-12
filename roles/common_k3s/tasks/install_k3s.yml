@@ -196,7 +196,7 @@
 # 2. Run the install script with INSTALL_K3S_SKIP_DOWNLOAD=true so it only
 #    sets up the service files without fetching the binary again.
 #
-# Pinned to k3s_version (group_vars/all.yml) rather than "latest" – this also
+# Pinned to k3s_version (group_vars/all/versions.yml) rather than "latest" – this also
 # runs when the binary already exists but is a different version, upgrading
 # in place. K3s' documented manual-upgrade procedure is exactly this: replace
 # the binary, restart the service (see notify below) – the embedded sqlite/

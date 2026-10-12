@@ -201,7 +201,7 @@ spec:
         - name: tmp
           mountPath: /tmp
         resources:
-          # Per-host overridable; defaults in group_vars/all.yml. PHP_MEMORY_LIMIT
+          # Per-host overridable; defaults in group_vars/all/main.yml. PHP_MEMORY_LIMIT
           # is 3G (needed for 2G uploads), so the mem limit must let the container
           # actually reach it - on a small host check this alongside Collabora's
           # limit so both cannot exhaust RAM at once.

@@ -1,0 +1,179 @@
+---
+# =============================================================================
+# ALL VERSION PINS IN ONE PLACE
+# =============================================================================
+# Every version the playbooks install or deploy, for all hosts. Change a
+# value here, run the playbook with --check --diff first, then for real
+# (see the "Updates" section of docs/*-operations.html). Renovate proposes
+# bumps of these lines as pull requests (renovate.json5).
+#
+# Pinned exactly, never "latest" or a floating tag: K3s uses
+# imagePullPolicy IfNotPresent, so a floating tag silently stays on whatever
+# build is cached on the node (seen with nginx 1.30, mariadb 10.11, redis 7).
+#
+# Not here, on purpose:
+#   requirements.yml           Ansible collections (ansible-galaxy reads them there)
+#   .pre-commit-config.yaml,   lint/scan tool versions (developer tooling,
+#   .github/workflows/         not deployed)
+# The reasons and history for each pin are in the NOTES below the table.
+# =============================================================================
+
+# --- Kubernetes platform ------------------------------------------------------
+k3s_version:                 "v1.36.5+k3s1"   # github.com/k3s-io/k3s/releases
+helm_version:                "v4.3.0"         # github.com/helm/helm/releases
+calico_version:              "v3.32.2"        # github.com/projectcalico/calico/releases (policy-only, see notes)
+ingress_nginx_chart_version: "2.6.4"          # F5 nginx-ingress chart, helm.nginx.com/stable index.yaml
+cert_manager_chart_version:  "1.21.2"         # charts.jetstack.io index.yaml (listed there as v1.21.2)
+
+# --- Nextcloud containers -------------------------------------------------------
+nextcloud_image_fpm:          "nextcloud:34.0.4-fpm"         # majors one at a time (34 -> 35)
+nextcloud_image_nginx:        "nginx:1.30.5-alpine"          # nginx stable branch, see notes
+nextcloud_image_collabora:    "collabora/code:26.04.5.1.1"
+nextcloud_image_fpm_exporter: "hipages/php-fpm_exporter:2.2.0"
+nextcloud_image_busybox:      "busybox:1"                    # init containers, floating on purpose
+
+# --- WordPress containers -------------------------------------------------------
+blog_image_wordpress:       "wordpress:7.1.3-php8.4-fpm"
+blog_image_nginx:           "nginx:1.30.5-alpine"            # keep equal to nextcloud_image_nginx
+blog_image_mariadb:         "mariadb:10.11.19"               # 10.11 LTS (until Feb 2028)
+blog_image_redis:           "redis:7.4.11-alpine"            # 7.4 = last Redis 7 line
+blog_image_mysqld_exporter: "prom/mysqld-exporter:v0.20.0"   # keep equal to mysqld_exporter_version
+blog_image_fpm_exporter:    "hipages/php-fpm_exporter:2.2.0"
+blog_image_busybox:         "busybox:1"                      # init containers, floating on purpose
+blog_wp_cli_version:        "2.12.0"                         # + checksum below, update both together
+blog_wp_cli_sha512:         "be928f6b8ca1e8dfb9d2f4b75a13aa4aee0896f8a9a0a1c45cd5d2c98605e6172e6d014dda2e27f88c98befc16c040cbb2bd1bfa121510ea5cdf5f6a30fe8832"
+
+# --- Host packages and binaries (outside K3s) ----------------------------------
+node_exporter_version:         "1.12.1"   # github.com/prometheus/node_exporter/releases
+prometheus_version:            "3.14.0"   # github.com/prometheus/prometheus/releases
+mysqld_exporter_version:       "0.20.0"   # host MariaDB of the Nextcloud servers
+nextcloud_mariadb_repo_version: "10.11"   # MariaDB Community repo series on the Nextcloud hosts
+
+
+# =============================================================================
+# NOTES (reasons and history - newest first per entry)
+# =============================================================================
+#
+# k3s_version
+#   common_k3s compares this with the installed version and upgrades in place
+#   (binary swap + service restart) if they differ.
+#   2026-10-11 v1.36.4+k3s1 -> v1.36.5+k3s1 (patch: gRPC CVE fix, supervisor
+#   router (spegel/pprof/metrics) rejects anonymous access, CoreDNS 1.14.7,
+#   metrics-server 0.9.0; containerd 2.3.4, runc 1.4.2, etcd 3.6.14
+#   unchanged). Traefik chart bumps again - irrelevant here, Traefik is in the
+#   disable list (see install_k3s.yml).
+#
+# helm_version
+#   Installed from the release tarball, not the v3-only get-helm-3 script.
+#   2026-09-13 v4.2.4 -> v4.3.0: additions only (duration template functions,
+#   rollback --description, ownership check before uninstall deletes).
+#   2026-07-12 migrated from Helm v3 to v4: checked against this repo's Helm
+#   usage (classic helm repo add/search/update, helm upgrade --install, no
+#   --atomic/--force flags, no OCI registries, no Go SDK usage) - none of the
+#   known v4 breaking changes apply. Helm 3 stopped receiving bugfixes
+#   2026-07-08, security patches end 2026-11-11. The kubernetes.core modules
+#   need collection >= 6.5.0 for Helm 4 (requirements.yml).
+#
+# calico_version
+#   "Policy-only" mode (common_calico): only Felix + kube-controllers, reading
+#   Pod/NetworkPolicy objects straight from the Kubernetes API. K3s's built-in
+#   Flannel keeps doing all pod networking/IPAM/CNI duties - Calico only adds
+#   NetworkPolicy enforcement, which Flannel alone silently ignores (verified
+#   live: a deny-all policy had zero effect before Calico was installed).
+#   The manifest in common_calico/templates is vendored and only its image
+#   tags are templated, so a bump swaps images while the manifest structure
+#   stays at the version it was derived from. Fine for a patch release with no
+#   CRD or RBAC changes - re-derive the manifest for a minor or major bump
+#   instead of just moving this string.
+#   2026-09-13 v3.32.1 -> v3.32.2: bugfix/CVE release. Two fixes matter here: a
+#   panic in kube-controllers when the informer delivers a tombstone to a
+#   delete handler, and IP-set programming errors in nftables mode - both
+#   components this host actually runs.
+#
+# ingress_nginx_chart_version
+#   appVersion 5.5.4 (controller image). Re-checked 2026-08-20 against the
+#   published helm.nginx.com/stable index: still the newest chart actually
+#   released (2.7.0 existed on GitHub's main branch but was not yet packaged/
+#   published - don't trust Chart.yaml on main as a proxy for "latest
+#   available", check the index.yaml itself).
+#   artifacthub.io/packages/helm/nginx-stable/nginx-ingress
+#
+# cert_manager_chart_version
+#   Taken from charts.jetstack.io index.yaml, not GitHub (same reason as the
+#   nginx-ingress note). The index lists versions with a "v" prefix; helm
+#   --version accepts them without it.
+#   2026-09-13 1.21.1 -> 1.21.2 (appVersion v1.21.2).
+#   artifacthub.io/packages/helm/cert-manager/cert-manager
+#
+# Container images in general
+#   Check for new versions:
+#     Nextcloud: hub.docker.com/_/nextcloud/tags  (filter: *-fpm)
+#     Collabora: hub.docker.com/r/collabora/code/tags
+#     WordPress: hub.docker.com/_/wordpress/tags  (filter: *-fpm)
+#     MariaDB:   hub.docker.com/_/mariadb/tags
+#     nginx:     hub.docker.com/_/nginx/tags      (filter: *-alpine)
+#     Redis:     hub.docker.com/_/redis/tags      (filter: *-alpine)
+#     exporters: github.com/prometheus/mysqld_exporter/releases,
+#                github.com/hipages/php-fpm_exporter/releases
+#   A changed tag here is rolled out by the deploy playbooks (rollout restart).
+#   A rebuilt image under the SAME tag is picked up by blog-update.yml /
+#   nextcloud-update.yml (role common_image_refresh).
+#
+# nextcloud_image_fpm
+#   Was floating on the major-only tag "34-fpm" (silently drifts to whatever
+#   Docker Hub rebuilds under that tag). Pinned to the exact patch 2026-08-20.
+#   Major upgrades strictly one at a time (Nextcloud does not support skipping
+#   a major).
+#
+# nextcloud_image_nginx / blog_image_nginx
+#   nginx stable branch (even minor). Was 1.31 (mainline) - moved to the
+#   stable 1.30.x line for production. Pinned to the exact patch on purpose:
+#   the floating 1.30-alpine tag stayed on a cached 1.30.3 under
+#   imagePullPolicy IfNotPresent, and 1.30.3 is still vulnerable. 1.30.4
+#   carries the fixes for CVE-2026-42533 (map+regex buffer overflow),
+#   CVE-2026-60005 (slice-module memory disclosure) and CVE-2026-56434
+#   (ssi-module use-after-free); 1.30.5 adds the fix for CVE-2026-90439
+#   (HTTP/3 module buffer overflow). Pinning the patch forces a fresh pull.
+#   2026-09-18 1.30.4 -> 1.30.5 (both stacks).
+#
+# nextcloud_image_collabora
+#   2026-10-11 26.04.3.1.1 -> 26.04.5.1.1 (patch within 26.04).
+#
+# blog_image_wordpress
+#   2026-10-11 7.1.1 -> 7.1.3 (core already 7.1.3 via the nightly minor
+#   updates; the image catches up PHP/OS layers).
+#   2026-09-20 7.1.0 -> 7.1.1 (maintenance + security, 11 security fixes;
+#   image confirmed present on Docker Hub 2026-09-20 after a 2-day lag).
+#
+# blog_image_mariadb
+#   MariaDB 10.11 LTS (supported until Feb 2028), pinned to the exact patch for
+#   the same reason as nginx: the floating 10.11 tag left the node on a stale
+#   cached layer (verified 2026-08-16 - node had digest be981e4113326 while
+#   Docker Hub's 10.11 tag was rebuilt to de61fed4a40d3 on 2026-08-04).
+#   10.11.18 was that rebuilt image, byte for byte.
+#   2026-08-28 10.11.18 -> 10.11.19.
+#
+# blog_image_redis
+#   Object cache for WordPress (pure in-memory, no persistence). Exact patch
+#   pin, same stale-cache reason as MariaDB (node was on 6ab0b6e738177, Hub's
+#   7-alpine had moved to e7723ff73d963). 7.4 is the last Redis 7 LTS line;
+#   moving to 8.x is a deliberate major upgrade, not a patch bump.
+#   2026-09-02 7.4.10-alpine -> 7.4.11-alpine.
+#
+# blog_wp_cli_version / blog_wp_cli_sha512
+#   Supply-chain protection: the init container downloads this phar and the
+#   blog_wordpress role executes it with --allow-root, so an altered binary
+#   would mean arbitrary code execution as root. busybox wget does NOT
+#   validate TLS certificates ("TLS certificate validation not implemented"),
+#   which makes the SHA-512 check the actual integrity control here.
+#   To upgrade, take both values from the release page (the .sha512 asset
+#   sits next to the .phar): github.com/wp-cli/wp-cli/releases
+#
+# prometheus_version
+#   2026-08-28 3.13.2 -> 3.14.0.
+#
+# nextcloud_mariadb_repo_version
+#   Series of the MariaDB Community repository on the Nextcloud hosts
+#   (next_packages; the AppStream mariadb module is disabled so it cannot
+#   shadow it). Moving to another series is a database migration, not a
+#   routine bump - Renovate does not track this one.

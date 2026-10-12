@@ -10,7 +10,7 @@
 # image isn't one of the ones this repo actually deploys.
 #
 # Every image reference is matched by repository name only (not tag), so a
-# routine version bump in group_vars/all.yml never needs a matching change
+# routine version bump in group_vars/all/versions.yml never needs a matching change
 # here — this blocks a *different* image being substituted, not a version
 # of an already-approved one. Scoped to the wordpress namespace via
 # namespaceSelector, which does NOT mean "can't interfere with cert-manager":

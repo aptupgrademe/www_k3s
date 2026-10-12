@@ -62,7 +62,7 @@ mail_smtpport:     "587"
 mail_smtpauth:     true
 
 # ===========================================================================
-# RESOURCE SIZING (optional per-host overrides; defaults in group_vars/all.yml)
+# RESOURCE SIZING (optional per-host overrides; defaults in group_vars/all/main.yml)
 # ===========================================================================
 # Sized for this host: 6 vCPU / 12 GB, NO swap. sofie also serves far fewer
 # users and much less data than cvjm, so this lower sizing is comfortable, not

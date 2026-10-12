@@ -2,7 +2,7 @@
 # =============================================================================
 # Role: next_packages
 # Purpose: Install repositories and host packages for AlmaLinux 9.
-#          Sets up MariaDB 10.11, Redis, SELinux tools, and utilities.
+#          Sets up MariaDB (nextcloud_mariadb_repo_version), Redis, SELinux tools, and utilities.
 #          Nginx and PHP run inside K3s (next_k3s_deploy), not on the host.
 # Variables: none role-internal - the package lists are inline in this file.
 # =============================================================================
@@ -68,20 +68,20 @@
 
 
 # -----------------------------------------------------------------------------
-# STEP 4: Add the MariaDB 10.11 Community repository
+# STEP 4: Add the MariaDB Community repository (series: nextcloud_mariadb_repo_version)
 # -----------------------------------------------------------------------------
 - name: Packages | Import MariaDB Community GPG key
   ansible.builtin.rpm_key:
     state: present
     key: https://mirror.mariadb.org/yum/RPM-GPG-KEY-MariaDB
 
-- name: Packages | Add MariaDB 10.11 Community repository
+- name: Packages | Add the MariaDB Community repository ({{ nextcloud_mariadb_repo_version }})
   ansible.builtin.copy:
     dest: /etc/yum.repos.d/mariadb.repo
     content: |
       [mariadb]
-      name=MariaDB 10.11 - AlmaLinux 9
-      baseurl=https://mirror.mariadb.org/yum/10.11/rhel/9/$basearch
+      name=MariaDB {{ nextcloud_mariadb_repo_version }} - AlmaLinux 9
+      baseurl=https://mirror.mariadb.org/yum/{{ nextcloud_mariadb_repo_version }}/rhel/9/$basearch
       gpgkey=https://mirror.mariadb.org/yum/RPM-GPG-KEY-MariaDB
       gpgcheck=1
       enabled=1

@@ -70,7 +70,7 @@ spec:
         - containerPort: 9980
           name: http
         resources:
-          # Per-host overridable; defaults in group_vars/all.yml. Concurrent-doc
+          # Per-host overridable; defaults in group_vars/all/main.yml. Concurrent-doc
           # capacity scales with the memory limit (~150-200 MB per open document);
           # the 3Gi default serves ~12 simultaneous editors.
           requests:

@@ -1,0 +1,71 @@
+---
+# =============================================================================
+# Settings shared by all hosts. ALL version pins are in versions.yml next to
+# this file; per-host values are in inventory/host_vars/<host>/.
+# =============================================================================
+
+# =============================================================================
+# K3s / Kubernetes cluster settings
+# =============================================================================
+
+# CIDR for K3s pods (Flannel default).  Used in:
+#   - nftables rules (common_firewall) to allow pod → host access
+#   - Nginx sidecar set_real_ip_from directive
+k3s_pod_cidr: "10.42.0.0/16"
+
+# CIDR for K3s Services.  Collabora's ClusterIP is in this range;
+# add it to wopi_allowed_hosts in host_vars so Nextcloud accepts WOPI callbacks.
+k3s_service_cidr: "10.43.0.0/16"
+
+# HostPath directory for Nextcloud application files (PHP, apps, config, themes).
+nextcloud_k3s_www_dir: /srv/nextcloud-www
+
+# HostPath directory for WordPress application files (PHP core, wp-content).
+blog_k3s_www_dir: /srv/wordpress-www
+
+# HostPath directory for MariaDB data files (InnoDB, system tables).
+blog_k3s_db_dir: /srv/wordpress-db
+
+# =============================================================================
+# Kubernetes API access for the kubernetes.core modules (k8s, k8s_info, helm,
+# helm_repository). They run on the host itself and use the K3s admin
+# kubeconfig, like "k3s kubectl" does. Needs python3-kubernetes on the host
+# (installed by common_k3s) and kubernetes.core >= 6.5.0 on the controller
+# for Helm 4 (requirements.yml).
+# =============================================================================
+k3s_kubeconfig: /etc/rancher/k3s/k3s.yaml
+
+# =============================================================================
+# Monitoring
+# =============================================================================
+# (node_exporter / prometheus versions: versions.yml)
+prometheus_retention:  "30d"
+# grafana_admin_pass: set per host in host_vars/<host>/vault.yml
+
+# =============================================================================
+# Per-host resource sizing (K3s requests/limits + Collabora concurrency)
+# =============================================================================
+# These were hardcoded in the deployment templates and sized for the original
+# ~8 GB production hosts. They are variables now so each host can size to its
+# own hardware - override in inventory/host_vars/<host>/vars.yml. A roomy host
+# (cvjm: 8 vCPU / 24 GB) keeps/raises them; a smaller host (e.g. sofie) lowers
+# them. The defaults below reproduce the previous hardcoded values, so any host
+# that overrides nothing behaves exactly as before.
+#
+# Nextcloud PHP-FPM container (worker counts are separate: nextcloud_fpm_max_children etc.)
+nextcloud_fpm_mem_request: "512Mi"
+nextcloud_fpm_cpu_request: "250m"
+nextcloud_fpm_mem_limit:   "4Gi"
+nextcloud_fpm_cpu_limit:   "1500m"
+#
+# Collabora container. Concurrent-document capacity is bounded mainly by memory
+# (~150-200 MB per open document): the 3Gi default comfortably serves ~12
+# simultaneous editors, the realistic ceiling here (151 users total, far fewer
+# editing at once). num_prealloc_children pre-forks kit processes for faster
+# first opens; max_concurrency is CPU threads per open document.
+collabora_mem_request:    "1Gi"
+collabora_cpu_request:    "500m"
+collabora_mem_limit:      "3Gi"
+collabora_cpu_limit:      "2000m"
+collabora_num_prealloc:    4
+collabora_max_concurrency: 4

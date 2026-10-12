@@ -9,7 +9,7 @@
 #          its own KUBE-* chains in iptables (a separate subsystem), so there
 #          is no lock contention with nftables.
 # Target:  AlmaLinux 9
-# Variables: addresses come from the inventory (group_vars/all.yml and
+# Variables: addresses come from the inventory (group_vars/all/main.yml and
 #            host_vars/<host>/vars.yml); the only role defaults are the
 #            optional SSH country filter (fw_ssh_geo_countries/_extra).
 # =============================================================================

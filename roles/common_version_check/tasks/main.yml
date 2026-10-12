@@ -73,7 +73,7 @@
     if data:
         # jetstack/cert-manager chart versions are 'v'-prefixed (unlike most
         # charts, e.g. nginx-ingress); strip it so it compares equal to the
-        # unprefixed cert_manager_chart_version in group_vars/all.yml.
+        # unprefixed cert_manager_chart_version in group_vars/all/versions.yml.
         print(data[0]['chart'].replace('cert-manager-', '', 1).lstrip('v'))
     else:
         print('not deployed')
@@ -225,7 +225,7 @@
               deployed  : {{ (_br + _r_cm_dep + '  ⚠ NOT YET DEPLOYED' + _z) if not _f_cm_dep | bool else _r_cm_dep }}
               latest    : {{ (_br + _r_cm_new + '  ⚠ UPDATE AVAILABLE IN group_vars' + _z) if (not _f_cm_ok | bool and _r_cm_new != '?') else _r_cm_new }}
 
-      {{ _h }}── Container Images (configured in group_vars/all.yml) ────────{{ _z }}
+      {{ _h }}── Container Images (configured in group_vars/all/versions.yml) ────────{{ _z }}
       {% if 'blog' in group_names %}
         {{ _info }}  WordPress FPM    : {{ blog_image_wordpress }}
         {{ _info }}  MariaDB          : {{ blog_image_mariadb }}
@@ -243,5 +243,5 @@
         {{ _info }}  node-exporter    : {{ node_exporter_version }}
         {{ _info }}  Prometheus       : {{ prometheus_version }}
 
-      {{ _h }}  To update: edit inventory/group_vars/all.yml and re-run the playbook.{{ _z }}
+      {{ _h }}  To update: edit inventory/group_vars/all/versions.yml and re-run the playbook.{{ _z }}
       {{ _h }}══════════════════════════════════════════════════════════════{{ _z }}

@@ -28,8 +28,8 @@ PY=${K8S_TEST_PYTHON:-python3}
 # second run is a real idempotency problem.
 ALLOW_CHANGED='mysqld_exporter database user'   # kubectl exec is stubbed
 
-K3S_VERSION=$(grep -oP '^k3s_version:\s*"\K[^"]+' "$REPO/inventory/group_vars/all.yml")
-HELM_VERSION=$(grep -oP '^helm_version:\s*"\K[^"]+' "$REPO/inventory/group_vars/all.yml")
+K3S_VERSION=$(grep -oP '^k3s_version:\s*"\K[^"]+' "$REPO/inventory/group_vars/all/versions.yml")
+HELM_VERSION=$(grep -oP '^helm_version:\s*"\K[^"]+' "$REPO/inventory/group_vars/all/versions.yml")
 
 "$PY" -c 'import kubernetes' 2>/dev/null || {
   echo "Python '$PY' has no 'kubernetes' package - see README.md (K8S_TEST_PYTHON)." >&2; exit 2; }

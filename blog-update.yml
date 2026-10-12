@@ -30,7 +30,7 @@
 # -----------------------------------------------------------------------------
 # Full update workflow:
 #   Plugins/themes/translations/minor core, rebuilt images -> this playbook
-#   Version bumps (image tags in inventory/group_vars/all.yml)
+#   Version bumps (image tags in inventory/group_vars/all/versions.yml)
 #     -> ansible-playbook blog.yml --limit <host> --tags blog_k3s_deploy
 # The nightly job keeps running as before; this playbook is for "now".
 # -----------------------------------------------------------------------------
