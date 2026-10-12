@@ -73,6 +73,7 @@
     status_code: 200
     return_content: true
   register: _v_status
+  check_mode: false   # read-only GET, also runs in --check (uri is skipped there otherwise)
   failed_when: false
   delegate_to: localhost
   become: false

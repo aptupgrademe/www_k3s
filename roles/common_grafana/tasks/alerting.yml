@@ -26,6 +26,7 @@
     url: "http://127.0.0.1:3000/api/health"
     status_code: 200
   register: _gf_health
+  check_mode: false   # read-only API query, also runs in --check
   until: _gf_health.status == 200
   retries: 20
   delay: 3
@@ -44,6 +45,7 @@
     force_basic_auth: true
     status_code: 200
   register: _gf_contacts
+  check_mode: false   # read-only API query, also runs in --check
   no_log: true
 
 - name: Grafana | Create email contact point

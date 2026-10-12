@@ -11,6 +11,7 @@
     force_basic_auth: true
     status_code: [200, 404]
   register: grafana_ds_check
+  check_mode: false   # read-only API query, also runs in --check
 
 - name: Grafana | Create Prometheus datasource
   ansible.builtin.uri:
@@ -30,187 +31,192 @@
   when: grafana_ds_check.status == 404
 
 
-# -----------------------------------------------------------------------------
-# Dashboard 1860 – Node Exporter Full
-# -----------------------------------------------------------------------------
-- name: Grafana | Download dashboard 1860 from Grafana.com
-  ansible.builtin.get_url:
-    url: "https://grafana.com/api/dashboards/1860/revisions/latest/download"
-    dest: /tmp/grafana-dashboard-1860.json
-    mode: "0644"
-    force: false          # skip download if file already present
+# The imports download dashboard JSON to /tmp, read it back and POST it with
+# overwrite: true on every run - there is no state to compare, and in --check
+# the download is skipped, so the read-back would fail. --check skips them.
+- name: Grafana | Import dashboards (skipped in --check)
+  when: not ansible_check_mode
+  block:
+    # -----------------------------------------------------------------------------
+    # Dashboard 1860 – Node Exporter Full
+    # -----------------------------------------------------------------------------
+    - name: Grafana | Download dashboard 1860 from Grafana.com
+      ansible.builtin.get_url:
+        url: "https://grafana.com/api/dashboards/1860/revisions/latest/download"
+        dest: /tmp/grafana-dashboard-1860.json
+        mode: "0644"
+        force: false          # skip download if file already present
 
-- name: Grafana | Read dashboard JSON from remote host
-  ansible.builtin.slurp:
-    src: /tmp/grafana-dashboard-1860.json
-  register: dashboard_1860_raw
+    - name: Grafana | Read dashboard JSON from remote host
+      ansible.builtin.slurp:
+        src: /tmp/grafana-dashboard-1860.json
+      register: dashboard_1860_raw
 
-- name: Grafana | Import dashboard 1860 via Grafana API
-  ansible.builtin.uri:
-    url: "http://127.0.0.1:3000/api/dashboards/import"
-    method: POST
-    user: "{{ grafana_basic_auth_user }}"
-    password: "{{ grafana_admin_pass }}"
-    force_basic_auth: true
-    body_format: json
-    body:
-      # Fixed uid ensures overwrite: true always replaces the same dashboard
-      # instead of creating a new one on each playbook run.
-      dashboard: "{{ dashboard_1860_raw.content | b64decode | from_json | combine({'uid': 'rYdddlPWk'}) }}"
-      overwrite: true
-      inputs:
-        - name: "DS_PROMETHEUS"
-          type: "datasource"
-          pluginId: "prometheus"
-          value: "Prometheus"
-      folderId: 0
-    status_code: 200
-  register: import_1860
-  # The whole dashboard JSON would otherwise be logged to the target's syslog
-  # with every run ("message too long" from rsyslog, found 2026-10-02).
-  no_log: true
+    - name: Grafana | Import dashboard 1860 via Grafana API
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:3000/api/dashboards/import"
+        method: POST
+        user: "{{ grafana_basic_auth_user }}"
+        password: "{{ grafana_admin_pass }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          # Fixed uid ensures overwrite: true always replaces the same dashboard
+          # instead of creating a new one on each playbook run.
+          dashboard: "{{ dashboard_1860_raw.content | b64decode | from_json | combine({'uid': 'rYdddlPWk'}) }}"
+          overwrite: true
+          inputs:
+            - name: "DS_PROMETHEUS"
+              type: "datasource"
+              pluginId: "prometheus"
+              value: "Prometheus"
+          folderId: 0
+        status_code: 200
+      register: import_1860
+      # The whole dashboard JSON would otherwise be logged to the target's syslog
+      # with every run ("message too long" from rsyslog, found 2026-10-02).
+      no_log: true
 
-# Dashboard 1860 uses the modern Grafana 11 format (no __inputs section).
-# The ds_prometheus datasource variable and the node/job chain are not
-# initialised by the import API, so panels show "No data" on first open.
-# We write a small Python script to the server, run it, then delete it.
-- name: Grafana | Write Node Exporter Full variable patch script
-  ansible.builtin.copy:
-    dest: /tmp/gf_patch_1860.py
-    mode: "0700"
-    owner: root
-    content: |
-      import json, urllib.request, base64, os
-      BASE = "http://127.0.0.1:3000"
-      USER = os.environ["GF_USER"]
-      PASS = os.environ["GF_PASS"]
-      DASH_UID = os.environ["GF_DASH_UID"]
-      HOSTNAME = os.environ["GF_HOSTNAME"]
+    # Dashboard 1860 uses the modern Grafana 11 format (no __inputs section).
+    # The ds_prometheus datasource variable and the node/job chain are not
+    # initialised by the import API, so panels show "No data" on first open.
+    # We write a small Python script to the server, run it, then delete it.
+    - name: Grafana | Write Node Exporter Full variable patch script
+      ansible.builtin.copy:
+        dest: /tmp/gf_patch_1860.py
+        mode: "0700"
+        owner: root
+        content: |
+          import json, urllib.request, base64, os
+          BASE = "http://127.0.0.1:3000"
+          USER = os.environ["GF_USER"]
+          PASS = os.environ["GF_PASS"]
+          DASH_UID = os.environ["GF_DASH_UID"]
+          HOSTNAME = os.environ["GF_HOSTNAME"]
 
-      def api(path, method="GET", body=None):
-          req = urllib.request.Request(f"{BASE}{path}", method=method)
-          creds = base64.b64encode(f"{USER}:{PASS}".encode()).decode()
-          req.add_header("Authorization", f"Basic {creds}")
-          req.add_header("Content-Type", "application/json")
-          data = json.dumps(body).encode() if body else None
-          with urllib.request.urlopen(req, data=data) as r:
-              return json.load(r)
+          def api(path, method="GET", body=None):
+              req = urllib.request.Request(f"{BASE}{path}", method=method)
+              creds = base64.b64encode(f"{USER}:{PASS}".encode()).decode()
+              req.add_header("Authorization", f"Basic {creds}")
+              req.add_header("Content-Type", "application/json")
+              data = json.dumps(body).encode() if body else None
+              with urllib.request.urlopen(req, data=data) as r:
+                  return json.load(r)
 
-      prom_uid = api("/api/datasources/name/Prometheus")["uid"]
-      d        = api(f"/api/dashboards/uid/{DASH_UID}")
-      dash     = d["dashboard"]
-      meta     = d["meta"]
+          prom_uid = api("/api/datasources/name/Prometheus")["uid"]
+          d        = api(f"/api/dashboards/uid/{DASH_UID}")
+          dash     = d["dashboard"]
+          meta     = d["meta"]
 
-      defaults = {
-          "ds_prometheus": {
-              "current": {"selected": True, "text": "Prometheus", "value": prom_uid},
-              "options":  [{"selected": True, "text": "Prometheus", "value": prom_uid}],
-          },
-          "job":      {"current": {"selected": True, "text": "node",      "value": "node"}},
-          "nodename": {"current": {"selected": True, "text": "localhost",  "value": "localhost"}},
-          "node":     {"current": {"selected": True, "text": HOSTNAME,     "value": HOSTNAME}},
-      }
-      for var in dash.get("templating", {}).get("list", []):
-          if var.get("name") in defaults:
-              var.update(defaults[var["name"]])
+          defaults = {
+              "ds_prometheus": {
+                  "current": {"selected": True, "text": "Prometheus", "value": prom_uid},
+                  "options":  [{"selected": True, "text": "Prometheus", "value": prom_uid}],
+              },
+              "job":      {"current": {"selected": True, "text": "node",      "value": "node"}},
+              "nodename": {"current": {"selected": True, "text": "localhost",  "value": "localhost"}},
+              "node":     {"current": {"selected": True, "text": HOSTNAME,     "value": HOSTNAME}},
+          }
+          for var in dash.get("templating", {}).get("list", []):
+              if var.get("name") in defaults:
+                  var.update(defaults[var["name"]])
 
-      r = api("/api/dashboards/db", method="POST", body={
-          "dashboard": dash, "overwrite": True,
-          "folderId":  meta.get("folderId", 0),
-      })
-      print(r.get("status", "?"))
+          r = api("/api/dashboards/db", method="POST", body={
+              "dashboard": dash, "overwrite": True,
+              "folderId":  meta.get("folderId", 0),
+          })
+          print(r.get("status", "?"))
 
-- name: Grafana | Patch Node Exporter Full variable defaults
-  ansible.builtin.command: python3 /tmp/gf_patch_1860.py
-  environment:
-    GF_USER:     "{{ grafana_basic_auth_user }}"
-    GF_PASS:     "{{ grafana_admin_pass }}"
-    GF_DASH_UID: "{{ import_1860.json.uid }}"
-    GF_HOSTNAME: "{{ inventory_hostname }}"
-  changed_when: false
-  no_log: true
+    - name: Grafana | Patch Node Exporter Full variable defaults
+      ansible.builtin.command: python3 /tmp/gf_patch_1860.py
+      environment:
+        GF_USER:     "{{ grafana_basic_auth_user }}"
+        GF_PASS:     "{{ grafana_admin_pass }}"
+        GF_DASH_UID: "{{ import_1860.json.uid }}"
+        GF_HOSTNAME: "{{ inventory_hostname }}"
+      changed_when: false
+      no_log: true
 
-- name: Grafana | Remove Node Exporter Full patch script
-  ansible.builtin.file:
-    path: /tmp/gf_patch_1860.py
-    state: absent
-
-
-# -----------------------------------------------------------------------------
-# Dashboard 7362 – MySQL Overview (mysqld_exporter / MariaDB)
-# -----------------------------------------------------------------------------
-- name: Grafana | Download dashboard 7362 from Grafana.com
-  ansible.builtin.get_url:
-    url: "https://grafana.com/api/dashboards/7362/revisions/latest/download"
-    dest: /tmp/grafana-dashboard-7362.json
-    mode: "0644"
-    force: false
-
-- name: Grafana | Read dashboard JSON 7362 from remote host
-  ansible.builtin.slurp:
-    src: /tmp/grafana-dashboard-7362.json
-  register: dashboard_7362_raw
-
-- name: Grafana | Import dashboard 7362 via Grafana API
-  ansible.builtin.uri:
-    url: "http://127.0.0.1:3000/api/dashboards/import"
-    method: POST
-    user: "{{ grafana_basic_auth_user }}"
-    password: "{{ grafana_admin_pass }}"
-    force_basic_auth: true
-    body_format: json
-    body:
-      dashboard: "{{ dashboard_7362_raw.content | b64decode | from_json | combine({'uid': 'MQWgroiiz'}) }}"
-      overwrite: true
-      inputs:
-        - name: "DS_PROMETHEUS"
-          type: "datasource"
-          pluginId: "prometheus"
-          value: "Prometheus"
-      folderId: 0
-    status_code: 200
-  # The whole dashboard JSON would otherwise be logged to the target's syslog
-  # with every run ("message too long" from rsyslog, found 2026-10-02).
-  no_log: true
+    - name: Grafana | Remove Node Exporter Full patch script
+      ansible.builtin.file:
+        path: /tmp/gf_patch_1860.py
+        state: absent
 
 
-# -----------------------------------------------------------------------------
-# Dashboard 4912 – PHP-FPM (php-fpm_exporter)
-# -----------------------------------------------------------------------------
-- name: Grafana | Download dashboard 4912 from Grafana.com
-  ansible.builtin.get_url:
-    url: "https://grafana.com/api/dashboards/4912/revisions/latest/download"
-    dest: /tmp/grafana-dashboard-4912.json
-    mode: "0644"
-    force: false
+    # -----------------------------------------------------------------------------
+    # Dashboard 7362 – MySQL Overview (mysqld_exporter / MariaDB)
+    # -----------------------------------------------------------------------------
+    - name: Grafana | Download dashboard 7362 from Grafana.com
+      ansible.builtin.get_url:
+        url: "https://grafana.com/api/dashboards/7362/revisions/latest/download"
+        dest: /tmp/grafana-dashboard-7362.json
+        mode: "0644"
+        force: false
 
-- name: Grafana | Read dashboard JSON 4912 from remote host
-  ansible.builtin.slurp:
-    src: /tmp/grafana-dashboard-4912.json
-  register: dashboard_4912_raw
+    - name: Grafana | Read dashboard JSON 7362 from remote host
+      ansible.builtin.slurp:
+        src: /tmp/grafana-dashboard-7362.json
+      register: dashboard_7362_raw
 
-- name: Grafana | Import dashboard 4912 via Grafana API
-  ansible.builtin.uri:
-    url: "http://127.0.0.1:3000/api/dashboards/import"
-    method: POST
-    user: "{{ grafana_basic_auth_user }}"
-    password: "{{ grafana_admin_pass }}"
-    force_basic_auth: true
-    body_format: json
-    body:
-      dashboard: "{{ dashboard_4912_raw.content | b64decode | from_json | combine({'uid': 'f67a223d-b1b6-4f5a-8c5d-233a7a8aeb98'}) }}"
-      overwrite: true
-      inputs:
-        - name: "DS_PROMETHEUS"
-          type: "datasource"
-          pluginId: "prometheus"
-          value: "Prometheus"
-      folderId: 0
-    status_code: 200
-  # The whole dashboard JSON would otherwise be logged to the target's syslog
-  # with every run ("message too long" from rsyslog, found 2026-10-02).
-  no_log: true
+    - name: Grafana | Import dashboard 7362 via Grafana API
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:3000/api/dashboards/import"
+        method: POST
+        user: "{{ grafana_basic_auth_user }}"
+        password: "{{ grafana_admin_pass }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          dashboard: "{{ dashboard_7362_raw.content | b64decode | from_json | combine({'uid': 'MQWgroiiz'}) }}"
+          overwrite: true
+          inputs:
+            - name: "DS_PROMETHEUS"
+              type: "datasource"
+              pluginId: "prometheus"
+              value: "Prometheus"
+          folderId: 0
+        status_code: 200
+      # The whole dashboard JSON would otherwise be logged to the target's syslog
+      # with every run ("message too long" from rsyslog, found 2026-10-02).
+      no_log: true
 
+
+    # -----------------------------------------------------------------------------
+    # Dashboard 4912 – PHP-FPM (php-fpm_exporter)
+    # -----------------------------------------------------------------------------
+    - name: Grafana | Download dashboard 4912 from Grafana.com
+      ansible.builtin.get_url:
+        url: "https://grafana.com/api/dashboards/4912/revisions/latest/download"
+        dest: /tmp/grafana-dashboard-4912.json
+        mode: "0644"
+        force: false
+
+    - name: Grafana | Read dashboard JSON 4912 from remote host
+      ansible.builtin.slurp:
+        src: /tmp/grafana-dashboard-4912.json
+      register: dashboard_4912_raw
+
+    - name: Grafana | Import dashboard 4912 via Grafana API
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:3000/api/dashboards/import"
+        method: POST
+        user: "{{ grafana_basic_auth_user }}"
+        password: "{{ grafana_admin_pass }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          dashboard: "{{ dashboard_4912_raw.content | b64decode | from_json | combine({'uid': 'f67a223d-b1b6-4f5a-8c5d-233a7a8aeb98'}) }}"
+          overwrite: true
+          inputs:
+            - name: "DS_PROMETHEUS"
+              type: "datasource"
+              pluginId: "prometheus"
+              value: "Prometheus"
+          folderId: 0
+        status_code: 200
+      # The whole dashboard JSON would otherwise be logged to the target's syslog
+      # with every run ("message too long" from rsyslog, found 2026-10-02).
+      no_log: true
 
 # Note: Grafana is proxied via K3s Ingress at /grafana/
 # Access control is handled by Grafana's own admin_password (set above).

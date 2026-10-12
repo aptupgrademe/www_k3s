@@ -92,7 +92,8 @@
   args:
     creates: "{{ visitor_stats_dir }}/.backfilled"
   register: visitor_stats_backfill
-  changed_when: visitor_stats_backfill.rc == 0
+  # creates skips the command with rc 0 - only a real backfill is a change
+  changed_when: visitor_stats_backfill.rc == 0 and not (visitor_stats_backfill.stdout | default('')).startswith('skipped')
   failed_when: false
 
 - name: Visitor stats | Mark the backfill as done

@@ -31,6 +31,8 @@ ANSIBLE_STDOUT_CALLBACK=ansible.posix.json \
   ansible-playbook "${INV[@]}" "$PLAYBOOK" --limit "$HOST" --check --diff "$@" > "$OUT/run.json"
 RC=$?
 set -e
+# DRIFT_KEEP_JSON=<file>: keep the raw ansible.posix.json output for a closer look
+if [ -n "${DRIFT_KEEP_JSON:-}" ]; then cp "$OUT/run.json" "$DRIFT_KEEP_JSON"; fi
 
 python3 - "$OUT/run.json" "$RC" <<'PY'
 import json, sys
@@ -61,13 +63,20 @@ def text(obj):
 
 def diffs(r):
     """yield readable diff text of one result (or of each loop item)."""
-    for res in r.get("results", [r]):
+    items = r.get("results")
+    # some modules (dnf, ...) return "results" as a list of strings, not per-item dicts
+    if not (isinstance(items, list) and items and all(isinstance(i, dict) for i in items)):
+        items = [r]
+    for res in items:
         if not res.get("changed"):
             continue
         label = res.get("_ansible_item_label", res.get("item"))
         if res.get("_ansible_no_log") or res.get("censored"):
             yield label, "(no_log: content hidden)"; continue
-        for d in res.get("diff", []) if isinstance(res.get("diff"), list) else [res.get("diff") or {}]:
+        raw = res.get("diff")
+        for d in raw if isinstance(raw, list) else [raw or {}]:
+            if isinstance(d, str):
+                yield label, d; continue
             if "prepared" in d:
                 yield label, d["prepared"]
             elif "before" in d or "after" in d:

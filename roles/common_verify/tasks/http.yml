@@ -17,6 +17,7 @@
     status_code: 200
     return_content: false
   register: _v_https
+  check_mode: false   # read-only GET, also runs in --check (uri is skipped there otherwise)
   failed_when: false
   delegate_to: localhost
   become: false

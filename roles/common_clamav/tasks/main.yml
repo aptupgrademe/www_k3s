@@ -43,11 +43,12 @@
 # creates: freshclam writes freshclam.dat on its first successful run. Later
 # updates are the clamav-freshclam service's job - running freshclam on every
 # play reported "changed" every time and only duplicated that service.
+# No changed_when: the command module itself reports "changed" when it runs
+# and "ok" when creates skips it (changed_when: true would override that).
 - name: ClamAV | Initial virus signature download
   ansible.builtin.command: freshclam
   args:
     creates: /var/lib/clamav/freshclam.dat
-  changed_when: true
   failed_when: false
 
 - name: ClamAV | Enable freshclam auto-update service

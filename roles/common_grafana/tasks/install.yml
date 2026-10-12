@@ -103,6 +103,7 @@
     url: "http://127.0.0.1:3000/api/health"
     status_code: 200
   register: grafana_health
+  check_mode: false   # read-only API query, also runs in --check
   until: grafana_health.status == 200
   retries: 30
   delay: 3
