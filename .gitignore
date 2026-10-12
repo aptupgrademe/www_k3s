@@ -52,3 +52,5 @@ docs/intern/
 
 # Scratch dir of the K8s apply test (tests/k8s/run.sh)
 tests/k8s/.work/
+# Scratch dir of the update scenario test (tests/update/run.sh)
+tests/update/.work/

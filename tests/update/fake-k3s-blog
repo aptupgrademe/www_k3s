@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""Fake "k3s kubectl" for the blog-update.yml scenarios (tests/update).
+$SCENARIO selects the situation:
+  plugin_updated  the update job changes a plugin version
+  job_fails       the update job ends with failed=1
+  rollout_fails   plugin updated, then the WordPress rollout times out
+  not_running     WordPress has no available replica before the update
+"""
+import json, os, sys
+sim, sc = os.environ["SIM"], os.environ.get("SCENARIO", "")
+def log(m): open(os.path.join(sim, "calls.log"), "a").write(m + "\n")
+job_ran = os.path.exists(os.path.join(sim, "job"))
+a = sys.argv[2:]
+if a[0] == "exec":
+    plugin = "2.0" if sc in ("plugin_updated", "rollout_fails") and job_ran else "1.0"
+    cmd = a[-1]
+    if "core version" in cmd: print("6.9.1")
+    elif "plugin list" in cmd: print(f"name,version\nakismet,{plugin}")
+    elif "theme list" in cmd: print("name,version\ntwentytwentyfive,1.3")
+    sys.exit(0)
+if a[0] == "create":
+    open(os.path.join(sim, "job"), "w").write("x"); log("create job")
+    print("job.batch/blog-update-1 created"); sys.exit(0)
+if a[0] == "get" and a[1] == "deployment":          # availableReplicas pre-flight
+    print("" if sc == "not_running" else "1"); sys.exit(0)
+if a[0] == "get" and "-o" in a and a[a.index("-o") + 1].startswith("jsonpath"):
+    print("/1" if sc == "job_fails" else "1/"); sys.exit(0)
+if a[0] == "logs":
+    print("DB dump: /backup/wordpress-db-test.sql.gz\nSuccess: updated"); sys.exit(0)
+if a[0] == "rollout":
+    log("rollout " + " ".join(a[1:3]))
+    if sc == "rollout_fails" and a[1] == "status":
+        print("error: deployment exceeded its progress deadline", file=sys.stderr); sys.exit(1)
+    sys.exit(0)
+if a[0] == "get" and "-o" in a and a[a.index("-o") + 1] == "json":
+    deps = [("wordpress", "wordpress:7.1.3-php8.4-fpm"), ("redis", "redis:7.4.11-alpine"), ("mariadb", "mariadb:10.11.19")]
+    if a[1] == "deployments":
+        items = [{"metadata": {"name": n}, "spec": {"selector": {"matchLabels": {"app": n}},
+                  "template": {"spec": {"containers": [{"image": i}]}}}} for n, i in deps]
+    else:
+        items = [{"metadata": {"labels": {"app": n}}, "status": {"containerStatuses":
+                  [{"imageID": f"docker.io/library/{n}@sha256:RUN"}]}} for n, _ in deps]
+    print(json.dumps({"items": items})); sys.exit(0)
+print("NAME READY STATUS\nwordpress-x 1/1 Running")

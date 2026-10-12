@@ -1,0 +1,8 @@
+---
+galaxy_info:
+  role_name: common_image_refresh
+  author: raphael
+  description: Pull rebuilt images of a namespace's Deployments, report which ones need a restart
+  license: MIT
+  min_ansible_version: "2.16"
+dependencies: []

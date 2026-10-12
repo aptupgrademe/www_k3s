@@ -2,7 +2,8 @@
 # =============================================================================
 # Playbook: nextcloud-update.yml
 # Purpose:  In-place patch update – pulls the latest image for the current
-#           tag, restarts pods and updates all Nextcloud apps.
+#           tag, restarts only the pods whose image was rebuilt and updates
+#           all Nextcloud apps.
 #
 # Use this when a new patch is available under the same tag
 # (e.g. nextcloud:33-fpm: 33.0.2 → 33.0.3). Since imagePullPolicy defaults
@@ -27,8 +28,15 @@
 # For a full maintenance cycle: run both, Step 1 first.
 # -----------------------------------------------------------------------------
 #
+# If anything fails, the rescue section collects the state (occ status, pods,
+# events, nextcloud.log), leaves maintenance mode only when the upgrade itself
+# has completed, and stops - no further host is touched (serial: 1).
+#
+# A --check run is a pre-flight check: it runs the health checks and shows
+# the current state, but pulls, restarts and occ commands are skipped.
+#
 # Usage:
-#   ansible-playbook nextcloud-update.yml --limit test
+#   ansible-playbook -i inventory/hosts.yml nextcloud-update.yml --limit cvjm --ask-vault-pass
 # =============================================================================
 - name: Nextcloud in-place update
   hosts: nextcloud
@@ -41,6 +49,15 @@
   serial: 1
   max_fail_percentage: 0
 
+  vars:
+    nc_ns: nextcloud
+    occ: >-
+      k3s kubectl exec deployment/nextcloud --namespace nextcloud
+      --container nextcloud-fpm -- runuser -u www-data -- php /var/www/html/occ
+    # Restart order when several images were rebuilt: Nextcloud first (it runs
+    # the code upgrade on start), Collabora and notify_push after it.
+    restart_order: [nextcloud, collabora, notify-push]
+
   tasks:
 
     # "hosts: nextcloud" would otherwise hit every instance at once - including
@@ -52,136 +69,208 @@
         fail_msg: "Run with --limit <host>, e.g. --limit cvjm - this playbook restarts Nextcloud."
       run_once: true
 
-    # -------------------------------------------------------------------------
-    # Pull latest images for the current tags.
-    # crictl pull is idempotent: if the registry digest matches the local cache
-    # the download is skipped; otherwise the new layer is fetched.
-    # -------------------------------------------------------------------------
-    - name: Update | Pull latest nextcloud:fpm image
-      ansible.builtin.command: crictl pull docker.io/library/{{ nextcloud_image_fpm }}
+    # ---------------------------------------------------------------------
+    # 0. Pre-flight: only update an instance that is healthy right now.
+    #    Starting on top of a half-finished upgrade or an instance left in
+    #    maintenance mode would bury the original problem. Outside the block
+    #    on purpose: the rescue below must only ever deal with a state this
+    #    run caused (e.g. switch off maintenance mode *it* left on).
+    # ---------------------------------------------------------------------
+    - name: Update | Nextcloud status before the update
+      ansible.builtin.command: "{{ occ }} status --output=json"
+      register: nc_status_before
       changed_when: false
+      check_mode: false   # read-only query, also runs in --check
 
-    - name: Update | Pull latest collabora image
-      ansible.builtin.command: crictl pull docker.io/{{ nextcloud_image_collabora }}
-      changed_when: false
+    - name: Update | Refuse to update an instance that is not healthy
+      ansible.builtin.assert:
+        that:
+          - (nc_status_before.stdout | from_json).installed
+          - not (nc_status_before.stdout | from_json).maintenance
+          - not (nc_status_before.stdout | from_json).needsDbUpgrade
+        fail_msg: >-
+          Nextcloud is not in a clean state before the update
+          ({{ nc_status_before.stdout }}). Fix that first - e.g. finish a
+          pending "occ upgrade" - then run this playbook again.
+        quiet: true
 
-    # -------------------------------------------------------------------------
-    # Restart pods so they pick up the freshly pulled images.
-    # Recreate strategy ensures only one pod accesses the HostPath volumes.
-    # -------------------------------------------------------------------------
-    - name: Update | Restart Nextcloud deployment
-      ansible.builtin.command: >
-        k3s kubectl rollout restart deployment/nextcloud
-        --namespace nextcloud
-      changed_when: true
+    - name: Update | Update with health checks and a defined failure path
+      block:
 
-    - name: Update | Wait for Nextcloud rollout
-      ansible.builtin.command: >
-        k3s kubectl rollout status deployment/nextcloud
-        --namespace nextcloud
-        --timeout=300s
-      changed_when: false
+        # ---------------------------------------------------------------------
+        # 1. Pull the current tags; restart only Deployments whose image was
+        #    rebuilt upstream (Docker Hub rebuilds unchanged tags for base-image
+        #    fixes, K3s never re-pulls on its own: imagePullPolicy IfNotPresent).
+        #    Recreate strategy ensures only one pod accesses the HostPath volumes.
+        # ---------------------------------------------------------------------
+        - name: Update | Find Deployments with a rebuilt image
+          ansible.builtin.include_role:
+            name: common_image_refresh
+          vars:
+            image_refresh_namespace: "{{ nc_ns }}"
 
-    - name: Update | Restart Collabora deployment
-      ansible.builtin.command: >
-        k3s kubectl rollout restart deployment/collabora
-        --namespace nextcloud
-      changed_when: true
+        - name: Update | Restart Deployments with a rebuilt image
+          ansible.builtin.command: k3s kubectl rollout restart deployment/{{ item }} --namespace {{ nc_ns }}
+          loop: "{{ restart_order | select('in', image_refresh_rebuilt) | list
+                    + (image_refresh_rebuilt.keys() | list | difference(restart_order) | sort) }}"
+          changed_when: true
 
-    - name: Update | Wait for Collabora rollout
-      ansible.builtin.command: >
-        k3s kubectl rollout status deployment/collabora
-        --namespace nextcloud
-        --timeout=180s
-      changed_when: false
+        - name: Update | Wait for the restarted Deployments
+          ansible.builtin.command: k3s kubectl rollout status deployment/{{ item }} --namespace {{ nc_ns }} --timeout=300s
+          loop: "{{ restart_order | select('in', image_refresh_rebuilt) | list
+                    + (image_refresh_rebuilt.keys() | list | difference(restart_order) | sort) }}"
+          changed_when: false
 
-    # -------------------------------------------------------------------------
-    # occ upgrade runs automatically on pod start, but we call it explicitly
-    # here as a safety net in case the entrypoint skipped it.
-    # -------------------------------------------------------------------------
-    - name: Update | Run occ upgrade
-      ansible.builtin.command: >
-        k3s kubectl exec deployment/nextcloud
-        --namespace nextcloud
-        --container nextcloud-fpm
-        --
-        runuser -u www-data -- php /var/www/html/occ upgrade --no-interaction
-      register: occ_upgrade
-      # Only a real upgrade prints "Update successful"; a no-op run just prints
-      # a note (NC 34 no longer says "already at the latest version").
-      changed_when: "'Update successful' in occ_upgrade.stdout"
-      failed_when: occ_upgrade.rc != 0
+        # ---------------------------------------------------------------------
+        # 2. occ upgrade runs automatically on pod start, but we call it
+        #    explicitly here as a safety net in case the entrypoint skipped it.
+        # ---------------------------------------------------------------------
+        - name: Update | Run occ upgrade
+          ansible.builtin.command: "{{ occ }} upgrade --no-interaction"
+          register: occ_upgrade
+          # Only a real upgrade prints "Update successful"; a no-op run just prints
+          # a note (NC 34 no longer says "already at the latest version").
+          changed_when: "'Update successful' in occ_upgrade.stdout"
+          failed_when: occ_upgrade.rc != 0
 
-    # -------------------------------------------------------------------------
-    # Update all installed Nextcloud apps.
-    # Apps live on the HostPath volume (/srv/nextcloud-www) so updates persist
-    # across pod restarts independently of the container image.
-    # -------------------------------------------------------------------------
-    - name: Update | Update all Nextcloud apps
-      ansible.builtin.command: >
-        k3s kubectl exec deployment/nextcloud
-        --namespace nextcloud
-        --container nextcloud-fpm
-        --
-        runuser -u www-data -- php /var/www/html/occ app:update --all
-      register: app_update
-      changed_when: app_update.stdout | length > 0
+        # Apps live on the HostPath volume (/srv/nextcloud-www) so updates persist
+        # across pod restarts independently of the container image.
+        - name: Update | Update all Nextcloud apps
+          ansible.builtin.command: "{{ occ }} app:update --all"
+          register: app_update
+          changed_when: app_update.stdout | length > 0
 
-    - name: Update | Show updated apps
-      ansible.builtin.debug:
-        msg: "{{ app_update.stdout_lines }}"
-      when: app_update.stdout_lines | length > 0
+        - name: Update | Show updated apps
+          ansible.builtin.debug:
+            msg: "{{ app_update.stdout_lines }}"
+          when: app_update.stdout_lines | default([]) | length > 0
 
-    # -------------------------------------------------------------------------
-    # Second restart – this one is about PHP code, not container images
-    # -------------------------------------------------------------------------
-    # PHP runs with opcache.validate_timestamps=0 (nextcloud-php-config
-    # ConfigMap), so file mtimes are never re-checked and bytecode already in
-    # the shared OPcache segment stays live for the lifetime of the pod. The
-    # restart further up happens *before* occ writes anything: it exists to
-    # pick up the freshly pulled images. Everything `occ upgrade` and
-    # `occ app:update --all` then overwrite on the www volume would keep
-    # running as the old code until the next unrelated restart -- security
-    # fixes in apps included.
-    #
-    # Note this only affects *overwritten* files: a newly installed app is
-    # compiled fresh because it was never in the cache. It is specifically
-    # updates that silently do not take effect.
-    - name: Update | Restart Nextcloud so PHP-FPM picks up updated app/core code
-      ansible.builtin.command: >
-        k3s kubectl rollout restart deployment/nextcloud
-        --namespace nextcloud
-      when: occ_upgrade.changed or app_update.changed
-      changed_when: true
+        # ---------------------------------------------------------------------
+        # 3. Second restart – this one is about PHP code, not container images
+        # ---------------------------------------------------------------------
+        # PHP runs with opcache.validate_timestamps=0 (nextcloud-php-config
+        # ConfigMap), so file mtimes are never re-checked and bytecode already in
+        # the shared OPcache segment stays live for the lifetime of the pod. The
+        # restart further up happens *before* occ writes anything: it exists to
+        # pick up the freshly pulled images. Everything `occ upgrade` and
+        # `occ app:update --all` then overwrite on the www volume would keep
+        # running as the old code until the next unrelated restart -- security
+        # fixes in apps included.
+        #
+        # Note this only affects *overwritten* files: a newly installed app is
+        # compiled fresh because it was never in the cache. It is specifically
+        # updates that silently do not take effect.
+        - name: Update | Restart Nextcloud so PHP-FPM picks up updated app/core code
+          ansible.builtin.command: k3s kubectl rollout restart deployment/nextcloud --namespace {{ nc_ns }}
+          when: occ_upgrade is changed or app_update is changed
+          changed_when: true
 
-    - name: Update | Wait for the second Nextcloud rollout
-      ansible.builtin.command: >
-        k3s kubectl rollout status deployment/nextcloud
-        --namespace nextcloud
-        --timeout=300s
-      when: occ_upgrade.changed or app_update.changed
-      changed_when: false
+        - name: Update | Wait for the second Nextcloud rollout
+          ansible.builtin.command: k3s kubectl rollout status deployment/nextcloud --namespace {{ nc_ns }} --timeout=300s
+          when: occ_upgrade is changed or app_update is changed
+          changed_when: false
+
+        # ---------------------------------------------------------------------
+        # 4. Post-check: the same health conditions as before the update
+        # ---------------------------------------------------------------------
+        - name: Update | Nextcloud status after the update
+          ansible.builtin.command: "{{ occ }} status --output=json"
+          register: nc_status_after
+          changed_when: false
+          check_mode: false   # read-only query, also runs in --check
+          retries: 6          # occ may need a moment right after a rollout
+          delay: 10
+          until: nc_status_after.rc == 0
+
+        - name: Update | Nextcloud must be healthy after the update
+          ansible.builtin.assert:
+            that:
+              - not (nc_status_after.stdout | from_json).maintenance
+              - not (nc_status_after.stdout | from_json).needsDbUpgrade
+            fail_msg: "Nextcloud is not healthy after the update: {{ nc_status_after.stdout }}"
+            quiet: true
+
+      rescue:
+        # ---------------------------------------------------------------------
+        # Something failed above. Collect what is needed to decide by hand,
+        # leave maintenance mode only where that is safe, then stop.
+        # ---------------------------------------------------------------------
+        - name: Rescue | Nextcloud status
+          ansible.builtin.command: "{{ occ }} status --output=json"
+          register: rescue_status
+          changed_when: false
+          failed_when: false
+          check_mode: false
+
+        - name: Rescue | Pods and recent events in the namespace
+          ansible.builtin.shell: |
+            set -o pipefail
+            k3s kubectl get pods --namespace {{ nc_ns }} -o wide
+            echo
+            k3s kubectl get events --namespace {{ nc_ns }} --sort-by=.lastTimestamp | tail -n 20
+          register: rescue_pods
+          changed_when: false
+          failed_when: false
+          check_mode: false
+
+        - name: Rescue | Last lines of nextcloud.log
+          ansible.builtin.command: tail -n 15 {{ nextcloud_data_dir }}/nextcloud.log
+          register: rescue_log
+          changed_when: false
+          failed_when: false
+          check_mode: false
+
+        # Only when the code/database upgrade itself is complete
+        # (needsDbUpgrade false) is maintenance mode merely a leftover and safe
+        # to switch off. With a pending upgrade it stays on: users would hit a
+        # half-upgraded instance otherwise. Fix the cause, run "occ upgrade",
+        # or restore - see the message below.
+        - name: Rescue | Leave maintenance mode if the upgrade itself has completed
+          ansible.builtin.command: "{{ occ }} maintenance:mode --off"
+          when:
+            - rescue_status.rc == 0
+            - (rescue_status.stdout | from_json).maintenance
+            - not (rescue_status.stdout | from_json).needsDbUpgrade
+          changed_when: true
+
+        - name: Rescue | State at the time of the failure
+          ansible.builtin.debug:
+            msg:
+              - "Failed task: {{ ansible_failed_task.name | default('?') }}"
+              - "Error: {{ ansible_failed_result.msg | default('?') }}"
+              # loop tasks keep the output per item in .results
+              - "Output: {{ (ansible_failed_result.stdout_lines | default([]))[-10:]
+                           + (ansible_failed_result.stderr_lines | default([]))[-10:]
+                           + (ansible_failed_result.results | default([]) | selectattr('failed', 'defined')
+                              | selectattr('failed') | map(attribute='stderr', default='') | list) }}"
+              - "occ status: {{ rescue_status.stdout | default('n/a') }}"
+              - "{{ rescue_pods.stdout_lines | default([]) }}"
+              - "nextcloud.log: {{ rescue_log.stdout_lines | default([]) }}"
+
+        - name: Rescue | Stop here
+          ansible.builtin.fail:
+            msg: >-
+              The update of {{ inventory_hostname }} failed (details above); no
+              further host is touched. If occ status shows needsDbUpgrade=true,
+              maintenance mode was left ON on purpose: fix the cause and run
+              "occ upgrade", or restore from the nightly backup (see
+              docs/nextcloud-operations.html, Backup & Restore).
 
     # -------------------------------------------------------------------------
     # Final status output
     # -------------------------------------------------------------------------
-    - name: Update | Show Nextcloud version
-      ansible.builtin.command: >
-        k3s kubectl exec deployment/nextcloud
-        --namespace nextcloud
-        --container nextcloud-fpm
-        --
-        runuser -u www-data -- php /var/www/html/occ status
-      register: nc_status
-      changed_when: false
-
     - name: Update | Show pod status
-      ansible.builtin.command: k3s kubectl get pods --namespace nextcloud
+      ansible.builtin.command: k3s kubectl get pods --namespace {{ nc_ns }}
       register: pod_status
       changed_when: false
+      check_mode: false   # read-only query, also runs in --check
 
-    - name: Update | Print results
+    - name: Update | Summary
       ansible.builtin.debug:
         msg:
-          - "{{ nc_status.stdout_lines }}"
+          - "Before: {{ (nc_status_before.stdout | from_json).versionstring }}"
+          - "After:  {{ (nc_status_after.stdout | default(nc_status_before.stdout) | from_json).versionstring }}"
+          - "Rebuilt images: {{ image_refresh_rebuilt | default({}) | dict2items
+               | map(attribute='key') | join(', ') or 'none' }}"
+          - "Apps updated: {{ app_update.stdout_lines | default([]) | length }}"
           - "{{ pod_status.stdout_lines }}"

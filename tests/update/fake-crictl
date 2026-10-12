@@ -1,0 +1,12 @@
+#!/usr/bin/env python3
+"""Fake crictl for tests/update: "pull" is logged, "inspecti" returns the
+digest the running pods have (sha256:RUN) - or sha256:NEW for the image
+named in $REBUILT (e.g. REBUILT=redis), i.e. an upstream rebuild."""
+import json, os, sys
+if sys.argv[1] == "pull":
+    open(os.path.join(os.environ["SIM"], "calls.log"), "a").write(f"pull {sys.argv[2]}\n")
+    sys.exit(0)
+ref = sys.argv[-1]
+repo, name = ref.rsplit(":", 1)[0], ref.split("/")[-1].split(":")[0]
+digest = "NEW" if name == os.environ.get("REBUILT") else "RUN"
+print(json.dumps({"status": {"repoDigests": [f"{repo}@sha256:{digest}"]}}))

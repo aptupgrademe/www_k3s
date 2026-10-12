@@ -1,0 +1,28 @@
+---
+# =============================================================================
+# Role: common_image_refresh
+# Purpose: Pull the current build of every image used by the Deployments of
+#          one namespace and report which Deployments run an outdated build
+#          (same tag, rebuilt upstream). Used by blog-update.yml and
+#          nextcloud-update.yml to restart only what actually needs it.
+# Input:   image_refresh_namespace
+# Output:  image_refresh_rebuilt - dict {deployment: [rebuilt images]}
+#          ({} in a --check run: pulling is skipped there, it changes the host)
+# =============================================================================
+
+- name: Image refresh | Pull current tags, compare with the running pods
+  ansible.builtin.script:
+    cmd: rebuilt-images.py {{ image_refresh_namespace }}
+    executable: python3
+  register: _image_refresh
+  changed_when: (_image_refresh.stdout | from_json) | length > 0
+
+- name: Image refresh | Deployments with a rebuilt image
+  ansible.builtin.set_fact:
+    image_refresh_rebuilt: "{{ (_image_refresh.stdout | from_json) if _image_refresh is not skipped else {} }}"
+
+- name: Image refresh | Report
+  ansible.builtin.debug:
+    msg: >-
+      {{ image_refresh_rebuilt | dict2items | map(attribute='key') | join(', ')
+         if image_refresh_rebuilt else 'no rebuilt images' }}

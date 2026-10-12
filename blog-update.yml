@@ -11,15 +11,21 @@
 #      DB dump first, then core minor + plugins + themes + translations,
 #      update-db, cache flush, homepage check. Same code as at night - this
 #      playbook adds no second update path.
-#   2. Pulls the current tags of WordPress, nginx, Redis and MariaDB again
-#      (Docker Hub rebuilds an unchanged tag for base-image security fixes;
-#      K3s never re-pulls on its own, imagePullPolicy is IfNotPresent).
+#   2. Pulls the current tag of every image the Deployments use (WordPress,
+#      nginx, Redis, MariaDB, exporters - role common_image_refresh). Docker
+#      Hub rebuilds an unchanged tag for base-image security fixes; K3s never
+#      re-pulls on its own, imagePullPolicy is IfNotPresent.
 #   3. Restarts only what needs it:
 #        - wordpress, if a plugin/theme/core version changed or one of its
 #          images was rebuilt. OPcache would pick up changed .php files
 #          within 60 s on its own; the restart makes them all live at once.
 #        - redis / mariadb, only if their image was rebuilt.
 #   4. Checks the homepage and prints what changed.
+#
+# Refuses to start when WordPress is not running. If a step fails, the rescue
+# section shows pods, events and the newest DB dump of the update job (the
+# restore point) and stops. A --check run only does the pre-flight check and
+# shows the installed versions.
 #
 # -----------------------------------------------------------------------------
 # Full update workflow:
@@ -45,11 +51,12 @@
       k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm --
       su -s /bin/sh www-data -c
     wp_phar: php /usr/local/lib/wp-cli/wp-cli.phar --path=/var/www/html
-    # deployment -> images whose rebuild requires its restart
-    update_images:
-      wordpress: ["{{ blog_image_wordpress }}", "{{ blog_image_nginx }}"]
-      redis: ["{{ blog_image_redis }}"]
-      mariadb: ["{{ blog_image_mariadb }}"]
+    # Restart order: MariaDB first, WordPress last - WordPress reconnects to a
+    # restarted DB, but a restarted WordPress against a DB that is just going
+    # down would serve errors for a moment.
+    restart_order: [mariadb, redis, wordpress]
+    update_backup_dir: "{{ blog_k3s_update_backup_dir | default('/srv/wordpress-update-backups') }}"
+    home_url: "https://{{ blog_hostname }}/"   # overridden by tests/update/run.sh
 
   tasks:
 
@@ -60,145 +67,197 @@
       run_once: true
 
     # -------------------------------------------------------------------------
-    # Snapshot of the installed versions, to report and to decide the restart
+    # Pre-flight (outside the block: the rescue only deals with what this run
+    # caused): updating a blog that is already down would mix two problems.
     # -------------------------------------------------------------------------
-    - name: Update | Versions before
-      ansible.builtin.shell: |
-        set -e
-        {{ wp_cli }} '{{ wp_phar }} core version'
-        {{ wp_cli }} '{{ wp_phar }} plugin list --fields=name,version --format=csv'
-        {{ wp_cli }} '{{ wp_phar }} theme list --fields=name,version --format=csv'
-      register: versions_before
-      changed_when: false
-
-    # -------------------------------------------------------------------------
-    # 1. Run the nightly update job now
-    # -------------------------------------------------------------------------
-    - name: Update | Start the update job from the CronJob
+    - name: Update | WordPress replicas available before the update
       ansible.builtin.command: >
-        k3s kubectl create job -n {{ wp_ns }}
-        --from=cronjob/wordpress-autoupdate
-        blog-update-{{ lookup('pipe', 'date +%Y%m%d-%H%M%S') }}
-      register: update_job
-      changed_when: true
-
-    - name: Update | Remember the job name
-      ansible.builtin.set_fact:
-        update_job_name: "{{ update_job.stdout.split()[0] }}"
-
-    # Polling instead of "kubectl wait --for=condition=complete": that one
-    # would sit until the timeout if the job fails instead of completing.
-    - name: Update | Wait for the update job (DB dump + updates, up to 30 min)
-      ansible.builtin.command: >
-        k3s kubectl get -n {{ wp_ns }} {{ update_job_name }}
-        -o jsonpath={.status.succeeded}/{.status.failed}
-      register: job_state
-      until: job_state.stdout in ['1/', '/1', '1/0', '0/1']
-      retries: 180
-      delay: 10
+        k3s kubectl get deployment wordpress -n {{ wp_ns }}
+        -o jsonpath={.status.availableReplicas}
+      register: wp_available_before
       changed_when: false
+      check_mode: false   # read-only query, also runs in --check
+      failed_when: false  # a missing Deployment is reported by the assert below
 
-    - name: Update | Job log
-      ansible.builtin.command: >
-        k3s kubectl logs -n {{ wp_ns }} {{ update_job_name }} --all-containers
-      register: job_log
-      changed_when: false
+    - name: Update | Refuse to update a blog that is not running
+      ansible.builtin.assert:
+        that: (wp_available_before.stdout | default('0', true) | int) >= 1
+        fail_msg: "WordPress is not running (no available replica) - fix that first, then update."
+        quiet: true
 
-    - name: Update | Show job log
-      ansible.builtin.debug:
-        msg: "{{ job_log.stdout_lines }}"
+    - name: Update | Update with a defined failure path
+      block:
 
-    # A failed step (e.g. one plugin) does not stop the others - the job
-    # works the same way. Report it loudly at the end instead of aborting
-    # before the restart, which would leave updated-but-inactive code behind.
-    - name: Update | Note a failed update job
-      ansible.builtin.set_fact:
-        update_job_failed: "{{ job_state.stdout.endswith('1') }}"
+        # ---------------------------------------------------------------------
+        # Snapshot of the installed versions, to report and to decide the restart
+        # ---------------------------------------------------------------------
+        - name: Update | Versions before
+          ansible.builtin.shell: |
+            set -e
+            {{ wp_cli }} '{{ wp_phar }} core version'
+            {{ wp_cli }} '{{ wp_phar }} plugin list --fields=name,version --format=csv'
+            {{ wp_cli }} '{{ wp_phar }} theme list --fields=name,version --format=csv'
+          register: versions_before
+          changed_when: false
+          check_mode: false   # read-only query, also runs in --check
 
-    # -------------------------------------------------------------------------
-    # 2. Re-pull the current image tags, find which ones were rebuilt
-    # -------------------------------------------------------------------------
-    - name: Update | Pull current tags and compare with the running images
-      ansible.builtin.shell: |
-        set -o pipefail
-        set -e
-        deploy={{ item.key }}
-        running=$(k3s kubectl get pod -n {{ wp_ns }} -l app=$deploy \
-          -o jsonpath='{range .items[0].status.containerStatuses[*]}{.imageID}{"\n"}{end}')
-        rebuilt=""
-        for img in {{ item.value | join(' ') }}; do
-          case "$img" in */*) ref="docker.io/$img" ;; *) ref="docker.io/library/$img" ;; esac
-          crictl pull "$ref" >/dev/null
-          digest=$(crictl inspecti -o json "$ref" | python3 -c 'import json,sys; print(" ".join(json.load(sys.stdin)["status"]["repoDigests"]))')
-          hit=no
-          for d in $digest; do echo "$running" | grep -qxF "$d" && hit=yes; done
-          [ "$hit" = yes ] || rebuilt="$rebuilt $img"
-        done
-        echo "${rebuilt# }"
-      loop: "{{ update_images | dict2items }}"
-      loop_control:
-        label: "{{ item.key }}"
-      register: image_check
-      changed_when: image_check.stdout | length > 0
+        # ---------------------------------------------------------------------
+        # 1. Run the nightly update job now (skipped as a whole in --check)
+        # ---------------------------------------------------------------------
+        - name: Update | Run the update job
+          when: not ansible_check_mode
+          block:
+            - name: Update | Start the update job from the CronJob
+              ansible.builtin.command: >
+                k3s kubectl create job -n {{ wp_ns }}
+                --from=cronjob/wordpress-autoupdate
+                blog-update-{{ lookup('pipe', 'date +%Y%m%d-%H%M%S') }}
+              register: update_job
+              changed_when: true
 
-    # -------------------------------------------------------------------------
-    # 3. Restart what needs it
-    # -------------------------------------------------------------------------
-    - name: Update | Versions after
-      ansible.builtin.shell: |
-        set -e
-        {{ wp_cli }} '{{ wp_phar }} core version'
-        {{ wp_cli }} '{{ wp_phar }} plugin list --fields=name,version --format=csv'
-        {{ wp_cli }} '{{ wp_phar }} theme list --fields=name,version --format=csv'
-      register: versions_after
-      changed_when: false
+            - name: Update | Remember the job name
+              ansible.builtin.set_fact:
+                update_job_name: "{{ update_job.stdout.split()[0] }}"
 
-    - name: Update | Decide what to restart
-      ansible.builtin.set_fact:
-        code_changed: "{{ versions_before.stdout != versions_after.stdout }}"
-        restart_deployments: >-
-          {{ (image_check.results | selectattr('stdout', 'ne', '') | map(attribute='item.key') | list
-              + (['wordpress'] if versions_before.stdout != versions_after.stdout else []))
-             | unique }}
+            # Polling instead of "kubectl wait --for=condition=complete": that one
+            # would sit until the timeout if the job fails instead of completing.
+            - name: Update | Wait for the update job (DB dump + updates, up to 30 min)
+              ansible.builtin.command: >
+                k3s kubectl get -n {{ wp_ns }} {{ update_job_name }}
+                -o jsonpath={.status.succeeded}/{.status.failed}
+              register: job_state
+              until: job_state.stdout in ['1/', '/1', '1/0', '0/1']
+              retries: 180
+              delay: 10
+              changed_when: false
 
-    # MariaDB first, WordPress last: WordPress reconnects to a restarted DB,
-    # but a restarted WordPress against a DB that is just going down would
-    # serve errors for a moment.
-    - name: Update | Restart deployments
-      ansible.builtin.command: >
-        k3s kubectl rollout restart deployment/{{ item }} -n {{ wp_ns }}
-      loop: "{{ ['mariadb', 'redis', 'wordpress'] | select('in', restart_deployments) | list }}"
-      changed_when: true
+            - name: Update | Job log
+              ansible.builtin.command: >
+                k3s kubectl logs -n {{ wp_ns }} {{ update_job_name }} --all-containers
+              register: job_log
+              changed_when: false
 
-    - name: Update | Wait for the restarted deployments
-      ansible.builtin.command: >
-        k3s kubectl rollout status deployment/{{ item }} -n {{ wp_ns }} --timeout=300s
-      loop: "{{ ['mariadb', 'redis', 'wordpress'] | select('in', restart_deployments) | list }}"
-      changed_when: false
+            - name: Update | Show job log
+              ansible.builtin.debug:
+                msg: "{{ job_log.stdout_lines }}"
 
-    # -------------------------------------------------------------------------
-    # 4. Check and report
-    # -------------------------------------------------------------------------
-    - name: Update | Homepage check
-      ansible.builtin.uri:
-        url: "https://{{ blog_hostname }}/"
-        status_code: 200
-        timeout: 30
-      delegate_to: localhost
-      register: home
-      retries: 6
-      delay: 10
-      until: home.status == 200
+        # A failed step (e.g. one plugin) does not stop the others - the job
+        # works the same way. Report it loudly at the end instead of aborting
+        # before the restart, which would leave updated-but-inactive code behind.
+        - name: Update | Note a failed update job
+          ansible.builtin.set_fact:
+            update_job_failed: "{{ job_state.stdout | default('') is search('1$') }}"
+
+        # ---------------------------------------------------------------------
+        # 2. Pull the current tags, find the Deployments with a rebuilt image
+        # ---------------------------------------------------------------------
+        - name: Update | Find Deployments with a rebuilt image
+          ansible.builtin.include_role:
+            name: common_image_refresh
+          vars:
+            image_refresh_namespace: "{{ wp_ns }}"
+
+        # ---------------------------------------------------------------------
+        # 3. Restart what needs it
+        # ---------------------------------------------------------------------
+        - name: Update | Versions after
+          ansible.builtin.shell: |
+            set -e
+            {{ wp_cli }} '{{ wp_phar }} core version'
+            {{ wp_cli }} '{{ wp_phar }} plugin list --fields=name,version --format=csv'
+            {{ wp_cli }} '{{ wp_phar }} theme list --fields=name,version --format=csv'
+          register: versions_after
+          changed_when: false
+          check_mode: false   # read-only query, also runs in --check
+
+        - name: Update | Decide what to restart
+          ansible.builtin.set_fact:
+            code_changed: "{{ versions_before.stdout != versions_after.stdout }}"
+            restart_deployments: >-
+              {{ (image_refresh_rebuilt.keys() | list
+                  + (['wordpress'] if versions_before.stdout != versions_after.stdout else []))
+                 | unique }}
+
+        - name: Update | Restart deployments
+          ansible.builtin.command: >
+            k3s kubectl rollout restart deployment/{{ item }} -n {{ wp_ns }}
+          loop: "{{ restart_order | select('in', restart_deployments) | list
+                    + (restart_deployments | difference(restart_order) | sort) }}"
+          changed_when: true
+
+        - name: Update | Wait for the restarted deployments
+          ansible.builtin.command: >
+            k3s kubectl rollout status deployment/{{ item }} -n {{ wp_ns }} --timeout=300s
+          loop: "{{ restart_order | select('in', restart_deployments) | list
+                    + (restart_deployments | difference(restart_order) | sort) }}"
+          changed_when: false
+
+        # ---------------------------------------------------------------------
+        # 4. Check and report
+        # ---------------------------------------------------------------------
+        - name: Update | Homepage check
+          ansible.builtin.uri:
+            url: "{{ home_url }}"
+            status_code: 200
+            timeout: 30
+          delegate_to: localhost
+          register: home
+          retries: 6
+          delay: 10
+          until: home.status == 200
+
+      rescue:
+        - name: Rescue | Pods and recent events in the namespace
+          ansible.builtin.shell: |
+            set -o pipefail
+            k3s kubectl get pods --namespace {{ wp_ns }} -o wide
+            echo
+            k3s kubectl get events --namespace {{ wp_ns }} --sort-by=.lastTimestamp | tail -n 20
+          register: rescue_pods
+          changed_when: false
+          failed_when: false
+          check_mode: false
+
+        # The update job dumps the DB before touching anything - the newest
+        # dump is the restore point for this run.
+        - name: Rescue | Newest DB dump of the update job
+          ansible.builtin.shell: |
+            set -o pipefail
+            ls -t {{ update_backup_dir }}/wordpress-db-*.sql.gz 2>/dev/null | head -n 1
+          register: rescue_dump
+          changed_when: false
+          failed_when: false
+          check_mode: false
+
+        - name: Rescue | State at the time of the failure
+          ansible.builtin.debug:
+            msg:
+              - "Failed task: {{ ansible_failed_task.name | default('?') }}"
+              - "Error: {{ ansible_failed_result.msg | default('?') }}"
+              # loop tasks keep the output per item in .results
+              - "Output: {{ (ansible_failed_result.stdout_lines | default([]))[-10:]
+                           + (ansible_failed_result.stderr_lines | default([]))[-10:]
+                           + (ansible_failed_result.results | default([]) | selectattr('failed', 'defined')
+                              | selectattr('failed') | map(attribute='stderr', default='') | list) }}"
+              - "{{ rescue_pods.stdout_lines | default([]) }}"
+              - "Newest DB dump (restore point): {{ rescue_dump.stdout | default('') or 'none found' }}"
+
+        - name: Rescue | Stop here
+          ansible.builtin.fail:
+            msg: >-
+              The blog update failed (details above). Plugins/themes may be
+              partly updated. Restore the DB from the dump shown above if needed
+              (docs/wordpress-operations.html, Backup & Restore).
 
     - name: Update | Summary
       ansible.builtin.debug:
         msg:
-          - "Update job: {{ update_job_name }} - {{ 'FAILED (see job log above)' if update_job_failed else 'ok' }}"
-          - "Rebuilt images: {{ image_check.results | map(attribute='stdout') | select | join(', ') or 'none' }}"
+          - "Update job: {{ update_job_name | default('skipped (--check)') }} - {{ 'FAILED (see job log above)' if update_job_failed else 'ok' }}"
+          - "Rebuilt images: {{ image_refresh_rebuilt | dict2items | map(attribute='value') | flatten | join(', ') or 'none' }}"
           - "Restarted: {{ restart_deployments | join(', ') or 'nothing' }}"
           - "Versions changed: {{ 'yes' if code_changed else 'no' }}"
           - "Changes: {{ versions_after.stdout_lines | difference(versions_before.stdout_lines) | list or ['-'] }}"
-          - "Homepage: HTTP {{ home.status }}"
+          - "Homepage: HTTP {{ home.status | default('not checked (--check)') }}"
 
     - name: Update | Fail if the update job failed
       ansible.builtin.fail:

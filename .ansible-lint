@@ -11,6 +11,7 @@ exclude_paths:
   - scripts/
   # Scratch copies of the roles made by tests/k8s/run.sh (gitignored)
   - tests/k8s/.work/
+  - tests/update/.work/
   # Real host_vars are gitignored and vault-encrypted; the *.example files
   # are templates with CHANGE_ME placeholders, not runnable vars.
   - inventory/host_vars/
