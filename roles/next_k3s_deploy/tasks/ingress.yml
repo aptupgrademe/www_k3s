@@ -6,22 +6,18 @@
 # automatically via the annotation cert-manager.io/cluster-issuer.
 # =============================================================================
 
-- name: Ingress | Template Ingress manifest
-  ansible.builtin.template:
-    src: ingress.yml.j2
-    dest: /tmp/k8s-nc-ingress.yml
-    mode: "0644"
-
 - name: Ingress | Apply Ingress resources
-  ansible.builtin.command: >
-    k3s kubectl apply -f /tmp/k8s-nc-ingress.yml
+  kubernetes.core.k8s:
+    kubeconfig: "{{ k3s_kubeconfig }}"
+    state: present
+    apply: true
+    definition: "{{ item }}"
+  # One loop item per object in the template, so --diff shows each
+  # object's change (with a list definition the module reports no diff).
+  loop: "{{ lookup('ansible.builtin.template', 'ingress.yml.j2') | ansible.builtin.from_yaml_all | select | list }}"
+  loop_control:
+    label: "{{ item.kind }}/{{ item.metadata.name }}"
   register: ingress_apply
-  changed_when: "'created' in ingress_apply.stdout or 'configured' in ingress_apply.stdout"
-
-- name: Ingress | Remove temporary Ingress manifest
-  ansible.builtin.file:
-    path: /tmp/k8s-nc-ingress.yml
-    state: absent
 
 
 # -----------------------------------------------------------------------------
@@ -43,16 +39,18 @@
 # real thing shows up.
 # -----------------------------------------------------------------------------
 - name: Ingress | Check whether TLS secrets already exist
-  ansible.builtin.command: >
-    k3s kubectl get secret {{ item.secret }} -n nextcloud
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ k3s_kubeconfig }}"
+    kind: Secret
+    namespace: nextcloud
+    name: "{{ item.secret }}"
   loop:
     - { secret: nextcloud-tls, host: "{{ nextcloud_hostname }}" }
     - { secret: collabora-tls, host: "{{ collabora_hostname }}" }
   loop_control:
     label: "{{ item.secret }}"
   register: nc_tls_secret_check
-  changed_when: false
-  failed_when: false
+  no_log: true   # k8s_info returns the Secret's data (private keys)
 
 - name: Ingress | Seed self-signed placeholder for any TLS secret cert-manager hasn't issued yet
   ansible.builtin.shell: |
@@ -66,5 +64,5 @@
   loop: "{{ nc_tls_secret_check.results }}"
   loop_control:
     label: "{{ item.item.secret }}"
-  when: item.rc != 0
+  when: item.resources | length == 0
   changed_when: true

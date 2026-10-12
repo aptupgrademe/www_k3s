@@ -6,19 +6,15 @@
 # but ignores NetworkPolicy objects, so applying this without common_calico
 # would be a silent no-op, not a broken deploy.
 
-- name: NetworkPolicy | Template Collabora NetworkPolicy manifest
-  ansible.builtin.template:
-    src: networkpolicy.yml.j2
-    dest: /tmp/k8s-collabora-networkpolicy.yml
-    mode: "0644"
-
 - name: NetworkPolicy | Apply Collabora NetworkPolicy
-  ansible.builtin.command: >
-    k3s kubectl apply -f /tmp/k8s-collabora-networkpolicy.yml
+  kubernetes.core.k8s:
+    kubeconfig: "{{ k3s_kubeconfig }}"
+    state: present
+    apply: true
+    definition: "{{ item }}"
+  # One loop item per object in the template, so --diff shows each
+  # object's change (with a list definition the module reports no diff).
+  loop: "{{ lookup('ansible.builtin.template', 'networkpolicy.yml.j2') | ansible.builtin.from_yaml_all | select | list }}"
+  loop_control:
+    label: "{{ item.kind }}/{{ item.metadata.name }}"
   register: networkpolicy_apply
-  changed_when: "'created' in networkpolicy_apply.stdout or 'configured' in networkpolicy_apply.stdout"
-
-- name: NetworkPolicy | Remove temporary manifest
-  ansible.builtin.file:
-    path: /tmp/k8s-collabora-networkpolicy.yml
-    state: absent

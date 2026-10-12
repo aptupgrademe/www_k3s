@@ -10,19 +10,15 @@
 # pod CIDR ({{ k3s_pod_cidr }}) only.
 # =============================================================================
 
-- name: ExtSvc | Template external services manifest
-  ansible.builtin.template:
-    src: external-services.yml.j2
-    dest: /tmp/k8s-nc-ext-svc.yml
-    mode: "0644"
-
 - name: ExtSvc | Apply external services (MariaDB, Redis, Grafana)
-  ansible.builtin.command: >
-    k3s kubectl apply -f /tmp/k8s-nc-ext-svc.yml
+  kubernetes.core.k8s:
+    kubeconfig: "{{ k3s_kubeconfig }}"
+    state: present
+    apply: true
+    definition: "{{ item }}"
+  # One loop item per object in the template, so --diff shows each
+  # object's change (with a list definition the module reports no diff).
+  loop: "{{ lookup('ansible.builtin.template', 'external-services.yml.j2') | ansible.builtin.from_yaml_all | select | list }}"
+  loop_control:
+    label: "{{ item.kind }}/{{ item.metadata.name }}"
   register: ext_svc_apply
-  changed_when: "'created' in ext_svc_apply.stdout or 'configured' in ext_svc_apply.stdout"
-
-- name: ExtSvc | Remove temporary external services manifest
-  ansible.builtin.file:
-    path: /tmp/k8s-nc-ext-svc.yml
-    state: absent

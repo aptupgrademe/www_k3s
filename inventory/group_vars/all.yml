@@ -50,6 +50,15 @@ helm_version: "v4.3.0"  # bumped 2026-09-13, was v4.2.4. Additions only
                         # all this repo uses.
 
 # =============================================================================
+# Kubernetes API access for the kubernetes.core modules (k8s, k8s_info, helm,
+# helm_repository). They run on the host itself and use the K3s admin
+# kubeconfig, like "k3s kubectl" does. Needs python3-kubernetes on the host
+# (installed by common_k3s) and kubernetes.core >= 6.5.0 on the controller
+# for Helm 4 (requirements.yml).
+# =============================================================================
+k3s_kubeconfig: /etc/rancher/k3s/k3s.yaml
+
+# =============================================================================
 # Calico version – pinned, same pattern as k3s_version/helm_version above.
 # Installed in "policy-only" mode (common_calico, Nextcloud only): only
 # Felix + kube-controllers, reading Pod/NetworkPolicy objects straight from

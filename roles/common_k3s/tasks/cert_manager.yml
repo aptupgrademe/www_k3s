@@ -8,34 +8,29 @@
 # =============================================================================
 
 - name: cert-manager | Add Jetstack Helm repository
-  ansible.builtin.command: >
-    helm repo add jetstack https://charts.jetstack.io
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  register: jetstack_repo
-  changed_when: "'has been added' in jetstack_repo.stdout"
-  failed_when: >
-    jetstack_repo.rc != 0 and
-    'already exists' not in jetstack_repo.stderr | lower
+  kubernetes.core.helm_repository:
+    name: jetstack
+    repo_url: https://charts.jetstack.io
 
-- name: cert-manager | Update Helm repositories
-  ansible.builtin.command: helm repo update
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  changed_when: false
-
+# kubernetes.core.helm compares the deployed release (chart version + values)
+# with what is requested here and only upgrades on a difference - the former
+# "helm upgrade --install" ran on every play, reported "changed" every time
+# and stacked up a new Helm revision per run. update_repo_cache replaces the
+# separate "helm repo update" step (needed to see a newly pinned version).
 - name: cert-manager | Install/upgrade cert-manager via Helm
-  ansible.builtin.command: >
-    helm upgrade --install cert-manager jetstack/cert-manager
-    --namespace cert-manager
-    --create-namespace
-    --version {{ cert_manager_chart_version }}
-    --set crds.enabled=true
-    --wait
-    --timeout 300s
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  changed_when: true
+  kubernetes.core.helm:
+    kubeconfig: "{{ k3s_kubeconfig }}"
+    name: cert-manager
+    chart_ref: jetstack/cert-manager
+    chart_version: "{{ cert_manager_chart_version }}"
+    release_namespace: cert-manager
+    create_namespace: true
+    update_repo_cache: true
+    values:
+      crds:
+        enabled: true
+    wait: true
+    wait_timeout: 300s
 
 - name: cert-manager | Wait for cert-manager webhook deployment to be ready
   ansible.builtin.command: >
@@ -48,32 +43,22 @@
 # -----------------------------------------------------------------------------
 # ClusterIssuer – Let's Encrypt production endpoint
 # -----------------------------------------------------------------------------
-- name: cert-manager | Template Let's Encrypt ClusterIssuer manifest
-  ansible.builtin.template:
-    src: clusterissuer.yml.j2
-    dest: /tmp/k8s-clusterissuer.yml
-    mode: "0600"
-
-- name: cert-manager | Check if ClusterIssuer already exists
-  ansible.builtin.command: >
-    k3s kubectl get clusterissuer letsencrypt-prod
-  register: ci_check
-  changed_when: false
-  failed_when: false
-
 - name: cert-manager | Wait for ClusterIssuer CRD to be established
   ansible.builtin.command: >
     k3s kubectl wait --for=condition=established --timeout=120s
     crd/clusterissuers.cert-manager.io
   changed_when: false
+  check_mode: false   # read-only wait, safe (and needed) in --check runs too
 
 - name: cert-manager | Apply Let's Encrypt ClusterIssuer
-  ansible.builtin.command: >
-    k3s kubectl apply -f /tmp/k8s-clusterissuer.yml
+  kubernetes.core.k8s:
+    kubeconfig: "{{ k3s_kubeconfig }}"
+    state: present
+    apply: true
+    definition: "{{ item }}"
+  # One loop item per object in the template, so --diff shows each
+  # object's change (with a list definition the module reports no diff).
+  loop: "{{ lookup('ansible.builtin.template', 'clusterissuer.yml.j2') | ansible.builtin.from_yaml_all | select | list }}"
+  loop_control:
+    label: "{{ item.kind }}/{{ item.metadata.name }}"
   register: ci_apply
-  changed_when: "'created' in ci_apply.stdout or 'configured' in ci_apply.stdout"
-
-- name: cert-manager | Remove temporary ClusterIssuer manifest
-  ansible.builtin.file:
-    path: /tmp/k8s-clusterissuer.yml
-    state: absent

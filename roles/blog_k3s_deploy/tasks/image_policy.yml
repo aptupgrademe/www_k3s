@@ -5,19 +5,15 @@
 # GA since Kubernetes 1.30 (k3s {{ k3s_version }}), built into the apiserver —
 # no extra component to install, unlike common_calico for NetworkPolicy.
 
-- name: ImagePolicy | Template wordpress image allowlist manifest
-  ansible.builtin.template:
-    src: image-policy.yml.j2
-    dest: /tmp/k8s-wp-image-policy.yml
-    mode: "0644"
-
 - name: ImagePolicy | Apply wordpress image allowlist
-  ansible.builtin.command: >
-    k3s kubectl apply -f /tmp/k8s-wp-image-policy.yml
+  kubernetes.core.k8s:
+    kubeconfig: "{{ k3s_kubeconfig }}"
+    state: present
+    apply: true
+    definition: "{{ item }}"
+  # One loop item per object in the template, so --diff shows each
+  # object's change (with a list definition the module reports no diff).
+  loop: "{{ lookup('ansible.builtin.template', 'image-policy.yml.j2') | ansible.builtin.from_yaml_all | select | list }}"
+  loop_control:
+    label: "{{ item.kind }}/{{ item.metadata.name }}"
   register: image_policy_apply
-  changed_when: "'created' in image_policy_apply.stdout or 'configured' in image_policy_apply.stdout"
-
-- name: ImagePolicy | Remove temporary manifest
-  ansible.builtin.file:
-    path: /tmp/k8s-wp-image-policy.yml
-    state: absent

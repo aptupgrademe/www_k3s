@@ -14,23 +14,19 @@
 # (MYSQL_*, NEXTCLOUD_ADMIN_*, REDIS_HOST …) – no manual occ install needed.
 # =============================================================================
 
-- name: Nextcloud | Template Deployment + Service manifest
-  ansible.builtin.template:
-    src: nextcloud-deployment.yml.j2
-    dest: /tmp/k8s-nc-deployment.yml
-    mode: "0600"
-  no_log: true
-
 - name: Nextcloud | Apply Deployment + Service
-  ansible.builtin.command: >
-    k3s kubectl apply -f /tmp/k8s-nc-deployment.yml
+  kubernetes.core.k8s:
+    kubeconfig: "{{ k3s_kubeconfig }}"
+    state: present
+    apply: true
+    definition: "{{ item }}"
+  # One loop item per object in the template, so --diff shows each
+  # object's change (with a list definition the module reports no diff).
+  loop: "{{ lookup('ansible.builtin.template', 'nextcloud-deployment.yml.j2') | ansible.builtin.from_yaml_all | select | list }}"
+  loop_control:
+    label: "{{ item.kind }}/{{ item.metadata.name }}"
   register: nc_apply
-  changed_when: "'created' in nc_apply.stdout or 'configured' in nc_apply.stdout"
-
-- name: Nextcloud | Remove temporary Deployment manifest
-  ansible.builtin.file:
-    path: /tmp/k8s-nc-deployment.yml
-    state: absent
+  no_log: true
 
 - name: Nextcloud | Wait for Deployment to be ready (up to 5 min)
   ansible.builtin.command: >

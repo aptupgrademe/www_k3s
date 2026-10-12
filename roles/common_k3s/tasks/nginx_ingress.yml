@@ -15,12 +15,13 @@
 
 - name: ingress-nginx | Ensure ingress-nginx namespace exists
   # Needed before the default-TLS secret below; the Helm install further down
-  # also has --create-namespace, but that only fires as a side effect of the
-  # helm command itself, too late for this task if it ran first.
-  ansible.builtin.shell: >
-    k3s kubectl create namespace ingress-nginx --dry-run=client -o yaml
-    | k3s kubectl apply -f -
-  changed_when: false
+  # also has create_namespace, but that only fires as a side effect of the
+  # helm call itself, too late for this task if it ran first.
+  kubernetes.core.k8s:
+    kubeconfig: "{{ k3s_kubeconfig }}"
+    state: present
+    kind: Namespace
+    name: ingress-nginx
 
 # -----------------------------------------------------------------------------
 # Default TLS fallback certificate
@@ -55,15 +56,32 @@
   args:
     creates: /etc/ingress-nginx-defaults/tls.crt
 
+# Read back from the host (the key never leaves it in a temp file) and handed
+# to the API as a kubernetes.io/tls Secret. slurp returns base64 already,
+# which is exactly what Secret .data expects.
+- name: ingress-nginx | Read default TLS certificate and key
+  ansible.builtin.slurp:
+    src: "/etc/ingress-nginx-defaults/{{ item }}"
+  loop: [tls.crt, tls.key]
+  register: ingress_default_tls
+  no_log: true
+
 - name: ingress-nginx | Apply default TLS certificate as a K8s Secret
-  ansible.builtin.shell: >
-    k3s kubectl create secret tls ingress-default-tls
-    --cert=/etc/ingress-nginx-defaults/tls.crt
-    --key=/etc/ingress-nginx-defaults/tls.key
-    --namespace ingress-nginx
-    --dry-run=client -o yaml
-    | k3s kubectl apply -f -
-  changed_when: false
+  kubernetes.core.k8s:
+    kubeconfig: "{{ k3s_kubeconfig }}"
+    state: present
+    apply: true
+    definition:
+      apiVersion: v1
+      kind: Secret
+      type: kubernetes.io/tls
+      metadata:
+        name: ingress-default-tls
+        namespace: ingress-nginx
+      data:
+        tls.crt: "{{ ingress_default_tls.results[0].content }}"
+        tls.key: "{{ ingress_default_tls.results[1].content }}"
+  no_log: true
 
 - name: ingress-nginx | Remove old kubernetes/ingress-nginx release if present
   # The old community chart (kubernetes/ingress-nginx) was retired in 2026.
@@ -89,46 +107,25 @@
   changed_when: "'uninstalled' in old_uninstall.stdout"
 
 - name: ingress-nginx | Add nginx-stable Helm repository
-  ansible.builtin.command: >
-    helm repo add nginx-stable https://helm.nginx.com/stable
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  register: nginx_repo
-  changed_when: "'has been added' in nginx_repo.stdout"
-  failed_when: >
-    nginx_repo.rc != 0 and
-    'already exists' not in nginx_repo.stderr | lower
+  kubernetes.core.helm_repository:
+    name: nginx-stable
+    repo_url: https://helm.nginx.com/stable
 
-- name: ingress-nginx | Update Helm repositories
-  ansible.builtin.command: helm repo update
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  changed_when: false
-
-- name: ingress-nginx | Template Helm values
-  ansible.builtin.template:
-    src: ingress-nginx-values.yml.j2
-    dest: /tmp/ingress-nginx-values.yml
-    mode: "0644"
-
-# upgrade --install is idempotent: installs on first run, upgrades on re-run.
+# Only upgrades when chart version or values differ from the deployed release
+# (see cert_manager.yml) - the old "helm upgrade --install" was "changed" on
+# every run. Values are rendered in memory, no temp file on the host.
 - name: ingress-nginx | Install/upgrade nginx-ingress via Helm
-  ansible.builtin.command: >
-    helm upgrade --install ingress-nginx nginx-stable/nginx-ingress
-    --namespace ingress-nginx
-    --create-namespace
-    --version {{ ingress_nginx_chart_version }}
-    --values /tmp/ingress-nginx-values.yml
-    --wait
-    --timeout 300s
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  changed_when: true
-
-- name: ingress-nginx | Remove temporary values file
-  ansible.builtin.file:
-    path: /tmp/ingress-nginx-values.yml
-    state: absent
+  kubernetes.core.helm:
+    kubeconfig: "{{ k3s_kubeconfig }}"
+    name: ingress-nginx
+    chart_ref: nginx-stable/nginx-ingress
+    chart_version: "{{ ingress_nginx_chart_version }}"
+    release_namespace: ingress-nginx
+    create_namespace: true
+    update_repo_cache: true
+    values: "{{ lookup('ansible.builtin.template', 'ingress-nginx-values.yml.j2') | ansible.builtin.from_yaml }}"
+    wait: true
+    wait_timeout: 300s
 
 - name: ingress-nginx | Wait for nginx-ingress DaemonSet pod to be ready
   ansible.builtin.command: >

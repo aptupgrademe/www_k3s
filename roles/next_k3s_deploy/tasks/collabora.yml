@@ -15,35 +15,34 @@
 # our Collabora (found 2026-10-02). Generated once into a Secret, so the key
 # survives pod restarts; never written to disk on the host, never logged.
 - name: Collabora | Does the WOPI proof key secret exist?
-  ansible.builtin.command: k3s kubectl -n nextcloud get secret collabora-proof-key -o name
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ k3s_kubeconfig }}"
+    kind: Secret
+    namespace: nextcloud
+    name: collabora-proof-key
   register: _collabora_proof_key
-  changed_when: false
-  failed_when: false
+  no_log: true   # k8s_info returns the Secret's data (private keys)
 
 - name: Collabora | Generate the WOPI proof key (first run only)
   ansible.builtin.shell: |
     set -o pipefail
     openssl genrsa -traditional 2048 2>/dev/null \
       | k3s kubectl -n nextcloud create secret generic collabora-proof-key --from-file=proof_key=/dev/stdin
-  when: _collabora_proof_key.rc != 0
+  when: _collabora_proof_key.resources | length == 0
   no_log: true
 
-- name: Collabora | Template Deployment + Service manifest
-  ansible.builtin.template:
-    src: collabora-deployment.yml.j2
-    dest: /tmp/k8s-collabora-deployment.yml
-    mode: "0644"
-
 - name: Collabora | Apply Deployment + Service
-  ansible.builtin.command: >
-    k3s kubectl apply -f /tmp/k8s-collabora-deployment.yml
+  kubernetes.core.k8s:
+    kubeconfig: "{{ k3s_kubeconfig }}"
+    state: present
+    apply: true
+    definition: "{{ item }}"
+  # One loop item per object in the template, so --diff shows each
+  # object's change (with a list definition the module reports no diff).
+  loop: "{{ lookup('ansible.builtin.template', 'collabora-deployment.yml.j2') | ansible.builtin.from_yaml_all | select | list }}"
+  loop_control:
+    label: "{{ item.kind }}/{{ item.metadata.name }}"
   register: collabora_apply
-  changed_when: "'created' in collabora_apply.stdout or 'configured' in collabora_apply.stdout"
-
-- name: Collabora | Remove temporary manifest
-  ansible.builtin.file:
-    path: /tmp/k8s-collabora-deployment.yml
-    state: absent
 
 - name: Collabora | Wait for Deployment to be ready (up to 3 min)
   ansible.builtin.command: >

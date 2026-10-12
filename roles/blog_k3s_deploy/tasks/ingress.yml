@@ -2,22 +2,18 @@
 # Deploy the Nginx Ingress for the WordPress blog.
 # cert-manager issues the Let's Encrypt certificate automatically.
 
-- name: Ingress | Template WordPress Ingress manifest
-  ansible.builtin.template:
-    src: ingress.yml.j2
-    dest: /tmp/k8s-wp-ingress.yml
-    mode: "0644"
-
 - name: Ingress | Apply WordPress Ingress
-  ansible.builtin.command: >
-    k3s kubectl apply -f /tmp/k8s-wp-ingress.yml
+  kubernetes.core.k8s:
+    kubeconfig: "{{ k3s_kubeconfig }}"
+    state: present
+    apply: true
+    definition: "{{ item }}"
+  # One loop item per object in the template, so --diff shows each
+  # object's change (with a list definition the module reports no diff).
+  loop: "{{ lookup('ansible.builtin.template', 'ingress.yml.j2') | ansible.builtin.from_yaml_all | select | list }}"
+  loop_control:
+    label: "{{ item.kind }}/{{ item.metadata.name }}"
   register: ingress_apply
-  changed_when: "'created' in ingress_apply.stdout or 'configured' in ingress_apply.stdout"
-
-- name: Ingress | Remove temporary Ingress manifest
-  ansible.builtin.file:
-    path: /tmp/k8s-wp-ingress.yml
-    state: absent
 
 
 # -----------------------------------------------------------------------------
@@ -34,16 +30,18 @@
 # issuance succeeds.
 # -----------------------------------------------------------------------------
 - name: Ingress | Check whether TLS secrets already exist
-  ansible.builtin.command: >
-    k3s kubectl get secret {{ item.secret }} -n wordpress
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ k3s_kubeconfig }}"
+    kind: Secret
+    namespace: wordpress
+    name: "{{ item.secret }}"
   loop:
     - { secret: wordpress-tls, host: "{{ blog_hostname }}" }
     - { secret: apt-upgrade-me-apex-tls, host: "{{ blog_hostname | regex_replace('^www\\.', '') }}" }
   loop_control:
     label: "{{ item.secret }}"
   register: wp_tls_secret_check
-  changed_when: false
-  failed_when: false
+  no_log: true   # k8s_info returns the Secret's data (private keys)
 
 - name: Ingress | Seed self-signed placeholder for any TLS secret cert-manager hasn't issued yet
   ansible.builtin.shell: |
@@ -57,5 +55,5 @@
   loop: "{{ wp_tls_secret_check.results }}"
   loop_control:
     label: "{{ item.item.secret }}"
-  when: item.rc != 0
+  when: item.resources | length == 0
   changed_when: true

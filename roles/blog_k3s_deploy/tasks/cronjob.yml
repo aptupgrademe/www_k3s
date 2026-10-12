@@ -2,19 +2,15 @@
 # Deploy a K8s CronJob that runs WordPress scheduled events every 5 minutes.
 # This replaces the system cron entry that used to call wp-cron via HTTP.
 
-- name: CronJob | Template WordPress CronJob manifest
-  ansible.builtin.template:
-    src: cronjob.yml.j2
-    dest: /tmp/k8s-wp-cronjob.yml
-    mode: "0644"
-
 - name: CronJob | Apply WordPress CronJob
-  ansible.builtin.command: >
-    k3s kubectl apply -f /tmp/k8s-wp-cronjob.yml
+  kubernetes.core.k8s:
+    kubeconfig: "{{ k3s_kubeconfig }}"
+    state: present
+    apply: true
+    definition: "{{ item }}"
+  # One loop item per object in the template, so --diff shows each
+  # object's change (with a list definition the module reports no diff).
+  loop: "{{ lookup('ansible.builtin.template', 'cronjob.yml.j2') | ansible.builtin.from_yaml_all | select | list }}"
+  loop_control:
+    label: "{{ item.kind }}/{{ item.metadata.name }}"
   register: cronjob_apply
-  changed_when: "'created' in cronjob_apply.stdout or 'configured' in cronjob_apply.stdout"
-
-- name: CronJob | Remove temporary CronJob manifest
-  ansible.builtin.file:
-    path: /tmp/k8s-wp-cronjob.yml
-    state: absent

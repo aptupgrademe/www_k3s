@@ -13,10 +13,14 @@
 # -----------------------------------------------------------------------------
 # Packages required by K3s on RHEL 9
 # -----------------------------------------------------------------------------
-- name: K3s | Install container-selinux (required for K3s SELinux support)
+# python3-kubernetes (EPEL, enabled by blog_packages/next_packages before this
+# role): the Python client the kubernetes.core modules (k8s, k8s_info, helm)
+# use on the host to talk to the K3s API instead of shelling out to kubectl.
+- name: K3s | Install container-selinux and the Kubernetes Python client
   ansible.builtin.dnf:
     name:
       - container-selinux
+      - python3-kubernetes
     state: present
 
 

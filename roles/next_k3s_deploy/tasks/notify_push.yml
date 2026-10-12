@@ -47,25 +47,24 @@
   changed_when: false
   when: nextcloud_notify_push_enabled | bool
 
-- name: notify_push | Template the Deployment + Service manifest
-  ansible.builtin.template:
-    src: notify-push-deployment.yml.j2
-    dest: /tmp/k8s-notify-push.yml
-    mode: "0644"
+- name: notify_push | Apply the Deployment + Service
+  kubernetes.core.k8s:
+    kubeconfig: "{{ k3s_kubeconfig }}"
+    state: present
+    apply: true
+    definition: "{{ item }}"
+  # One loop item per object in the template, so --diff shows each
+  # object's change (with a list definition the module reports no diff).
+  # The loop is evaluated before "when", so it must not render the template
+  # (which needs np_version) when notify_push is disabled.
+  loop: >-
+    {{ (lookup('ansible.builtin.template', 'notify-push-deployment.yml.j2') | ansible.builtin.from_yaml_all | select | list)
+       if nextcloud_notify_push_enabled | bool else [] }}
+  loop_control:
+    label: "{{ item.kind }}/{{ item.metadata.name }}"
   vars:
     notify_push_app_version: "{{ np_version.stdout | trim }}"
-  when: nextcloud_notify_push_enabled | bool
-
-- name: notify_push | Apply the Deployment + Service
-  ansible.builtin.command: k3s kubectl apply -f /tmp/k8s-notify-push.yml
   register: np_apply
-  changed_when: "'configured' in np_apply.stdout or 'created' in np_apply.stdout"
-  when: nextcloud_notify_push_enabled | bool
-
-- name: notify_push | Remove the temporary manifest
-  ansible.builtin.file:
-    path: /tmp/k8s-notify-push.yml
-    state: absent
   when: nextcloud_notify_push_enabled | bool
 
 - name: notify_push | Wait for the notify-push deployment to be ready

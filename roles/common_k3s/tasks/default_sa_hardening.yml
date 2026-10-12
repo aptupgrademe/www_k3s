@@ -11,18 +11,24 @@
 # =============================================================================
 
 - name: K3s | Find non-kube-system default ServiceAccounts (CIS 5.1.5)
-  ansible.builtin.shell: >
-    k3s kubectl get serviceaccounts --all-namespaces --field-selector metadata.name=default
-    -o jsonpath='{range .items[?(@.metadata.namespace!="kube-system")]}{.metadata.namespace}{"\n"}{end}'
-  register: k3s_default_sa_namespaces
-  changed_when: false
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ k3s_kubeconfig }}"
+    kind: ServiceAccount
+    field_selectors:
+      - metadata.name=default
+  register: k3s_default_sas
 
 - name: K3s | Disable SA token automount on every non-kube-system default ServiceAccount (CIS 5.1.5)
-  ansible.builtin.command: >
-    k3s kubectl patch serviceaccount default -n {{ item }}
-    --patch "{\"automountServiceAccountToken\": false}"
-  loop: "{{ k3s_default_sa_namespaces.stdout_lines }}"
-  register: sa_patch_all
-  changed_when: "'patched' in sa_patch_all.stdout"
-  loop_control:
-    label: "{{ item }}"
+  kubernetes.core.k8s:
+    kubeconfig: "{{ k3s_kubeconfig }}"
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: default
+        namespace: "{{ item }}"
+      automountServiceAccountToken: false
+  loop: >-
+    {{ k3s_default_sas.resources | map(attribute='metadata.namespace')
+       | reject('equalto', 'kube-system') | list }}

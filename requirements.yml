@@ -5,6 +5,9 @@
 #
 # Used by:
 #   community.mysql  → next_mariadb          (mysql_user, mysql_db)
+#   kubernetes.core  → common_k3s, common_calico, blog_k3s_deploy,
+#                      next_k3s_deploy       (k8s, k8s_info, helm,
+#                                             helm_repository)
 #   ansible.posix    → next_selinux          (seboolean, selinux)
 #                      blog_selinux          (seboolean, selinux)
 #                      common_cis_hardening  (mount - the nodev/nosuid/noexec
@@ -15,8 +18,20 @@
 # wrong name appears to work as long as this collection happens to be present -
 # which hides the dependency until the redirect is removed.
 
+#
+# Exact versions, not ranges: ">=" let a new major release in silently on the
+# next install (a new major version may break modules by semver), so two
+# controllers could run the same playbook with different module code. Bump
+# deliberately, read the collection's changelog, then re-run --check --diff.
+# kubernetes.core needs >= 6.5.0 for Helm 4 (helm_version in group_vars):
+# 6.5.0 maps the renamed Helm 4 flags (--atomic -> --rollback-on-failure).
+# ansible-galaxy installs into ~/.ansible/collections, which takes precedence
+# over the older copies bundled with the distro's ansible package.
+
 collections:
   - name: community.mysql
-    version: ">=3.0.0"
+    version: "3.15.0"
   - name: ansible.posix
-    version: ">=1.4.0"
+    version: "2.1.0"
+  - name: kubernetes.core
+    version: "6.6.0"
