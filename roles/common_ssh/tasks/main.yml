@@ -47,6 +47,7 @@
   ansible.builtin.command: semanage port -l
   register: semanage_port_list
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 

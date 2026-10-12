@@ -186,6 +186,7 @@
   ansible.builtin.shell: k3s --version 2>/dev/null | awk '{print $3}'
   register: k3s_installed_version
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 # Split into two steps to avoid SSH timeout on slow connections:
@@ -259,6 +260,7 @@
   retries: 30
   delay: 5
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
 
 # CIS 1.1.20: k3s writes these world/group-readable (0644). Re-asserted on
 # every run since k3s regenerates some of them on restart/cert rotation.

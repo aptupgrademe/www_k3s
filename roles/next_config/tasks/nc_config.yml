@@ -24,6 +24,7 @@
     config:system:get trusted_domains
   register: nc_trusted_domains
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Config | Set trusted_domains[0] to nextcloud_hostname
@@ -51,6 +52,7 @@
     config:system:get overwrite.cli.url
   register: nc_cli_url
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Config | Set overwrite.cli.url to nextcloud_url

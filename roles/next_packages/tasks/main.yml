@@ -42,6 +42,7 @@
   ansible.builtin.command: dnf repolist --enabled
   register: enabled_repos
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
 
 - name: Packages | Enable CRB repository (only if not already active)
   ansible.builtin.command: dnf -y config-manager --set-enabled crb
@@ -133,6 +134,7 @@
     test -d /lib/modules/{{ ansible_kernel }}
   register: running_kernel_modules
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Packages | Reboot – running kernel's modules are gone, a newer kernel is already installed

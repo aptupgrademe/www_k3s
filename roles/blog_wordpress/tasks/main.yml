@@ -48,6 +48,7 @@
   register: wp_installed
   failed_when: false
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
 
 - name: WordPress | Run initial installation
   ansible.builtin.command: >
@@ -188,6 +189,7 @@
     done
   register: wp_versions_before
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
 
 - name: WordPress | Install plugins and fix ownership
   block:
@@ -780,6 +782,7 @@
         --allow-root
       register: wp_inactive_themes
       changed_when: false
+      check_mode: false   # read-only query, also runs in --check
 
     - name: WordPress | Remove unused themes (keeping the fallback)
       ansible.builtin.command: >
@@ -891,6 +894,7 @@
     done
   register: wp_versions_after
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
 
 - name: WordPress | Restart pod so PHP-FPM picks up updated code
   ansible.builtin.command: >

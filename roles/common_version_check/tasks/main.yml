@@ -34,12 +34,14 @@
   ansible.builtin.shell: k3s --version 2>/dev/null | awk '{print $3}' || echo 'not installed'
   register: _vc_k3s_inst
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Versions | Helm – installed version
   ansible.builtin.shell: helm version --short 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo 'not installed'
   register: _vc_helm_inst
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Versions | nginx-ingress – deployed chart version
@@ -54,6 +56,7 @@
     " 2>/dev/null || echo 'not deployed'
   register: _vc_ingress_dep
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Versions | cert-manager – deployed chart version
@@ -71,6 +74,7 @@
     " 2>/dev/null || echo 'not deployed'
   register: _vc_certmgr_dep
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 
@@ -83,6 +87,7 @@
   ansible.builtin.shell: helm repo update 2>&1 | tail -2 || true
   register: _vc_repo_update
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Versions | nginx-ingress – latest chart version in repo
@@ -94,6 +99,7 @@
     " 2>/dev/null || echo '?'
   register: _vc_ingress_latest
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Versions | cert-manager – latest chart version in repo
@@ -107,6 +113,7 @@
     " 2>/dev/null || echo '?'
   register: _vc_certmgr_latest
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 

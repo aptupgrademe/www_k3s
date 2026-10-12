@@ -45,6 +45,7 @@
   ansible.builtin.command: "{{ np_occ }} config:app:get notify_push installed_version"
   register: np_version
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   when: nextcloud_notify_push_enabled | bool
 
 - name: notify_push | Apply the Deployment + Service

@@ -34,6 +34,7 @@
   ansible.builtin.command: "systemctl cat {{ item }}.service"
   register: monit_unit_check
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
   loop: "{{ monit_candidate_services }}"
 
@@ -93,6 +94,7 @@
   ansible.builtin.command: monit -t
   register: monit_validate
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
 
 - name: Monit | Show validation result
   ansible.builtin.debug:
@@ -109,4 +111,5 @@
   ansible.builtin.command: systemctl is-active monit
   register: monit_active
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: monit_active.stdout != "active"

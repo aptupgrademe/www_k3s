@@ -105,6 +105,7 @@
     ls -Zd {{ nextcloud_k3s_www_dir }} {{ nextcloud_data_dir }}
   register: selinux_ctx
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   when: selinux_debug | default(false)
 
 - name: SELinux | Print contexts

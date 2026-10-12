@@ -19,7 +19,8 @@
 - name: DB | Show db:add-missing-indices output
   ansible.builtin.debug:
     var: occ_indices.stdout_lines
-  when: occ_indices.stdout_lines | length > 0
+  # default([]): in a --check run the occ command above is skipped (it writes)
+  when: occ_indices.stdout_lines | default([]) | length > 0
 
 
 # -----------------------------------------------------------------------------

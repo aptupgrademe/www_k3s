@@ -15,6 +15,7 @@
     runuser -u www-data -- php /var/www/html/occ app:list
   register: nc_app_list
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 
@@ -100,6 +101,7 @@
     runuser -u www-data -- php /var/www/html/occ integrity:check-app richdocuments
   register: richdocuments_integrity
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Apps | Warn if richdocuments failed its signature check

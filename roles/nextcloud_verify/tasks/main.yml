@@ -27,66 +27,77 @@
   ansible.builtin.command: systemctl is-active nftables
   register: _v_nft_svc
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Verify | nftables – inet filter table loaded?
   ansible.builtin.command: nft list tables
   register: _v_nft_tables
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Verify | nftables – policy drop present?
   ansible.builtin.shell: nft list chain inet filter input 2>/dev/null | grep -c 'policy drop'
   register: _v_nft_policy
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Verify | nftables – banned4 set exists?
   ansible.builtin.command: nft list set inet filter banned4
   register: _v_nft_banned4
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Verify | fail2ban – service active?
   ansible.builtin.command: systemctl is-active fail2ban
   register: _v_f2b_svc
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Verify | fail2ban – jail status
   ansible.builtin.command: fail2ban-client status
   register: _v_f2b_status
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Verify | k3s – service active?
   ansible.builtin.command: systemctl is-active k3s
   register: _v_k3s_svc
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Verify | mariadb – host service active?
   ansible.builtin.command: systemctl is-active mariadb
   register: _v_mariadb_svc
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Verify | redis – host service active?
   ansible.builtin.command: systemctl is-active redis
   register: _v_redis_svc
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Verify | auditd – service active?
   ansible.builtin.command: systemctl is-active auditd
   register: _v_auditd_svc
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Verify | SELinux – enforcing mode?
   ansible.builtin.command: getenforce
   register: _v_selinux
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 
@@ -100,6 +111,7 @@
       awk '{print $3}' | sort | uniq -c | awk '{print $2": "$1"x"}'
   register: _v_nc_pods
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Verify | K8s – collabora pod running?
@@ -108,6 +120,7 @@
       awk '{print $3}' | sort | uniq -c | awk '{print $2": "$1"x"}'
   register: _v_collabora_pods
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Verify | K8s – ingress-nginx pods
@@ -116,6 +129,7 @@
       awk '{print $3}' | sort | uniq -c | awk '{print $2": "$1"x"}'
   register: _v_ingress_pods
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Verify | K8s – cert-manager pods
@@ -124,6 +138,7 @@
       awk '{print $3}' | sort | uniq -c | awk '{print $2": "$1"x"}'
   register: _v_cm_pods
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Verify | K8s – pods in error state (any namespace)?
@@ -132,6 +147,7 @@
       grep -E 'CrashLoopBackOff|OOMKilled|Error' | awk '{print $1"/"$2}' || true
   register: _v_error_pods
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 
@@ -177,6 +193,7 @@
       -I "https://{{ nextcloud_hostname }}/" 2>/dev/null | tr '[:upper:]' '[:lower:]'
   register: _v_headers
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Verify | HTTPS – /login reachable
@@ -187,6 +204,7 @@
       "https://{{ nextcloud_hostname }}/login" 2>/dev/null || echo 000
   register: _v_login
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 # Collabora's WOPI discovery document – proves Collabora is not just "pod
@@ -199,6 +217,7 @@
       "https://{{ collabora_hostname }}/hosting/discovery" 2>/dev/null
   register: _v_collabora_discovery
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 
@@ -216,6 +235,7 @@
       "https://{{ nextcloud_hostname }}/.env" 2>/dev/null || echo 200
   register: _v_env
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Verify | Security – /config/config.php blocked?
@@ -226,6 +246,7 @@
       "https://{{ nextcloud_hostname }}/config/config.php" 2>/dev/null || echo 200
   register: _v_config
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Verify | Security – /data/ blocked?
@@ -236,6 +257,7 @@
       "https://{{ nextcloud_hostname }}/data/" 2>/dev/null || echo 200
   register: _v_data
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 
@@ -250,6 +272,7 @@
       php /var/www/html/occ status --output=json 2>/dev/null || echo '{}'
   register: _v_occ_status
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Verify | Nextcloud – Background-Job-Modus (soll cron sein)
@@ -259,6 +282,7 @@
       php /var/www/html/occ config:app:get core backgroundjobs_mode 2>/dev/null || echo 'unknown'
   register: _v_bg_mode
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Verify | Performance – Redis erreichbar vom Nextcloud-Pod?
@@ -271,6 +295,7 @@
       " 2>/dev/null || echo "fail"
   register: _v_redis
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Verify | Performance – MariaDB (Host) erreichbar vom Nextcloud-Pod?
@@ -284,12 +309,14 @@
       " 2>/dev/null || echo "fail"
   register: _v_mariadb_pod
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Verify | Performance – TCP BBR aktiv?
   ansible.builtin.command: sysctl -n net.ipv4.tcp_congestion_control
   register: _v_bbr
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 # Not yet verified against a live instance (no Nextcloud+richdocuments
@@ -305,6 +332,7 @@
       php /var/www/html/occ config:app:get richdocuments wopi_url 2>/dev/null || echo ''
   register: _v_richdocuments_url
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 

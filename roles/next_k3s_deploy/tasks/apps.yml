@@ -25,6 +25,7 @@
     -o jsonpath={.items[0].metadata.name}
   register: nc_pod
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   when: nextcloud_apps_manage | bool
 
 # app:update pulls newer app-store versions; it only ever installs a release

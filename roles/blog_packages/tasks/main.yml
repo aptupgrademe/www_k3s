@@ -78,6 +78,7 @@
     test -d /lib/modules/{{ ansible_kernel }}
   register: running_kernel_modules
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Packages | Reboot – running kernel's modules are gone, a newer kernel is already installed
@@ -104,6 +105,7 @@
     needs-restarting -r
   register: needs_restarting
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 # needs-restarting -r exits 1 when a reboot is required, 0 when not.

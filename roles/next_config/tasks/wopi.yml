@@ -21,6 +21,7 @@
     config:app:get richdocuments wopi_allowlist
   register: current_wopi_allowlist
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: WOPI | Set WOPI allowlist
@@ -45,6 +46,7 @@
     config:app:get richdocuments wopi_url
   register: current_wopi_url
   changed_when: false
+  check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: WOPI | Set Collabora URL
