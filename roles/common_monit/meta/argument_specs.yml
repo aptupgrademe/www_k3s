@@ -20,7 +20,7 @@ argument_specs:
         type: int
         required: true
       mail_smtphost:
-        description: SMTP relay host (e.g. smtp.strato.de)
+        description: SMTP relay host (e.g. smtp.example.com)
         type: str
       mail_smtpname:
         description: SMTP login
