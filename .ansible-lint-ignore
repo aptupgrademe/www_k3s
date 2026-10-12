@@ -7,7 +7,7 @@
 # Monit: "systemctl cat" (does the unit exist?) has no module equivalent.
 # Firewall handler: "systemctl try-restart" (restart only if running) has no
 # module equivalent either.
-roles/blog_verify/tasks/main.yml command-instead-of-module skip
-roles/nextcloud_verify/tasks/main.yml command-instead-of-module skip
+roles/blog_verify/tasks/checks.yml command-instead-of-module skip
+roles/nextcloud_verify/tasks/checks.yml command-instead-of-module skip
 roles/common_monit/tasks/main.yml command-instead-of-module skip
 roles/common_firewall/handlers/main.yml command-instead-of-module skip

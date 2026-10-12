@@ -1,0 +1,33 @@
+---
+# -----------------------------------------------------------------------------
+# Close public self-registration
+# Personal blog, no membership feature relies on it – comments already
+# require an existing login (comment_registration). Left open, it gets
+# farmed by spam-registration bots (found and cleaned up 18 fake accounts,
+# GSA-Search-Engine-Ranker-style throwaway addresses, on 2026-08-21).
+# -----------------------------------------------------------------------------
+- name: WordPress | Disable public user self-registration
+  ansible.builtin.command: >
+    k3s kubectl exec deployment/wordpress
+    --namespace wordpress
+    --container wordpress-fpm --
+    php /usr/local/lib/wp-cli/wp-cli.phar option update users_can_register 0
+    --path=/var/www/html
+    --allow-root
+  register: wp_disable_registration
+  changed_when: "'Success: Value updated' in wp_disable_registration.stdout"
+
+
+# -----------------------------------------------------------------------------
+# Disable WP-Cron HTTP trigger
+# The K8s CronJob (blog_k3s_deploy) runs wp-cron.php on a schedule instead.
+# -----------------------------------------------------------------------------
+- name: WordPress | Disable WP-Cron HTTP trigger (K8s CronJob handles scheduling)
+  ansible.builtin.command: >
+    k3s kubectl exec deployment/wordpress
+    --namespace wordpress
+    --container wordpress-fpm --
+    php /usr/local/lib/wp-cli/wp-cli.phar config set DISABLE_WP_CRON true --raw
+    --path=/var/www/html
+    --allow-root
+  changed_when: false

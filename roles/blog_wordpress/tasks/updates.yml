@@ -1,0 +1,197 @@
+---
+# -----------------------------------------------------------------------------
+# Updates (Core + Plugins + Themes)
+# Safe to run on every playbook execution – WP-CLI reports "Success: WordPress
+# is at the latest version" when nothing needs updating, so these tasks are
+# effectively idempotent from an application perspective.
+# -----------------------------------------------------------------------------
+- name: WordPress | Update core, plugins and themes
+  block:
+    - name: WordPress | Update core
+      ansible.builtin.command: >
+        k3s kubectl exec deployment/wordpress
+        --namespace wordpress
+        --container wordpress-fpm --
+        php /usr/local/lib/wp-cli/wp-cli.phar core update
+        --path=/var/www/html
+        --allow-root
+      register: wp_core_update
+      changed_when: "'Success: WordPress updated' in wp_core_update.stdout"
+
+
+    # -----------------------------------------------------------------------------
+    # Remove unused plugins and themes
+    # -----------------------------------------------------------------------------
+    # Deactivated is not disabled: the files still sit under wp-content and are
+    # reachable over HTTP, so a vulnerability in a bundled-but-unused plugin or
+    # theme is still exploitable. Deleting them is the only thing that actually
+    # removes the code path. Both lists are declared per host in host_vars.
+    #
+    # Placed after `core update` but before the update tasks below on purpose:
+    # a core update can reinstall the bundled default themes, so the removal has
+    # to run after it to have any effect – and running it before the update tasks
+    # means nothing gets downloaded that is about to be deleted anyway.
+    - name: WordPress | Remove unused plugins
+      ansible.builtin.command: >
+        k3s kubectl exec deployment/wordpress
+        --namespace wordpress
+        --container wordpress-fpm --
+        php /usr/local/lib/wp-cli/wp-cli.phar plugin delete {{ item }}
+        --path=/var/www/html
+        --allow-root
+      loop: "{{ blog_wordpress_remove_plugins | default([]) }}"
+      register: wp_plugin_delete
+      changed_when: "'Deleted' in wp_plugin_delete.stdout"
+      # Already gone (deleted on an earlier run, or never installed) is the
+      # steady state here, not an error – wp-cli exits 1 and warns either way.
+      failed_when: >-
+        wp_plugin_delete.rc != 0 and
+        'could not be found' not in (wp_plugin_delete.stdout + wp_plugin_delete.stderr)
+
+    # --status=inactive can never return the active theme, so the site's own theme
+    # is structurally safe from this task – no name matching required. WordPress
+    # still needs one default theme installed as a fallback: if the active theme
+    # ever fatals, core switches to a bundled default, and with none present that
+    # path ends in a white screen instead. blog_wordpress_keep_themes holds it.
+    - name: WordPress | List inactive themes
+      ansible.builtin.command: >
+        k3s kubectl exec deployment/wordpress
+        --namespace wordpress
+        --container wordpress-fpm --
+        php /usr/local/lib/wp-cli/wp-cli.phar theme list --status=inactive --field=name
+        --path=/var/www/html
+        --allow-root
+      register: wp_inactive_themes
+      changed_when: false
+      check_mode: false   # read-only query, also runs in --check
+
+    - name: WordPress | Remove unused themes (keeping the fallback)
+      ansible.builtin.command: >
+        k3s kubectl exec deployment/wordpress
+        --namespace wordpress
+        --container wordpress-fpm --
+        php /usr/local/lib/wp-cli/wp-cli.phar theme delete {{ item }}
+        --path=/var/www/html
+        --allow-root
+      loop: >-
+        {{ wp_inactive_themes.stdout_lines
+           | map('trim') | select()
+           | difference(blog_wordpress_keep_themes | default([])) | list }}
+      register: wp_theme_delete
+      changed_when: "'Deleted' in wp_theme_delete.stdout"
+
+
+    - name: WordPress | Update all plugins
+      ansible.builtin.command: >
+        k3s kubectl exec deployment/wordpress
+        --namespace wordpress
+        --container wordpress-fpm --
+        php /usr/local/lib/wp-cli/wp-cli.phar plugin update --all
+        --path=/var/www/html
+        --allow-root
+      register: wp_plugin_update
+      changed_when: "'Updated' in wp_plugin_update.stdout"
+      # wp-cli's `plugin update --all` exits 1 with "No plugins updated" when
+      # every plugin is already at the latest version -- not a real failure,
+      # just nothing to do (routinely the case now that the install task above
+      # uses --force and already fetches the latest version).
+      failed_when: >-
+        wp_plugin_update.rc != 0 and
+        'No plugins updated' not in wp_plugin_update.stderr
+
+    # Themes were previously never updated by this role – only core and plugins
+    # were. An out-of-date theme is the same class of exposure as an out-of-date
+    # plugin: its PHP runs on every request. Same exit-1-when-nothing-to-do
+    # handling as the plugin task above.
+    - name: WordPress | Update all themes
+      ansible.builtin.command: >
+        k3s kubectl exec deployment/wordpress
+        --namespace wordpress
+        --container wordpress-fpm --
+        php /usr/local/lib/wp-cli/wp-cli.phar theme update --all
+        --path=/var/www/html
+        --allow-root
+      register: wp_theme_update
+      changed_when: "'Updated' in wp_theme_update.stdout"
+      failed_when: >-
+        wp_theme_update.rc != 0 and
+        'No themes updated' not in wp_theme_update.stderr
+
+    # Translation strings (core, plugin, theme .mo files) get refreshed by
+    # WordPress.org translators independently of version bumps - a plugin
+    # can stay on the same version for months while its German/French/etc.
+    # strings still improve. Unlike plugin/theme update --all, these exit 0
+    # whether or not anything needed updating ("Success: Translations are up
+    # to date."), so no special failed_when handling is needed here.
+    # There is no single unified `wp language update` - verified live
+    # 2026-08-26 ("'update' is not a registered subcommand of 'language'"),
+    # it's three separate per-type subcommands.
+    - name: WordPress | Update installed translations (core, plugins, themes)
+      ansible.builtin.command: >
+        k3s kubectl exec deployment/wordpress
+        --namespace wordpress
+        --container wordpress-fpm --
+        php /usr/local/lib/wp-cli/wp-cli.phar language {{ item }}
+        --path=/var/www/html
+        --allow-root
+      loop:
+        - "core update"
+        - "plugin update --all"
+        - "theme update --all"
+      register: wp_language_update
+      changed_when: "'Success: Updated' in wp_language_update.stdout"
+
+  always:
+    # Same reasoning as the plugin block above: wp-cli writes updated
+    # files as root:root, so the chown has to happen even when one of the
+    # update tasks fails, or PHP-FPM is left unable to write to wp-content.
+    - name: WordPress | Fix wp-content ownership after updates
+      ansible.builtin.command: >
+        k3s kubectl exec deployment/wordpress
+        --namespace wordpress
+        --container wordpress-fpm --
+        chown -R www-data:www-data /var/www/html/wp-content
+      changed_when: false
+
+
+# -----------------------------------------------------------------------------
+# Restart the pod when core, plugins or themes actually changed
+# -----------------------------------------------------------------------------
+# OPcache re-checks a cached script against its file at most every 60 s
+# (php-config ConfigMap in blog_k3s_deploy; until 2026-10-05 it never did, and
+# updated plugin code stayed inactive until an unrelated restart). The restart
+# makes all updated files take effect at once rather than file by file within
+# the next minute - a half-old, half-new plugin for up to a minute is exactly
+# what a security release should not go through.
+#
+# Only fires when an update really happened, so an unchanged run stays a no-op
+# and does not cause needless downtime.
+- name: WordPress | Snapshot core/plugin/theme versions (after)
+  ansible.builtin.shell: |
+    set -e
+    for what in "core version" "plugin list --fields=name,version --format=csv" "theme list --fields=name,version --format=csv"; do
+      k3s kubectl exec deployment/wordpress --namespace wordpress --container wordpress-fpm -- \
+        su -s /bin/sh www-data -c "php /usr/local/lib/wp-cli/wp-cli.phar --path=/var/www/html $what"
+    done
+  register: wp_versions_after
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+
+- name: WordPress | Restart pod so PHP-FPM picks up updated code
+  ansible.builtin.command: >
+    k3s kubectl rollout restart deployment/wordpress
+    --namespace wordpress
+  when: >-
+    wp_core_update.changed or wp_plugin_update.changed or wp_theme_update.changed
+    or wp_versions_before.stdout != wp_versions_after.stdout
+  changed_when: true
+
+- name: WordPress | Wait for the restarted pod to become ready
+  ansible.builtin.command: >
+    k3s kubectl rollout status deployment/wordpress
+    --namespace wordpress
+    --timeout=300s
+  when: >-
+    wp_core_update.changed or wp_plugin_update.changed or wp_theme_update.changed
+    or wp_versions_before.stdout != wp_versions_after.stdout
+  changed_when: false

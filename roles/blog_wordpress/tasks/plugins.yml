@@ -1,0 +1,92 @@
+---
+# -----------------------------------------------------------------------------
+# Plugins
+# -----------------------------------------------------------------------------
+# The install tasks and the ownership fix are one block/always unit on purpose.
+# WP-CLI runs with --allow-root and therefore writes every plugin file as
+# root:root; PHP-FPM runs as www-data (uid 33) and cannot write into a
+# root-owned plugin directory afterwards. If an install fails halfway, the
+# files it already unpacked stay root-owned, and without the `always` the play
+# would abort before the chown ever runs – leaving the site with plugins it
+# cannot write to. That is not hypothetical: on 2026-08-16 a wordpress.org
+# download timed out (cURL error 28 after 10 s) on the compressx item, the play
+# stopped there, and all-in-one-wp-migration was left unable to create its
+# storage/ directory until the chown was run by hand.
+# Version snapshot before anything installs or updates code. Compared with
+# the one after the update block, it decides the PHP-FPM restart at the end:
+# "plugin install --force" below re-downloads every plugin on each run and may
+# pull a NEWER release; its output does not say so, and before 2026-10-05 the
+# restart only looked at the update tasks - newer plugin code then sat on disk
+# while OPcache kept running the old one (found after the 2026-10-04 run).
+- name: WordPress | Snapshot core/plugin/theme versions (before)
+  ansible.builtin.shell: |
+    set -e
+    for what in "core version" "plugin list --fields=name,version --format=csv" "theme list --fields=name,version --format=csv"; do
+      k3s kubectl exec deployment/wordpress --namespace wordpress --container wordpress-fpm -- \
+        su -s /bin/sh www-data -c "php /usr/local/lib/wp-cli/wp-cli.phar --path=/var/www/html $what"
+    done
+  register: wp_versions_before
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+
+- name: WordPress | Install plugins and fix ownership
+  block:
+    # `until` retries per loop item, so one flaky download no longer takes the
+    # whole run with it. wp-cli's HTTP timeout is a hard-coded 10 s and cannot
+    # be raised from the command line, so retrying is the only lever here.
+    - name: WordPress | Install and activate plugins
+      ansible.builtin.command: >
+        k3s kubectl exec deployment/wordpress
+        --namespace wordpress
+        --container wordpress-fpm --
+        php /usr/local/lib/wp-cli/wp-cli.phar plugin install {{ item }} --activate --force
+        --path=/var/www/html
+        --allow-root
+      loop: "{{ blog_wordpress_plugins | default([]) }}"
+      register: wp_plugin_result
+      until: wp_plugin_result.rc == 0
+      retries: 3
+      delay: 10
+      changed_when: >
+        'Installing' in wp_plugin_result.stdout or
+        'Activating' in wp_plugin_result.stdout
+
+    # Redis Object Cache plugin – installed and enabled separately because
+    # wp redis enable places the object-cache.php drop-in (separate WP-CLI command).
+    - name: WordPress | Install and activate Redis Object Cache plugin
+      ansible.builtin.command: >
+        k3s kubectl exec deployment/wordpress
+        --namespace wordpress
+        --container wordpress-fpm --
+        php /usr/local/lib/wp-cli/wp-cli.phar plugin install redis-cache --activate
+        --path=/var/www/html
+        --allow-root
+      register: wp_redis_install
+      until: wp_redis_install.rc == 0
+      retries: 3
+      delay: 10
+      changed_when: >
+        'Installing' in wp_redis_install.stdout or
+        'Activating' in wp_redis_install.stdout
+
+    - name: WordPress | Enable Redis object-cache drop-in
+      ansible.builtin.command: >
+        k3s kubectl exec deployment/wordpress
+        --namespace wordpress
+        --container wordpress-fpm --
+        php /usr/local/lib/wp-cli/wp-cli.phar redis enable
+        --path=/var/www/html
+        --allow-root
+      register: wp_redis_enable
+      changed_when: "'Success' in wp_redis_enable.stdout"
+      failed_when: false
+
+  always:
+    # Runs even when an install above failed – see the block comment.
+    - name: WordPress | Fix wp-content ownership after plugin installation
+      ansible.builtin.command: >
+        k3s kubectl exec deployment/wordpress
+        --namespace wordpress
+        --container wordpress-fpm --
+        chown -R www-data:www-data /var/www/html/wp-content
+      changed_when: false

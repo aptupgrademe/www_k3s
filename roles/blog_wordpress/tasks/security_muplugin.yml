@@ -1,0 +1,92 @@
+---
+# -----------------------------------------------------------------------------
+# Security hardening mu-plugin
+# Must-use plugins load automatically without activation.
+# Handles: hide WP/Yoast version, block REST API user enumeration,
+#          remove Link header, block ?author= enumeration.
+# -----------------------------------------------------------------------------
+- name: WordPress | Ensure mu-plugins directory exists
+  ansible.builtin.command: >
+    k3s kubectl exec deployment/wordpress
+    --namespace wordpress
+    --container wordpress-fpm --
+    mkdir -p /var/www/html/wp-content/mu-plugins
+  changed_when: false
+
+- name: WordPress | Deploy security hardening mu-plugin
+  ansible.builtin.command:
+    argv:
+      - k3s
+      - kubectl
+      - exec
+      - deployment/wordpress
+      - --namespace
+      - wordpress
+      - --container
+      - wordpress-fpm
+      - --
+      - sh
+      - -c
+      - |
+        F=/var/www/html/wp-content/mu-plugins/security-hardening.php
+        cat > "$F.new" << 'PHPEOF'
+        <?php
+        /**
+         * Security hardening – managed by Ansible (blog_wordpress).
+         * Hides version info and restricts information-disclosure endpoints.
+         */
+
+        // Remove WordPress version from <meta name="generator"> and RSS feeds
+        remove_action('wp_head', 'wp_generator');
+        add_filter('the_generator', '__return_empty_string');
+
+        // Remove Link: <wp-json> discovery header and <link> tag in <head>
+        remove_action('template_redirect', 'rest_output_link_header', 11);
+        remove_action('wp_head', 'rest_output_link_tag');
+
+        // Remove legacy RSD and Windows Live Writer links from <head>
+        remove_action('wp_head', 'rsd_link');
+        remove_action('wp_head', 'wlwmanifest_link');
+
+        // Hide Yoast SEO version from HTML comment
+        add_filter('wpseo_debug_markers', '__return_false');
+
+        // Disable the in-admin theme/plugin file editor. Without this, anyone
+        // who reaches an admin session can edit PHP and get code execution
+        // from the dashboard. Defined here (mu-plugins load before the admin
+        // menu is built), not wp-config.php, which the container entrypoint owns.
+        if (!defined('DISALLOW_FILE_EDIT')) {
+            define('DISALLOW_FILE_EDIT', true);
+        }
+
+        // Block REST API user enumeration for unauthenticated requests
+        add_filter('rest_endpoints', function($endpoints) {
+            if (!is_user_logged_in()) {
+                unset($endpoints['/wp/v2/users']);
+                unset($endpoints['/wp/v2/users/(?P<id>[\d]+)']);
+            }
+            return $endpoints;
+        });
+        PHPEOF
+        # Replace (and restart via the handler) only on a real content change.
+        # With a plain overwrite + changed_when: true, EVERY run restarted
+        # WordPress (Recreate strategy -> ~30-60 s of 502), found 2026-09-23.
+        # The .new file doesn't end in .php, so WordPress never loads it.
+        if [ -f "$F" ] && [ "$(md5sum < "$F.new")" = "$(md5sum < "$F")" ]; then
+          rm -f "$F.new"
+        else
+          mv "$F.new" "$F" && chown www-data:www-data "$F" && echo CHANGED
+        fi
+  register: wp_mu_hardening
+  changed_when: "'CHANGED' in wp_mu_hardening.stdout"
+  notify: Restart wordpress deployment (OPcache picks up changed PHP files)
+
+# A breadcrumb-fix.php mu-plugin used to live here, working around a
+# TranslatePress + Yoast/Breadcrumb-Trail compatibility bug (TranslatePress's
+# automatic gettext translation corrupted raw PHP date-format characters used
+# internally by both breadcrumb systems). Removed 2026-08-26 along with
+# TranslatePress itself (see removed 'translatepress-multilingual' entry in
+# host_vars) - the user wasn't happy with the plugin and one-language-free-tier
+# limit, so it's gone rather than fixed further. The underlying corruption
+# only ever happened because TranslatePress was auto-translating those gettext
+# calls; without it, both breadcrumb systems work unmodified.

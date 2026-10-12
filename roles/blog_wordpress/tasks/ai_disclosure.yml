@@ -1,0 +1,275 @@
+---
+# -----------------------------------------------------------------------------
+# AI usage disclosure
+# Discreet, site-wide transparency notice (footer link + dedicated page),
+# per Art. 50 EU AI Act. Deliberately kept out of the primary nav menu.
+# -----------------------------------------------------------------------------
+- name: WordPress | Create or update AI Usage Notice page
+  ansible.builtin.command:
+    argv:
+      - k3s
+      - kubectl
+      - exec
+      - deployment/wordpress
+      - --namespace
+      - wordpress
+      - --container
+      - wordpress-fpm
+      - --
+      - php
+      - /usr/local/lib/wp-cli/wp-cli.phar
+      - eval
+      - |
+        $slug = 'ai-usage-notice';
+        $content = '<p>Short version: yes, I use AI tools on this blog &ndash; for some of the writing, and for some of the images.</p>
+        <h3>Text</h3>
+        <p>Every post here comes from something I actually did &ndash; a real homelab project, a real Ansible run, a real troubleshooting session. AI tools (mainly <a href="https://www.anthropic.com/claude" target="_blank" rel="noopener">Claude</a>, sometimes ChatGPT) help me draft, structure, and edit the writing. I review, correct, and personally stand behind everything that gets published.</p>
+        <h3>Images</h3>
+        <p>Some images on this site are AI-generated or AI-edited &ndash; for example the comic-style portrait on the <a href="/about/">About</a> page, and some illustrative graphics created with tools like FLUX/ComfyUI. Screenshots, terminal output, dashboards, and API responses shown in posts are real and unedited unless a post says otherwise.</p>
+        <p style="font-size:13px;color:#888;">This notice is provided for transparency, in line with Art. 50 of the EU AI Act on labelling AI-generated and AI-assisted content.</p>';
+        $existing = get_page_by_path($slug);
+        if ($existing) {
+            wp_update_post(['ID' => $existing->ID, 'post_title' => 'AI Usage Notice', 'post_content' => $content]);
+            echo "updated\n";
+        } else {
+            wp_insert_post(['post_type' => 'page', 'post_status' => 'publish',
+                'post_title' => 'AI Usage Notice', 'post_name' => $slug, 'post_content' => $content]);
+            echo "created\n";
+        }
+      - --path=/var/www/html
+      - --allow-root
+  register: wp_ai_notice_page
+  changed_when: "'created' in wp_ai_notice_page.stdout or 'updated' in wp_ai_notice_page.stdout"
+
+- name: WordPress | Link AI Usage Notice from the About page
+  ansible.builtin.command:
+    argv:
+      - k3s
+      - kubectl
+      - exec
+      - deployment/wordpress
+      - --namespace
+      - wordpress
+      - --container
+      - wordpress-fpm
+      - --
+      - php
+      - /usr/local/lib/wp-cli/wp-cli.phar
+      - eval
+      - |
+        $about = get_page_by_path('about');
+        if ($about && strpos($about->post_content, 'ai-usage-notice') === false) {
+            $note = '<p><small>Curious what on this blog is AI-assisted? See the <a href="/ai-usage-notice/">AI Usage Notice</a>.</small></p>';
+            wp_update_post(['ID' => $about->ID, 'post_content' => $about->post_content . "\n" . $note]);
+            echo "updated\n";
+        } else {
+            echo "unchanged\n";
+        }
+      - --path=/var/www/html
+      - --allow-root
+  register: wp_about_ai_link
+  changed_when: "'updated' in wp_about_ai_link.stdout"
+
+- name: WordPress | Deploy AI disclosure mu-plugin (discreet footer notice)
+  ansible.builtin.command:
+    argv:
+      - k3s
+      - kubectl
+      - exec
+      - deployment/wordpress
+      - --namespace
+      - wordpress
+      - --container
+      - wordpress-fpm
+      - --
+      - sh
+      - -c
+      - |
+        F=/var/www/html/wp-content/mu-plugins/ai-disclosure.php
+        cat > "$F.new" << 'PHPEOF'
+        <?php
+        /**
+         * AI usage disclosure – managed by Ansible (blog_wordpress).
+         * Adds a discreet, site-wide footer note linking to the AI Usage
+         * Notice page, per Art. 50 EU AI Act transparency requirements.
+         */
+        add_action('wp_footer', function () {
+            $page = get_page_by_path('ai-usage-notice');
+            if (!$page) {
+                return;
+            }
+            printf(
+                '<div style="text-align:center;font-size:11px;color:#595959;padding:6px 0;">%s <a href="%s" style="color:inherit;text-decoration:underline;">%s</a></div>',
+                esc_html__('Some text and images on this site are AI-assisted or AI-generated.'),
+                esc_url(get_permalink($page)),
+                esc_html__('Details')
+            );
+        });
+        PHPEOF
+        # Same change-only pattern as security-hardening.php above.
+        if [ -f "$F" ] && [ "$(md5sum < "$F.new")" = "$(md5sum < "$F")" ]; then
+          rm -f "$F.new"
+        else
+          mv "$F.new" "$F" && chown www-data:www-data "$F" && echo CHANGED
+        fi
+  register: wp_mu_ai_disclosure
+  changed_when: "'CHANGED' in wp_mu_ai_disclosure.stdout"
+  # A PHP file: restart so the change is live at once (OPcache re-checks only every 60 s).
+  notify: Restart wordpress deployment (OPcache picks up changed PHP files)
+
+# Lighthouse (mobile, 2026-10-06): front page LCP 4.2 s because the theme marks
+# the first post thumbnail loading="lazy", and CLS 0.15 because the header title
+# jumps when the theme's web fonts swap in. Preloading the three fonts and
+# loading the first thumbnail eagerly with high priority fixes both.
+# 2026-10-08: phones/tablets now show only the post list on the front page
+# (custom CSS above); the LCP there moved to the first list image, which was
+# still lazy (LCP 3.4 s) - the plugin now prioritises that one on the front page.
+- name: WordPress | Deploy performance hints mu-plugin (font preload, eager LCP image)
+  ansible.builtin.command:
+    argv:
+      - k3s
+      - kubectl
+      - exec
+      - deployment/wordpress
+      - --namespace
+      - wordpress
+      - --container
+      - wordpress-fpm
+      - --
+      - sh
+      - -c
+      - |
+        F=/var/www/html/wp-content/mu-plugins/performance-hints.php
+        cat > "$F.new" << 'PHPEOF'
+        <?php
+        /**
+         * Front-end performance hints – managed by Ansible (blog_wordpress).
+         * - Preloads the theme fonts used above the fold, so the header title
+         *   does not shift when they swap in (layout shift / CLS).
+         * - Loads the first large post thumbnail of a page eagerly with high
+         *   fetch priority: it is the largest element in view (LCP), but the
+         *   theme marks every image loading="lazy" (its own filter at priority
+         *   10, so this one runs at 20). 150 px list thumbnails are skipped;
+         *   on single posts only the post's own featured image qualifies.
+         * - Front page: phones/tablets hide the banner by CSS (custom CSS,
+         *   max-width 1024px), so there the first post of the main list is the
+         *   LCP image; on desktop it is the banner slider. The first list image
+         *   gets eager + high priority, the first banner image only eager
+         *   (normal priority, so on a phone the hidden copy does not compete).
+         *   Banner images are rendered before the main loop starts, which is
+         *   how in_the_loop() tells the two apart.
+         * - The theme echoes post images through wp_kses_post(), whose img
+         *   whitelist lacks fetchpriority, so the attribute was silently
+         *   dropped (seen 2026-10-08) - allow it.
+         */
+        add_action('wp_head', function () {
+            $base = get_template_directory_uri() . '/assets/fonts/';
+            foreach (['open-sans/open-sans-regular.woff2', 'open-sans/open-sans-700.woff2', 'oswald/oswald-700.woff2'] as $font) {
+                printf("<link rel=\"preload\" href=\"%s\" as=\"font\" type=\"font/woff2\" crossorigin>\n", esc_url($base . $font));
+            }
+        }, 1);
+
+        add_filter('wp_get_attachment_image_attributes', function ($attr, $attachment, $size) {
+            static $done = false;
+            if ($done || is_admin() || is_feed()) {
+                return $attr;
+            }
+            if (empty($attr['class']) || strpos($attr['class'], 'wp-post-image') === false) {
+                return $attr;
+            }
+            if ($size === 'thumbnail' || (is_array($size) && max($size) <= 150)) {
+                return $attr;
+            }
+            if (is_singular() && (int) $attachment->ID !== (int) get_post_thumbnail_id(get_queried_object_id())) {
+                return $attr;
+            }
+            if (is_home() && !in_the_loop()) {
+                static $banner_done = false;
+                if (!$banner_done) {
+                    $banner_done = true;
+                    $attr['loading'] = 'eager';
+                }
+                return $attr;
+            }
+            $done = true;
+            $attr['loading'] = 'eager';
+            $attr['fetchpriority'] = 'high';
+            return $attr;
+        }, 20, 3);
+
+        add_filter('wp_kses_allowed_html', function ($tags, $context) {
+            if ($context === 'post' && isset($tags['img'])) {
+                $tags['img']['fetchpriority'] = true;
+            }
+            return $tags;
+        }, 20, 2);
+        PHPEOF
+        # Same change-only pattern as security-hardening.php above.
+        if [ -f "$F" ] && [ "$(md5sum < "$F.new")" = "$(md5sum < "$F")" ]; then
+          rm -f "$F.new"
+        else
+          mv "$F.new" "$F" && chown www-data:www-data "$F" && echo CHANGED
+        fi
+  register: wp_mu_performance_hints
+  changed_when: "'CHANGED' in wp_mu_performance_hints.stdout"
+  notify: Restart wordpress deployment (OPcache picks up changed PHP files)
+
+# Polylang (2026-10-09): its language switcher sits in the main menu, which
+# phones hide behind the hamburger icon. This line above a translated post
+# makes the other languages visible right at the article - only languages
+# with a PUBLISHED translation of this very post, nothing on untranslated ones.
+# Static pages (About, Imprint, ...) get the same line since 2026-10-11.
+- name: WordPress | Deploy language links mu-plugin ("Also available in")
+  ansible.builtin.command:
+    argv:
+      - k3s
+      - kubectl
+      - exec
+      - deployment/wordpress
+      - --namespace
+      - wordpress
+      - --container
+      - wordpress-fpm
+      - --
+      - sh
+      - -c
+      - |
+        F=/var/www/html/wp-content/mu-plugins/language-links.php
+        cat > "$F.new" << 'PHPEOF'
+        <?php
+        /**
+         * "Also available in" line above translated posts and pages - managed by Ansible (blog_wordpress).
+         * Shows only languages that have a published translation of this post/page
+         * (Polylang); does nothing when Polylang is inactive.
+         */
+        add_filter('the_content', function ($content) {
+            if (!function_exists('pll_the_languages') || !is_singular(['post', 'page']) || !in_the_loop() || !is_main_query()) {
+                return $content;
+            }
+            $langs = pll_the_languages(['raw' => 1, 'hide_if_no_translation' => 1, 'hide_current' => 1]);
+            $links = [];
+            foreach ((array) $langs as $l) {
+                if (empty($l['url']) || !empty($l['no_translation'])) {
+                    continue;
+                }
+                $links[] = sprintf('<a href="%s" hreflang="%s" lang="%s">%s</a>',
+                    esc_url($l['url']), esc_attr($l['slug']), esc_attr($l['slug']), esc_html($l['name']));
+            }
+            if (!$links) {
+                return $content;
+            }
+            $labels = ['en' => 'Also available in', 'de' => 'Auch auf', 'fr' => 'Aussi en', 'es' => 'También en'];
+            $label = $labels[pll_current_language()] ?? $labels['en'];
+            return '<p class="pll-also-in" style="font-size:0.9em;margin:0 0 1.2em;">🌐 ' . esc_html($label) . ': '
+                . implode(' · ', $links) . '</p>' . $content;
+        }, 5);
+        PHPEOF
+        # Same change-only pattern as security-hardening.php above.
+        if [ -f "$F" ] && [ "$(md5sum < "$F.new")" = "$(md5sum < "$F")" ]; then
+          rm -f "$F.new"
+        else
+          mv "$F.new" "$F" && chown www-data:www-data "$F" && echo CHANGED
+        fi
+  register: wp_mu_language_links
+  changed_when: "'CHANGED' in wp_mu_language_links.stdout"
+  notify: Restart wordpress deployment (OPcache picks up changed PHP files)

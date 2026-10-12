@@ -1,0 +1,108 @@
+---
+# -----------------------------------------------------------------------------
+# Repository and package
+# -----------------------------------------------------------------------------
+- name: Grafana | Add official Grafana repository
+  ansible.builtin.copy:
+    dest: /etc/yum.repos.d/grafana.repo
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [grafana]
+      name=Grafana OSS
+      baseurl=https://rpm.grafana.com
+      repo_gpgcheck=1
+      enabled=1
+      gpgcheck=1
+      gpgkey=https://rpm.grafana.com/gpg.key
+      sslverify=1
+      sslcacert=/etc/pki/tls/certs/ca-bundle.crt
+      exclude=*beta*
+
+- name: Grafana | Install grafana-oss
+  ansible.builtin.dnf:
+    name: grafana
+    state: present
+
+
+# -----------------------------------------------------------------------------
+# Configuration
+# -----------------------------------------------------------------------------
+# admin_user and admin_password are only evaluated by Grafana on first start
+# (before the internal database is initialised).  On an existing installation
+# these lines have no effect – the credentials are stored in the DB.
+# NOTE: admin_user only takes effect on the very first Grafana start (before
+# the internal SQLite DB is created).  On an existing installation the user
+# in the DB is not renamed – change it manually via the Grafana UI or CLI.
+- name: Grafana | Set admin username in grafana.ini
+  ansible.builtin.lineinfile:
+    path: /etc/grafana/grafana.ini
+    regexp: '^;?\s*admin_user\s*='
+    line: "admin_user = {{ grafana_basic_auth_user }}"
+    state: present
+  notify: restart grafana
+
+- name: Grafana | Set admin password in grafana.ini
+  ansible.builtin.lineinfile:
+    path: /etc/grafana/grafana.ini
+    regexp: '^;?\s*admin_password\s*='
+    line: "admin_password = {{ grafana_admin_pass }}"
+    state: present
+  notify: restart grafana
+
+# Disable the "change password on first login" prompt when password is managed
+- name: Grafana | Disable forced password change on login
+  ansible.builtin.lineinfile:
+    path: /etc/grafana/grafana.ini
+    regexp: '^;?\s*disable_initial_admin_creation\s*='
+    line: "disable_initial_admin_creation = false"
+    state: present
+
+# Bind to all interfaces so K3s pods can reach Grafana via the host IP
+# (the K3s External Service Endpoint points to the host's public IP).
+# Access is restricted to the K3s pod CIDR by nftables (common_firewall).
+- name: Grafana | Bind to all interfaces (required for K3s pod access)
+  ansible.builtin.lineinfile:
+    path: /etc/grafana/grafana.ini
+    regexp: '^;?\s*http_addr\s*='
+    line: "http_addr = 0.0.0.0"
+    state: present
+  notify: restart grafana
+
+# Required so Grafana generates correct redirect URLs when served via K3s Ingress at /grafana/
+- name: Grafana | Set root_url for K3s Ingress subpath proxy
+  ansible.builtin.lineinfile:
+    path: /etc/grafana/grafana.ini
+    regexp: '^;?\s*root_url\s*='
+    line: "root_url = https://{{ grafana_proxy_hostname }}/grafana/"
+    state: present
+  notify: restart grafana
+
+- name: Grafana | Enable serve_from_sub_path
+  ansible.builtin.lineinfile:
+    path: /etc/grafana/grafana.ini
+    regexp: '^;?\s*serve_from_sub_path\s*='
+    line: "serve_from_sub_path = true"
+    state: present
+  notify: restart grafana
+
+
+# -----------------------------------------------------------------------------
+# Enable and start Grafana (must be running before API calls)
+# -----------------------------------------------------------------------------
+- name: Grafana | Enable and start service
+  ansible.builtin.systemd:
+    name: grafana-server
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Grafana | Wait for API to become available
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:3000/api/health"
+    status_code: 200
+  register: grafana_health
+  until: grafana_health.status == 200
+  retries: 30
+  delay: 3

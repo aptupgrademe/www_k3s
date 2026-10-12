@@ -1,0 +1,35 @@
+---
+# -----------------------------------------------------------------------------
+# WordPress core installation
+# wp-config.php is created automatically by the container via WORDPRESS_DB_*
+# env vars. We only need to run wp core install to set up the DB tables.
+# -----------------------------------------------------------------------------
+- name: WordPress | Check if WordPress is already installed
+  ansible.builtin.command: >
+    k3s kubectl exec deployment/wordpress
+    --namespace wordpress
+    --container wordpress-fpm --
+    php /usr/local/lib/wp-cli/wp-cli.phar core is-installed
+    --path=/var/www/html
+    --allow-root
+  register: wp_installed
+  failed_when: false
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+
+- name: WordPress | Run initial installation
+  ansible.builtin.command: >
+    k3s kubectl exec deployment/wordpress
+    --namespace wordpress
+    --container wordpress-fpm --
+    php /usr/local/lib/wp-cli/wp-cli.phar core install
+    --path=/var/www/html
+    --url={{ blog_url }}
+    --title={{ blog_title | quote }}
+    --admin_user={{ blog_admin_user }}
+    --admin_password={{ blog_admin_pass }}
+    --admin_email={{ blog_admin_email }}
+    --skip-email
+    --allow-root
+  when: wp_installed.rc != 0
+  changed_when: true
