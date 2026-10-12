@@ -41,7 +41,7 @@ Internet
 │  │                                                     │    │
 │  │  nginx-ingress  (F5, hostNetwork, ports 80/443)    │    │  ← TLS, Brotli, HTTP/2
 │  │  cert-manager   (Let's Encrypt – auto TLS)         │    │
-│  │  Calico policy-only (Nextcloud – NetworkPolicy)    │    │
+│  │  Calico policy-only (NetworkPolicy, both stacks)   │    │
 │  │                                                     │    │
 │  │  ┌──────────────────┐  ┌─────────────────────────┐ │    │
 │  │  │  Nextcloud stack │  │   WordPress stack        │ │    │
@@ -65,10 +65,11 @@ Internet
 
 - **Nextcloud 34** with PHP-FPM, nginx sidecar, Redis (host service) and MariaDB 10.11
 - **Collabora CODE** (online office) with WOPI integration
-- **Calico (policy-only mode)** – NetworkPolicy enforcement for Nextcloud;
-  Collabora is restricted from ever reaching MariaDB/Redis directly, since
-  K3s's default Flannel CNI does not enforce NetworkPolicy objects at all
-- **WordPress 7.1** (core 7.1.3 via the nightly minor updates, on the pinned `wordpress:7.1.1` image) with PHP-FPM,
+- **Calico (policy-only mode)** – NetworkPolicy enforcement on both stacks, since
+  K3s's default Flannel CNI does not enforce NetworkPolicy objects at all: on
+  Nextcloud, Collabora can never reach MariaDB/Redis directly; on the blog,
+  MariaDB/Redis only accept the WordPress pods and WordPress's own egress is capped
+- **WordPress 7.1** (core 7.1.3 via the nightly minor updates, on the pinned `wordpress:7.1.3` image) with PHP-FPM,
   nginx sidecar, MariaDB pod and **Redis Object Cache** pod
 - Automatic installation on first pod start via container env vars and WP-CLI
 - WordPress WP-Cron as Kubernetes CronJob (no HTTP trigger); the cron pods carry
@@ -153,7 +154,7 @@ Internet
   For Germany: ~8,700 IPv4 + 3,100 IPv6 blocks, ~1.5 MB kernel memory. Details
   and the emergency path: [`roles/common_firewall/readme.md`](roles/common_firewall/readme.md)
 
-#### NetworkPolicy – Calico (Nextcloud)
+#### NetworkPolicy – Calico (both stacks)
 
 - Installed in **policy-only mode**: only Felix + kube-controllers run,
   reading Pods/NetworkPolicy objects from the Kubernetes API. Flannel keeps
@@ -161,6 +162,9 @@ Internet
 - `collabora-netpol` restricts the Collabora pod to DNS + the Nextcloud pod
   only – it can no longer reach MariaDB or Redis by any path, direct or via
   the host IP, even though it previously could (verified live both ways).
+- On the blog, the WordPress stack's policies let only the WordPress pods reach
+  MariaDB and Redis, and cap WordPress's own traffic to what it needs
+  (`roles/blog_k3s_deploy/templates/networkpolicy.yml.j2`).
 
 #### Intrusion Detection – Fail2Ban
 
@@ -225,9 +229,11 @@ issuance succeeds.
 ## Requirements
 
 ### Control node (your machine)
-- Ansible 2.15+
-- Python 3.8+
-- `community.mysql` and `ansible.posix` collections
+- ansible-core 2.16+ (tested with 2.19), Python 3.10+
+- Collections with exact versions from `requirements.yml` (`community.mysql`, `ansible.posix`,
+  `community.general`, `kubernetes.core` >= 6.5.0 for Helm 4):
+  `ansible-galaxy collection install -r requirements.yml`
+- Optional, for the checks and tests: `pre-commit`, `ansible-lint`, podman
 
 ### Internet servers (AlmaLinux 9)
 - Fresh AlmaLinux 9 install
@@ -287,14 +293,16 @@ www_k3s/
 │
 ├── inventory/
 │   ├── hosts.yml              # Server inventory (gitignored)
-│   ├── group_vars/all.yml     # Shared variables: image versions, chart versions
+│   ├── group_vars/all/
+│   │   ├── main.yml           # Shared settings: CIDRs, HostPath dirs, resource defaults
+│   │   └── versions.yml       # ALL version pins in one place (Renovate keeps them current)
 │   └── host_vars/<host>/
 │       ├── vars.yml           # Host-specific config – gitignored
 │       ├── vault.yml          # Encrypted secrets – gitignored, NEVER committed
 │       └── vault.yml.example  # Template with placeholder values (committed)
 │
 ├── roles/
-│   ├── common_*/              # Shared roles (K3s, SSH, Firewall, Monitoring, Calico, …)
+│   ├── common_*/              # Shared roles (K3s, SSH, Firewall, Monitoring, Calico, ClamAV, SELinux, …)
 │   ├── next_*/                # Nextcloud-specific roles
 │   └── blog_*/                # WordPress-specific roles
 │
@@ -303,7 +311,14 @@ www_k3s/
 │   ├── nextcloud-restore.sh   # Nextcloud restore from /data/backup/nextcloud-data/<env>
 │   ├── wordpress-backup/      # Pull backup (rsync + rdiff-backup) for the blog, see its README
 │   ├── wordpress-backup.sh    # Manual ad-hoc WordPress backup via kubectl exec
-│   └── wordpress-restore.sh   # WordPress restore including MariaDB re-init
+│   ├── wordpress-restore.sh   # WordPress restore including MariaDB re-init
+│   └── check-drift.sh         # --check --diff against a host: what would a real run change?
+│
+├── tests/
+│   ├── k8s/                   # Kubernetes roles against a throwaway API-only K3s in podman
+│   └── update/                # Failure scenarios of the update playbooks (fake kubectl/crictl)
+│
+├── .ansible-lint, .yamllint, .pre-commit-config.yaml, .github/workflows/lint.yml, renovate.json5
 │
 └── docs/
     ├── wordpress-betrieb.html       # WordPress – Betriebsdokumentation (DE)
@@ -311,7 +326,10 @@ www_k3s/
     ├── wordpress-exploitation.html  # WordPress – Guide d'exploitation (FR)
     ├── nextcloud-betrieb.html       # Nextcloud – Betriebsdokumentation (DE)
     ├── nextcloud-operations.html    # Nextcloud – Operations guide (EN)
-    └── nextcloud-exploitation.html  # Nextcloud – Guide d'exploitation (FR)
+    ├── nextcloud-exploitation.html  # Nextcloud – Guide d'exploitation (FR)
+    ├── ansible-funktionsweise.html  # Ansible code – how it works (DE)
+    ├── ansible-internals.html       # Ansible code – how it works (EN)
+    └── ansible-fonctionnement.html  # Ansible code – how it works (FR)
 ```
 
 ---
@@ -347,7 +365,7 @@ ansible-vault encrypt inventory/host_vars/<host>/vault.yml
 | `common_logrotate` | Log rotation for Grafana, fail2ban, rkhunter |
 | `common_version_check` | Pre-flight: K3s, Helm, chart and image versions vs. latest |
 | `common_k3s` | K3s, Helm, cert-manager, F5 nginx-ingress (HTTP/2, Brotli, OCSP) |
-| `common_calico` | Calico policy-only mode: NetworkPolicy enforcement (Nextcloud) |
+| `common_calico` | Calico policy-only mode: NetworkPolicy enforcement (both stacks) |
 | `common_firewall` | nftables (table inet, banned/scan-ban sets, port-scan detection, K3s exceptions, table-scoped reload, optional SSH country allowlist) |
 | `common_ssh` | SSH hardening (port 10022, key-only, PermitRootLogin without-password) |
 | `common_prometheus` | Prometheus metrics collector (dashboards/history only – see note below) |
@@ -360,6 +378,10 @@ ansible-vault encrypt inventory/host_vars/<host>/vault.yml
 | `common_rkhunter` | Rootkit detection with daily scan |
 | `common_cis_hardening` | CIS AlmaLinux 9 Benchmark: AIDE, kernel modules, cron/sudo, mount options |
 | `common_aide_refresh` | Refreshes the AIDE baseline after approved changes, so the nightly check isn't a false alarm |
+| `common_clamav` | Nightly ClamAV scan – WordPress uploads or Nextcloud data (`clamav_target`) |
+| `common_selinux` | SELinux enforcing + `container_file_t` for the stack's HostPath dirs (`selinux_target`) |
+| `common_verify` | Smoke checks shared by `blog_verify` and `nextcloud_verify` |
+| `common_image_refresh` | Update playbooks: which Deployments run an outdated build of their tag |
 
 > **Alerting:** Monit is the main mail path. Prometheus evaluates the rules in
 > `alert.rules.yml`, but no Alertmanager is deployed, so a firing rule is only
@@ -381,8 +403,10 @@ ansible-vault encrypt inventory/host_vars/<host>/vault.yml
 
 ## Updating Component Versions
 
-All pinned versions live in [`inventory/group_vars/all.yml`](inventory/group_vars/all.yml).
-The `common_version_check` role compares them against latest releases at every playbook run.
+All pinned versions live in one file, [`inventory/group_vars/all/versions.yml`](inventory/group_vars/all/versions.yml)
+– values on top, reasons and history below. Renovate (`renovate.json5`) proposes bumps as pull requests (majors and
+K3s/Calico minors only after approval); the `common_version_check` role also compares them against the latest releases
+at every playbook run. Before rolling a bump out: `scripts/check-drift.sh <playbook> <host>`.
 
 ```yaml
 # Helm charts
@@ -390,12 +414,31 @@ ingress_nginx_chart_version: "2.6.4"
 cert_manager_chart_version:  "1.21.2"
 
 # Container images
-blog_image_wordpress: "wordpress:7.1.1-php8.4-fpm"
+blog_image_wordpress: "wordpress:7.1.3-php8.4-fpm"
 nextcloud_image_fpm:  "nextcloud:34.0.4-fpm"
 
-# Calico (Nextcloud policy-only NetworkPolicy enforcement)
+# Calico (policy-only NetworkPolicy enforcement)
 calico_version: "v3.32.2"
 ```
+
+---
+
+## Code Quality & Tests
+
+| What | How |
+|---|---|
+| Lint | `ansible-lint`, `yamllint` – config in `.ansible-lint`, `.ansible-lint-ignore`, `.yamllint` |
+| Secret scan | `gitleaks` on every commit (pre-commit) and over the full history on GitHub |
+| Hooks | `pre-commit install` once per clone; `pre-commit run --all-files` |
+| CI | `.github/workflows/lint.yml` – ansible-lint + gitleaks on every push |
+| K8s roles | `tests/k8s/run.sh` – idempotency, no pod restarts, no new Helm revisions, negative test |
+| Update playbooks | `tests/update/run.sh` – 14 failure scenarios (rescue, maintenance mode, pre-flight) |
+| Real hosts | `scripts/check-drift.sh <playbook> <host>` – exit 1 if a real run would change anything |
+
+How the code works – variables, roles, idempotency, Kubernetes modules, error handling, tests:
+[docs/ansible-internals.html](docs/ansible-internals.html) (EN),
+[docs/ansible-funktionsweise.html](docs/ansible-funktionsweise.html) (DE),
+[docs/ansible-fonctionnement.html](docs/ansible-fonctionnement.html) (FR).
 
 ---
 
@@ -406,6 +449,12 @@ calico_version: "v3.32.2"
 | **Deutsch** | [wordpress-betrieb.html](docs/wordpress-betrieb.html) | [nextcloud-betrieb.html](docs/nextcloud-betrieb.html) |
 | **English** | [wordpress-operations.html](docs/wordpress-operations.html) | [nextcloud-operations.html](docs/nextcloud-operations.html) |
 | **Français** | [wordpress-exploitation.html](docs/wordpress-exploitation.html) | [nextcloud-exploitation.html](docs/nextcloud-exploitation.html) |
+
+| Ansible code (how it works) | |
+|---|---|
+| **Deutsch** | [ansible-funktionsweise.html](docs/ansible-funktionsweise.html) |
+| **English** | [ansible-internals.html](docs/ansible-internals.html) |
+| **Français** | [ansible-fonctionnement.html](docs/ansible-fonctionnement.html) |
 
 Each guide covers: architecture, configuration, playbook execution,
 security, performance and troubleshooting.

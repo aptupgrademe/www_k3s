@@ -252,6 +252,9 @@
     <span>Betriebs&shy;dokumentation</span>
   </div>
 
+  <div class="section-label">Ansible-Code</div>
+  <a href="ansible-funktionsweise.html">Funktionsweise des Codes &rarr;</a>
+
   <div class="section-label">Grundlagen</div>
   <a href="#ueberblick">Überblick</a>
   <a href="#architektur">Architektur</a>
@@ -727,7 +730,7 @@ kubectl exec -n nextcloud deployment/collabora -- nc -z -w4 &lt;mariadb-host-ip&
 <table>
   <tr><th>Datei</th><th>Inhalt</th></tr>
   <tr>
-    <td><code>inventory/group_vars/all.yml</code></td>
+    <td><code>inventory/group_vars/all/versions.yml</code> / <code>all/main.yml</code></td>
     <td>Globale Einstellungen: K3s-CIDRs, <strong>Container-Image-Tags</strong>,
         Helm-Chart-Versionen, Monitoring-Versionen</td>
   </tr>
@@ -749,7 +752,7 @@ kubectl exec -n nextcloud deployment/collabora -- nc -z -w4 &lt;mariadb-host-ip&
   <tr><td><code>next_packages</code></td><td>Repositories (MariaDB 10.11), Pakete (MariaDB, Redis, SELinux-Tools)</td></tr>
   <tr><td><code>next_mariadb</code></td><td>MariaDB-Setup, Datenbank und Benutzer anlegen, bind-address auf 0.0.0.0</td></tr>
   <tr><td><code>next_redis</code></td><td>Redis-Bind-Konfiguration (localhost + Host-IP)</td></tr>
-  <tr><td><code>next_selinux</code></td><td>SELinux enforcing, <code>container_file_t</code> für HostPath-Verzeichnisse</td></tr>
+  <tr><td><code>common_selinux</code> (<code>selinux_target: nextcloud</code>)</td><td>SELinux enforcing, <code>container_file_t</code> für HostPath-Verzeichnisse (gemeinsam mit dem Blog)</td></tr>
   <tr><td><code>next_k3s_deploy</code></td><td>K8s-Manifeste: Namespace, Secrets, ConfigMaps, Deployments, Ingress, CronJob, NetworkPolicy</td></tr>
   <tr><td><code>next_config</code></td><td>Post-Deploy via <code>kubectl exec occ</code>: trusted_domains, Apps, WOPI-Config</td></tr>
   <tr><td><code>common_calico</code></td><td>Calico Policy-Only-Modus (Felix + kube-controllers) – nötig, damit NetworkPolicy überhaupt durchgesetzt wird</td></tr>
@@ -845,16 +848,16 @@ k3s kubectl get secret nextcloud-secrets -n nextcloud \
 <h2>Container-Images &amp; Versionen</h2>
 
 <p>
-  Alle Image-Tags sind in <code>inventory/group_vars/all.yml</code>
+  Alle Image-Tags sind in <code>inventory/group_vars/all/versions.yml</code>
   zentral definiert. Da <code>imagePullPolicy</code> standardmäßig
   <code>IfNotPresent</code> für getaggte Images ist, zieht K3s automatisch
   ein neues Image nur dann, wenn der Tag im Manifest geändert wurde.
 </p>
 
-<pre><code># inventory/group_vars/all.yml
+<pre><code># inventory/group_vars/all/versions.yml
 nextcloud_image_fpm:       "nextcloud:34.0.4-fpm"       # Nextcloud PHP-FPM
 nextcloud_image_nginx:     "nginx:1.30.5-alpine"        # nginx Sidecar
-nextcloud_image_collabora: "collabora/code:26.04.3.1.1" # Collabora CODE
+nextcloud_image_collabora: "collabora/code:26.04.5.1.1" # Collabora CODE
 nextcloud_image_busybox:   "busybox:1"                  # Init-Container</code></pre>
 
 <h3>Tag-Strategie</h3>
@@ -862,13 +865,13 @@ nextcloud_image_busybox:   "busybox:1"                  # Init-Container</code><
   <tr><th>Tag-Format</th><th>Bedeutung</th><th>Beispiel</th></tr>
   <tr>
     <td><code>34.0.4-fpm</code></td>
-    <td>Exakter Nextcloud-Patch-Pin; wird manuell in <code>all.yml</code> hochgesetzt, sobald ein neuerer Build geprüft und bestätigt ist</td>
+    <td>Exakter Nextcloud-Patch-Pin; wird in <code>versions.yml</code> hochgesetzt, sobald ein neuerer Build geprüft ist (Renovate schlägt es als Pull Request vor)</td>
     <td><code>nextcloud:34.0.4-fpm</code> (aktuell)</td>
   </tr>
   <tr>
     <td><code>35.0.0-fpm</code></td>
     <td>Nächste Major-Version – muss explizit gesetzt werden</td>
-    <td>Änderung in <code>all.yml</code> nötig</td>
+    <td>Änderung in <code>versions.yml</code> nötig (Renovate: nur nach Freigabe)</td>
   </tr>
   <tr>
     <td><code>1.30.4-alpine</code></td>
@@ -876,9 +879,9 @@ nextcloud_image_busybox:   "busybox:1"                  # Init-Container</code><
     <td><code>nginx:1.30.5-alpine</code> (aktuell)</td>
   </tr>
   <tr>
-    <td><code>26.04.3.1.1</code></td>
+    <td><code>26.04.5.1.1</code></td>
     <td>Collabora-Release-Patch; wird regelmäßig gegen Docker Hub geprüft</td>
-    <td><code>collabora/code:26.04.3.1.1</code> (aktuell)</td>
+    <td><code>collabora/code:26.04.5.1.1</code> (aktuell)</td>
   </tr>
 </table>
 
@@ -1417,6 +1420,17 @@ k3s kubectl get pods -n nextcloud</code></pre>
   Wenn Docker Hub <code>nextcloud:34.0.4-fpm</code> selbst neu baut (z.B. ein
   Base-Image-Security-Patch) und der Tag im Ansible unverändert bleibt:
 </p>
+<p><strong>Am einfachsten:</strong> <code>nextcloud-update.yml</code> erledigt genau das für jedes Image jedes Deployments &ndash; ziehen, Digest mit den laufenden Pods vergleichen, nur Neugebautes neu starten, danach <code>occ upgrade</code> und <code>app:update</code>:</p>
+<pre><code>ansible-playbook -i inventory/hosts.yml nextcloud-update.yml --limit &lt;host&gt; --ask-vault-pass</code></pre>
+<div class="callout callout-info">
+  <strong>Sicherheitsnetz (seit 12.10.2026)</strong>
+  Die Update-Playbooks prüfen zuerst, ob die Instanz gesund ist, und starten sonst gar nicht. Neu gestartet werden nur
+  Deployments, deren Image wirklich neu gebaut wurde (alle Images, auch Exporter). Scheitert ein Schritt, zeigt ein
+  <code>rescue</code>-Teil den Zustand (Pods, Events, Logs, Ausgabe des fehlgeschlagenen Befehls) und stoppt vor dem
+  nächsten Server. Nextcloud: Den Wartungsmodus schaltet es nur ab, wenn das Upgrade selbst fertig ist; sonst bleibt er an, mit Anleitung. Mit <code>--check</code> vorab sieht man das Ergebnis der Vorprüfung, ohne etwas zu ändern. Wie es
+  funktioniert: <a href="ansible-funktionsweise.html#playbooks">Ansible-Code &rarr; Update-Playbooks</a>.
+</div>
+<p>Von Hand sind es dieselben Schritte:</p>
 <ol class="steps">
   <li>Neues Image manuell pullen:
     <pre><code>crictl pull docker.io/library/nextcloud:34.0.4-fpm</code></pre>
@@ -1446,7 +1460,7 @@ k3s kubectl rollout status  deployment/nextcloud -n nextcloud --timeout=300s</co
 </div>
 
 <ol class="steps">
-  <li>Tag in <code>inventory/group_vars/all.yml</code> ändern:
+  <li>Tag in <code>inventory/group_vars/all/versions.yml</code> ändern:
     <pre><code>nextcloud_image_fpm: "nextcloud:34.0.4-fpm"</code></pre>
   </li>
   <li>Playbook ausführen – K3s zieht das neue Image automatisch und rollt den Pod durch:
@@ -1770,7 +1784,7 @@ k3s kubectl describe clusterissuer letsencrypt-prod</code></pre>
   </tr>
   <tr>
     <td>"data_dir_writability … Permission denied" im <code>nextcloud.log</code></td>
-    <td><code>next_selinux</code> legte <code>/data</code> und das Code-Verzeichnis als
+    <td><code>next_selinux</code> (heute <code>common_selinux</code>) legte <code>/data</code> und das Code-Verzeichnis als
         root:root an, <code>dirs.yml</code> setzte später im Lauf wieder 33:33. Beide Rollen
         setzen jetzt identische Besitzer und Rechte.</td>
     <td><code>journalctl | grep "ansible-.*path=/data "</code> zeigt innerhalb eines
@@ -2024,7 +2038,7 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   <tr>
     <td>SELinux</td>
     <td>Enforcing, <code>container_file_t</code> für HostPath-Volumes</td>
-    <td><code>next_selinux</code></td>
+    <td><code>common_selinux</code></td>
   </tr>
   <tr>
     <td>Audit</td>
@@ -2039,7 +2053,7 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   <tr>
     <td>Virenscan</td>
     <td>ClamAV: nächtlicher Scan der Nextcloud-Nutzerdaten um 04:30 Uhr (nach dem Neustartfenster um 03:30 und dem AIDE-Refresh um 04:00, damit ein Update-Neustart den Scan nicht mehr abbricht); Vorschaubilder (<code>appdata_*/preview</code>) und reine Bild-, Video- und Audiodateien (<code>clamav_skip_extensions</code>, ohne Rücksicht auf Groß-/Kleinschreibung) werden übersprungen – Dokumente, Archive, ausführbare Dateien, Skripte und Dateien ohne Endung werden weiter gescannt; Signatur-Updates via freshclam; Mail nur bei Fund (still bei sauberem Scan)</td>
-    <td><code>next_clamav</code></td>
+    <td><code>common_clamav</code></td>
   </tr>
   <tr>
     <td>Patches</td>

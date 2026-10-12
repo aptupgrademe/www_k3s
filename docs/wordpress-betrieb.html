@@ -252,6 +252,9 @@
     <span>Betriebs&shy;dokumentation</span>
   </div>
 
+  <div class="section-label">Ansible-Code</div>
+  <a href="ansible-funktionsweise.html">Funktionsweise des Codes &rarr;</a>
+
   <div class="section-label">Grundlagen</div>
   <a href="#ueberblick">Überblick</a>
   <a href="#architektur">Architektur</a>
@@ -299,7 +302,7 @@
 <div class="card-grid">
   <div class="card">
     <div class="label">WordPress</div>
-    <div class="value">7.1.3 Kern (Unterversionen per nächtlichem Autoupdate) &middot; Image wordpress:7.1.1-php8.4-fpm</div>
+    <div class="value">7.1.3 Kern (Unterversionen per nächtlichem Autoupdate) &middot; Image wordpress:7.1.3-php8.4-fpm</div>
   </div>
   <div class="card">
     <div class="label">Betriebssystem</div>
@@ -359,7 +362,7 @@
 <span class="c-pod">│  fastcgi       │ :9000                  │</span>
 <span class="c-pod">│  ┌─────────────▼─────────────────────┐  │</span>
 <span class="c-pod">│  │  wordpress-fpm  PHP-FPM 8.3       │  │</span>
-<span class="c-pod">│  │  wordpress:7.1.1-php8.4-fpm              │  │</span>
+<span class="c-pod">│  │  wordpress:7.1.3-php8.4-fpm              │  │</span>
 <span class="c-pod">│  └───────────────────────────────────┘  │</span>
 <span class="c-pod">└──────────────────────────────────────────┘</span>
         │
@@ -416,7 +419,7 @@
 <h3>WordPress-Pod im Detail</h3>
 <div class="card">
   <h4>Container 1: <code>wordpress-fpm</code></h4>
-  <p>Das offizielle <code>wordpress:7.1.1-php8.4-fpm</code>-Image. Führt PHP-FPM auf Port 9000 aus.
+  <p>Das offizielle <code>wordpress:7.1.3-php8.4-fpm</code>-Image. Führt PHP-FPM auf Port 9000 aus.
   Beim ersten Start installiert der Docker-Entrypoint WordPress automatisch anhand
   der Umgebungsvariablen (DB-Host, DB-Name, DB-User, DB-Passwort).
   WordPress-Dateien werden in <code>/var/www/html</code> auf dem gemeinsamen
@@ -678,8 +681,8 @@ real_ip_recursive on;</code></pre>
 <table>
   <tr><th>Datei</th><th>Inhalt</th></tr>
   <tr>
-    <td><code>inventory/group_vars/all.yml</code></td>
-    <td>Globale Einstellungen: <strong>Container-Image-Tags</strong>,
+    <td><code>inventory/group_vars/all/versions.yml</code> / <code>all/main.yml</code></td>
+    <td>Globale Einstellungen (versions.yml: <strong>alle Versions-Pins</strong> an einer Stelle): <strong>Container-Image-Tags</strong>,
         Helm-Chart-Versionen, Monitoring-Versionen, K3s-CIDRs</td>
   </tr>
   <tr>
@@ -698,7 +701,7 @@ real_ip_recursive on;</code></pre>
 <table>
   <tr><th>Rolle</th><th>Aufgabe</th></tr>
   <tr><td><code>blog_packages</code></td><td>Pakete installieren (z.B. SELinux-Tools)</td></tr>
-  <tr><td><code>blog_selinux</code></td><td>SELinux enforcing, <code>container_file_t</code> für HostPath-Verzeichnisse</td></tr>
+  <tr><td><code>common_selinux</code> (<code>selinux_target: wordpress</code>)</td><td>SELinux enforcing, <code>container_file_t</code> für HostPath-Verzeichnisse (gemeinsam mit Nextcloud)</td></tr>
   <tr><td><code>common_k3s</code></td><td>K3s, Helm, cert-manager, nginx-ingress (F5), Calico (policy-only, für NetworkPolicy-Durchsetzung), Audit-Logging, EventRateLimit-/NodeRestriction-Admission-Plugins, Pod-PID-Limit, PKI-Dateirechte, clusterweite Default-ServiceAccount-Härtung – gemeinsame Basis, geteilt mit Nextcloud</td></tr>
   <tr><td><code>blog_k3s_deploy</code></td><td>K8s-Manifeste: Namespace (+ Pod-Security-Standards-Labels, Default-SA-Härtung), Secrets, ConfigMaps, Deployments, Ingress, CronJob, NetworkPolicy, Image-Allowlist</td></tr>
   <tr><td><code>blog_wordpress</code></td><td>Post-Deploy: WP-CLI-Befehle (Admin, Plugins, Einstellungen)</td></tr>
@@ -804,13 +807,13 @@ k3s kubectl get secret wordpress-secrets -n wordpress \
 <h2>Container-Images &amp; Versionen</h2>
 
 <p>
-  Alle Image-Tags sind in <code>inventory/group_vars/all.yml</code>
+  Alle Image-Tags sind in <code>inventory/group_vars/all/versions.yml</code>
   zentral definiert. K3s zieht automatisch ein neues Image nur dann,
   wenn der Tag im Manifest geändert wurde (<code>imagePullPolicy: IfNotPresent</code>).
 </p>
 
-<pre><code># inventory/group_vars/all.yml
-blog_image_wordpress: "wordpress:7.1.1-php8.4-fpm"   # WordPress PHP-FPM
+<pre><code># inventory/group_vars/all/versions.yml
+blog_image_wordpress: "wordpress:7.1.3-php8.4-fpm"   # WordPress PHP-FPM
 blog_image_mariadb:   "mariadb:10.11.19"    # MariaDB (10.11 LTS)
 blog_image_nginx:     "nginx:1.30.5-alpine" # nginx Sidecar (1.30 stable)</code></pre>
 
@@ -822,17 +825,17 @@ blog_image_nginx:     "nginx:1.30.5-alpine" # nginx Sidecar (1.30 stable)</code>
   gleitender Tag (ein bloßes <code>10.11</code> oder <code>1.30-alpine</code>) kann
   einen Node dauerhaft auf einem veralteten, gecachten Layer belassen, selbst nachdem
   Docker Hub diesen Tag stromaufwärts neu gebaut hat. Jede Versionsanhebung ist daher
-  eine bewusste, manuelle Änderung in <code>group_vars/all.yml</code>, die durch
+  eine bewusste Änderung in <code>group_vars/all/versions.yml</code> (Renovate schlägt sie als Pull Request vor), die durch
   erneutes Ausführen des Playbooks angewendet wird (das Manifest wird aktualisiert und
-  ein Rollout-Restart ausgelöst) &ndash; keines der drei Images wird automatisch mit
-  Patches versorgt.
+  ein Rollout-Restart ausgelöst) &ndash; keines der drei Images wird automatisch
+  ausgerollt.
 </p>
 <table>
   <tr><th>Tag-Format</th><th>Bedeutung</th><th>Beispiel</th></tr>
   <tr>
-    <td><code>7.1.1-php8.4-fpm</code></td>
+    <td><code>7.1.3-php8.4-fpm</code></td>
     <td>Exakter WordPress-Patch-Release; wird manuell in Ansible hochgesetzt</td>
-    <td><code>wordpress:7.1.1-php8.4-fpm</code></td>
+    <td><code>wordpress:7.1.3-php8.4-fpm</code></td>
   </tr>
   <tr>
     <td><code>10.11.19</code></td>
@@ -858,10 +861,10 @@ blog_image_nginx:     "nginx:1.30.5-alpine" # nginx Sidecar (1.30 stable)</code>
 
 <div class="callout callout-warn">
   <strong>Rebuild ohne Tag-Änderung</strong>
-  Wenn Docker Hub <code>wordpress:7.1.1-php8.4-fpm</code> unter demselben Tag neu baut
+  Wenn Docker Hub <code>wordpress:7.1.3-php8.4-fpm</code> unter demselben Tag neu baut
   (z.B. ein Base-Image-Security-Patch), passiert auf dem Server <em>nichts automatisch</em>.
   Der Tag ist lokal gecacht. Refresh erzwingen:
-  <pre style="margin-top:8px"><code>crictl pull docker.io/library/wordpress:7.1.1-php8.4-fpm
+  <pre style="margin-top:8px"><code>crictl pull docker.io/library/wordpress:7.1.3-php8.4-fpm
 k3s kubectl rollout restart deployment/wordpress -n wordpress</code></pre>
 </div>
 </section>
@@ -1578,16 +1581,24 @@ k3s kubectl get pods -n wordpress</code></pre>
 <ol class="steps">
   <li>Startet den nächtlichen Update-Job sofort (<code>kubectl create job --from=cronjob/wordpress-autoupdate</code>):
       DB-Dump, Updates, <code>core update-db</code>, Cache leeren, Prüfung der Startseite – derselbe Code wie nachts.</li>
-  <li>Holt die aktuellen Tags von WordPress, nginx, Redis und MariaDB neu (Docker Hub baut unveränderte Tags
-      für Sicherheitsfixes im Basis-Image neu; K3s holt sie von sich aus nie).</li>
+  <li>Holt den aktuellen Tag jedes Images neu, das die Deployments nutzen &ndash; WordPress, nginx, Redis, MariaDB und
+      die Exporter (Docker Hub baut unveränderte Tags für Sicherheitsfixes im Basis-Image neu; K3s holt sie von sich aus nie).</li>
   <li>Startet neu, was es braucht: <code>wordpress</code>, wenn sich eine Plugin-/Theme-/Core-Version geändert hat oder
       eines seiner Images neu gebaut wurde; <code>redis</code>/<code>mariadb</code> nur bei neuem Image.</li>
   <li>Prüft die Startseite und zeigt Job-Log, neu gebaute Images, Neustarts und geänderte Versionen.</li>
 </ol>
 <p>
   Ohne <code>--limit</code> verweigert das Playbook den Lauf. Versionssprünge (neuer Tag in
-  <code>group_vars/all.yml</code>) laufen weiter über <code>blog.yml</code>, siehe unten.
+  <code>group_vars/all/versions.yml</code>) laufen weiter über <code>blog.yml</code>, siehe unten.
 </p>
+<div class="callout callout-info">
+  <strong>Sicherheitsnetz (seit 12.10.2026)</strong>
+  Die Update-Playbooks prüfen zuerst, ob die Instanz gesund ist, und starten sonst gar nicht. Neu gestartet werden nur
+  Deployments, deren Image wirklich neu gebaut wurde (alle Images, auch Exporter). Scheitert ein Schritt, zeigt ein
+  <code>rescue</code>-Teil den Zustand (Pods, Events, Logs, Ausgabe des fehlgeschlagenen Befehls) und stoppt vor dem
+  nächsten Server. Als Restore-Punkt nennt es den neuesten DB-Dump des Update-Jobs. Mit <code>--check</code> vorab sieht man das Ergebnis der Vorprüfung, ohne etwas zu ändern. Wie es
+  funktioniert: <a href="ansible-funktionsweise.html#playbooks">Ansible-Code &rarr; Update-Playbooks</a>.
+</div>
 <div class="callout callout-info">
   <strong>Warum trotzdem neu gestartet wird:</strong> PHP erkennt geänderte Dateien selbst, aber erst innerhalb von
   60 Sekunden und Datei für Datei (siehe OPcache unter Performance). Der Neustart macht alle aktualisierten Dateien
@@ -1602,8 +1613,8 @@ k3s kubectl get pods -n wordpress</code></pre>
 </div>
 
 <ol class="steps">
-  <li>Tag in <code>inventory/group_vars/all.yml</code> ändern:
-    <pre><code>blog_image_wordpress: "wordpress:7.1.1-php8.4-fpm"</code></pre>
+  <li>Tag in <code>inventory/group_vars/all/versions.yml</code> ändern:
+    <pre><code>blog_image_wordpress: "wordpress:7.1.3-php8.4-fpm"</code></pre>
   </li>
   <li>Playbook ausführen – K3s zieht das neue Image und rollt den Pod durch:
     <pre><code>ansible-playbook blog.yml --limit www.apt-upgrade.me --ask-vault-pass</code></pre>
@@ -1622,7 +1633,7 @@ k3s kubectl get pods -n wordpress</code></pre>
 </div>
 <p>Patch-Updates innerhalb von 10.11 sind auf eine exakte Version gepinnt und werden manuell hochgesetzt:</p>
 <ol class="steps">
-  <li>Tag in <code>inventory/group_vars/all.yml</code> ändern:
+  <li>Tag in <code>inventory/group_vars/all/versions.yml</code> ändern:
     <pre><code>blog_image_mariadb: "mariadb:10.11.19"</code></pre>
   </li>
   <li>Playbook ausführen &ndash; K3s zieht das neue Image und rollt den Pod aus:
@@ -2160,7 +2171,7 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   <tr>
     <td>SELinux</td>
     <td>Enforcing, <code>container_file_t</code> für HostPath-Volumes</td>
-    <td><code>blog_selinux</code></td>
+    <td><code>common_selinux</code></td>
   </tr>
   <tr>
     <td>Audit</td>
@@ -2175,7 +2186,7 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   <tr>
     <td>Virenscan</td>
     <td>ClamAV: nächtlicher Scan der WordPress-Uploads (<code>wp-content/uploads</code>) um 02:45 Uhr; Signatur-Updates via freshclam; Mail nur bei Fund (still bei sauberem Scan)</td>
-    <td><code>blog_clamav</code></td>
+    <td><code>common_clamav</code></td>
   </tr>
   <tr>
     <td>Besucherstatistik</td>
@@ -2488,7 +2499,7 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   <tr>
     <td>WP-CLI außerhalb des Webroots + SHA-512-Prüfsumme</td>
     <td>Die <code>wp-cli.phar</code> liegt nicht mehr im öffentlich erreichbaren Verzeichnis (war als 7-MB-Download abrufbar) und wird beim Laden per Prüfsumme verifiziert – schützt vor Supply-Chain-Manipulation.</td>
-    <td><code>blog_k3s_deploy</code>, <code>group_vars/all.yml</code></td>
+    <td><code>blog_k3s_deploy</code>, <code>group_vars/all/versions.yml</code></td>
   </tr>
   <tr>
     <td><code>DISALLOW_FILE_EDIT</code></td>

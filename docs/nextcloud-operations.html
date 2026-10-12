@@ -252,6 +252,9 @@
     <span>Operations Guide</span>
   </div>
 
+  <div class="section-label">Ansible code</div>
+  <a href="ansible-internals.html">How the code works &rarr;</a>
+
   <div class="section-label">Basics</div>
   <a href="#ueberblick">Overview</a>
   <a href="#architektur">Architecture</a>
@@ -719,9 +722,13 @@ kubectl exec -n nextcloud deployment/collabora -- nc -z -w4 &lt;mariadb-host-ip&
 <table>
   <tr><th>File</th><th>Contents</th></tr>
   <tr>
-    <td><code>inventory/group_vars/all.yml</code></td>
-    <td>Global settings: K3s CIDRs, <strong>container image tags</strong>,
-        Helm chart versions, monitoring versions</td>
+    <td><code>inventory/group_vars/all/versions.yml</code></td>
+    <td><strong>All version pins in one place</strong>: K3s, Helm, Calico, Helm charts,
+        container image tags, monitoring binaries (values on top, reasons and history below)</td>
+  </tr>
+  <tr>
+    <td><code>inventory/group_vars/all/main.yml</code></td>
+    <td>Shared settings: K3s CIDRs, HostPath directories, resource defaults</td>
   </tr>
   <tr>
     <td><code>inventory/host_vars/&lt;host&gt;/vars.yml</code></td>
@@ -741,7 +748,7 @@ kubectl exec -n nextcloud deployment/collabora -- nc -z -w4 &lt;mariadb-host-ip&
   <tr><td><code>next_packages</code></td><td>Repositories (MariaDB 10.11), packages (MariaDB, Redis, SELinux tools)</td></tr>
   <tr><td><code>next_mariadb</code></td><td>MariaDB setup, create database and user, bind-address to 0.0.0.0</td></tr>
   <tr><td><code>next_redis</code></td><td>Redis bind configuration (localhost + host IP)</td></tr>
-  <tr><td><code>next_selinux</code></td><td>SELinux enforcing, <code>container_file_t</code> for HostPath directories</td></tr>
+  <tr><td><code>common_selinux</code> (<code>selinux_target: nextcloud</code>)</td><td>SELinux enforcing, <code>container_file_t</code> for HostPath directories (shared with the blog)</td></tr>
   <tr><td><code>next_k3s_deploy</code></td><td>K8s manifests: namespace, secrets, ConfigMaps, deployments, ingress, CronJob, NetworkPolicy</td></tr>
   <tr><td><code>next_config</code></td><td>Post-deploy via <code>kubectl exec occ</code>: trusted_domains, apps, WOPI config</td></tr>
   <tr><td><code>common_calico</code></td><td>Calico policy-only mode (Felix + kube-controllers) – required for NetworkPolicy to actually be enforced</td></tr>
@@ -837,16 +844,16 @@ k3s kubectl get secret nextcloud-secrets -n nextcloud \
 <h2>Container Images &amp; Versions</h2>
 
 <p>
-  All image tags are centrally defined in <code>inventory/group_vars/all.yml</code>.
+  All image tags are centrally defined in <code>inventory/group_vars/all/versions.yml</code>.
   Since <code>imagePullPolicy</code> defaults to
   <code>IfNotPresent</code> for tagged images, K3s only pulls a new image automatically
   when the tag in the manifest has changed.
 </p>
 
-<pre><code># inventory/group_vars/all.yml
+<pre><code># inventory/group_vars/all/versions.yml
 nextcloud_image_fpm:       "nextcloud:34.0.4-fpm"       # Nextcloud PHP-FPM
 nextcloud_image_nginx:     "nginx:1.30.5-alpine"        # nginx Sidecar
-nextcloud_image_collabora: "collabora/code:26.04.3.1.1" # Collabora CODE
+nextcloud_image_collabora: "collabora/code:26.04.5.1.1" # Collabora CODE
 nextcloud_image_busybox:   "busybox:1"                  # Init container</code></pre>
 
 <h3>Tag Strategy</h3>
@@ -854,13 +861,13 @@ nextcloud_image_busybox:   "busybox:1"                  # Init container</code><
   <tr><th>Tag Format</th><th>Meaning</th><th>Example</th></tr>
   <tr>
     <td><code>34.0.4-fpm</code></td>
-    <td>Exact Nextcloud patch pin; bumped manually in <code>all.yml</code> once a newer build is checked and confirmed</td>
+    <td>Exact Nextcloud patch pin; bumped in <code>versions.yml</code> once a newer build is checked (Renovate proposes it as a pull request)</td>
     <td><code>nextcloud:34.0.4-fpm</code> (current)</td>
   </tr>
   <tr>
     <td><code>35.0.0-fpm</code></td>
     <td>Next major version – must be set explicitly</td>
-    <td>Change required in <code>all.yml</code></td>
+    <td>Change required in <code>versions.yml</code> (Renovate: only after approval)</td>
   </tr>
   <tr>
     <td><code>1.30.4-alpine</code></td>
@@ -868,9 +875,9 @@ nextcloud_image_busybox:   "busybox:1"                  # Init container</code><
     <td><code>nginx:1.30.5-alpine</code> (current)</td>
   </tr>
   <tr>
-    <td><code>26.04.3.1.1</code></td>
+    <td><code>26.04.5.1.1</code></td>
     <td>Collabora release patch; checked periodically against Docker Hub</td>
-    <td><code>collabora/code:26.04.3.1.1</code> (current)</td>
+    <td><code>collabora/code:26.04.5.1.1</code> (current)</td>
   </tr>
 </table>
 
@@ -1401,6 +1408,17 @@ k3s kubectl get pods -n nextcloud</code></pre>
   When Docker Hub rebuilds <code>nextcloud:34.0.4-fpm</code> itself (e.g. a
   base-image security patch) and the tag in Ansible remains unchanged:
 </p>
+<p><strong>Easiest:</strong> <code>nextcloud-update.yml</code> does exactly this for every image of every Deployment &ndash; pull, compare the digest with the running pods, restart only what was rebuilt, then <code>occ upgrade</code> and <code>app:update</code>:</p>
+<pre><code>ansible-playbook -i inventory/hosts.yml nextcloud-update.yml --limit &lt;host&gt; --ask-vault-pass</code></pre>
+<div class="callout callout-info">
+  <strong>Safety net (since 2026-10-12)</strong>
+  The update playbooks check the instance first and refuse to start if it is not healthy. They restart only
+  Deployments whose image was actually rebuilt upstream (all images, exporters included). If a step fails, a
+  <code>rescue</code> section shows the state (pods, events, logs, the failing command's output) and stops before the
+  next server. Nextcloud: maintenance mode is switched off only if the upgrade itself has completed; otherwise it stays on, with instructions. Run <code>--check</code> first to see the pre-flight result without changing anything. How it works:
+  <a href="ansible-internals.html#playbooks">Ansible code &rarr; update playbooks</a>.
+</div>
+<p>By hand, the same steps:</p>
 <ol class="steps">
   <li>Pull new image manually:
     <pre><code>crictl pull docker.io/library/nextcloud:34.0.4-fpm</code></pre>
@@ -1430,7 +1448,7 @@ k3s kubectl rollout status  deployment/nextcloud -n nextcloud --timeout=300s</co
 </div>
 
 <ol class="steps">
-  <li>Change tag in <code>inventory/group_vars/all.yml</code>:
+  <li>Change tag in <code>inventory/group_vars/all/versions.yml</code>:
     <pre><code>nextcloud_image_fpm: "nextcloud:34.0.4-fpm"</code></pre>
   </li>
   <li>Run playbook – K3s pulls the new image automatically and rolls out the pod:
@@ -1748,7 +1766,7 @@ k3s kubectl describe clusterissuer letsencrypt-prod</code></pre>
   </tr>
   <tr>
     <td>"data_dir_writability … Permission denied" in <code>nextcloud.log</code></td>
-    <td><code>next_selinux</code> created <code>/data</code> and the code dir as root:root,
+    <td><code>next_selinux</code> (today <code>common_selinux</code>) created <code>/data</code> and the code dir as root:root,
         and <code>dirs.yml</code> set them back to 33:33 later in the run. Both roles now
         set identical owner/mode.</td>
     <td><code>journalctl | grep "ansible-.*path=/data "</code> shows different owners
@@ -1997,7 +2015,7 @@ Both verified 2026-09-14.</p>
   <tr>
     <td>SELinux</td>
     <td>Enforcing, <code>container_file_t</code> for HostPath volumes</td>
-    <td><code>next_selinux</code></td>
+    <td><code>common_selinux</code></td>
   </tr>
   <tr>
     <td>Audit</td>
@@ -2012,7 +2030,7 @@ Both verified 2026-09-14.</p>
   <tr>
     <td>Virus scan</td>
     <td>ClamAV: nightly scan of the Nextcloud user data at 04:30 (after the 03:30 reboot window and the 04:00 AIDE refresh, so an update reboot no longer kills the scan); Nextcloud previews (<code>appdata_*/preview</code>) and pure image/video/audio files (<code>clamav_skip_extensions</code>, case-insensitive) are skipped – documents, archives, executables, scripts and files without an extension are still scanned; signature updates via freshclam; mail only on a hit (silent on a clean scan)</td>
-    <td><code>next_clamav</code></td>
+    <td><code>common_clamav</code></td>
   </tr>
   <tr>
     <td>Patches</td>

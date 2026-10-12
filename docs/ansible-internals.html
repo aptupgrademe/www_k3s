@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ansible code – how it works</title>
+<style>
+  :root {
+    --bg:       #0f1117;
+    --sidebar:  #161b22;
+    --card:     #1c2128;
+    --border:   #30363d;
+    --accent:   #58a6ff;
+    --accent2:  #3fb950;
+    --warn:     #d29922;
+    --danger:   #f85149;
+    --text:     #e6edf3;
+    --muted:    #8b949e;
+    --code-bg:  #161b22;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    min-height: 100vh;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  /* ── Sidebar ── */
+  nav {
+    width: 260px;
+    min-width: 260px;
+    background: var(--sidebar);
+    border-right: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 24px 0;
+  }
+  nav .logo {
+    padding: 0 20px 20px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 12px;
+  }
+  nav .logo span { font-size: 11px; color: var(--muted); display: block; margin-top: 4px; }
+  nav .logo strong { font-size: 15px; color: var(--text); }
+  nav a {
+    display: block;
+    padding: 6px 20px;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 13px;
+    border-left: 3px solid transparent;
+    transition: color .15s, border-color .15s;
+  }
+  nav a:hover, nav a.active { color: var(--accent); border-left-color: var(--accent); }
+  nav .section-label {
+    padding: 16px 20px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--muted);
+  }
+
+  /* ── Main ── */
+  main {
+    flex: 1;
+    padding: 40px 48px;
+    max-width: 960px;
+  }
+  h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+  h2 {
+    font-size: 20px; font-weight: 600;
+    margin: 48px 0 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+  }
+  h3 { font-size: 16px; font-weight: 600; margin: 28px 0 10px; color: var(--accent); }
+  h4 { font-size: 14px; font-weight: 600; margin: 20px 0 8px; color: var(--text); }
+  p  { margin-bottom: 12px; color: var(--text); }
+  ul, ol { padding-left: 22px; margin-bottom: 12px; }
+  li { margin-bottom: 4px; }
+  a  { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 32px; }
+
+  /* ── Code ── */
+  code {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 12.5px;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
+    color: #e6edf3;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    overflow-x: auto;
+    margin: 12px 0 20px;
+    font-size: 12.5px;
+    line-height: 1.7;
+  }
+  pre code { background: none; border: none; padding: 0; font-size: inherit; }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin: 16px 0;
+  }
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    margin: 16px 0;
+  }
+  .card-grid .card { margin: 0; }
+  .card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
+  .card .value { font-size: 14px; font-weight: 600; }
+  .card .value code { background: none; border: none; font-size: 13px; padding: 0; color: var(--accent); }
+
+  /* ── Badges ── */
+  .badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 20px;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+  .badge-green  { background: #1a3a1a; color: var(--accent2); border: 1px solid #2ea04380; }
+  .badge-blue   { background: #0d2137; color: var(--accent);  border: 1px solid #58a6ff40; }
+  .badge-yellow { background: #2d1f00; color: var(--warn);    border: 1px solid #d2992240; }
+  .badge-red    { background: #2d0f0f; color: var(--danger);  border: 1px solid #f8514940; }
+
+  /* ── Callouts ── */
+  .callout {
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin: 16px 0;
+    border-left: 4px solid;
+    font-size: 14px;
+  }
+  .callout-info    { background: #0d2137; border-color: var(--accent); }
+  .callout-warn    { background: #2d1f00; border-color: var(--warn); }
+  .callout-danger  { background: #2d0f0f; border-color: var(--danger); }
+  .callout-success { background: #0d2416; border-color: var(--accent2); }
+  .callout strong  { display: block; margin-bottom: 4px; }
+
+  /* ── Tables ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0 24px;
+    font-size: 13.5px;
+  }
+  th {
+    background: var(--card);
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 2px solid var(--border);
+  }
+  td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #1c2128; }
+
+  /* ── Architecture diagram ── */
+  .arch {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    font-family: "SFMono-Regular", Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.8;
+    overflow-x: auto;
+    color: #e6edf3;
+  }
+  .arch .c-internet  { color: #58a6ff; }
+  .arch .c-ingress   { color: #79c0ff; }
+  .arch .c-pod       { color: #3fb950; }
+  .arch .c-host      { color: #d29922; }
+  .arch .c-storage   { color: #a371f7; }
+
+  /* ── Steps ── */
+  .steps { counter-reset: step; list-style: none; padding: 0; }
+  .steps li {
+    counter-increment: step;
+    padding: 10px 0 10px 48px;
+    position: relative;
+    border-bottom: 1px solid var(--border);
+  }
+  .steps li:last-child { border-bottom: none; }
+  .steps li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    top: 10px;
+    width: 28px;
+    height: 28px;
+    background: var(--card);
+    border: 2px solid var(--accent);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent);
+    line-height: 28px;
+    text-align: center;
+  }
+
+  /* ── Section anchors ── */
+  section { scroll-margin-top: 24px; }
+
+  @media (max-width: 768px) {
+    nav { display: none; }
+    main { padding: 24px 20px; }
+  }
+</style>
+</head>
+<body>
+<nav>
+  <div class="logo">
+    <strong>Ansible code</strong>
+    <span>How it works &amp; tooling</span>
+  </div>
+
+  <div class="section-label">Basics</div>
+  <a href="#overview">Overview</a>
+  <a href="#layout">Repository layout</a>
+  <a href="#variables">Inventory &amp; variables</a>
+  <a href="#versions">Versions in one place</a>
+  <a href="#cfg">ansible.cfg</a>
+
+  <div class="section-label">Flow</div>
+  <a href="#playbooks">The playbooks</a>
+  <a href="#roles">Roles</a>
+  <a href="#run">What happens during a run</a>
+  <a href="#kubernetes">Kubernetes from Ansible</a>
+
+  <div class="section-label">Principles</div>
+  <a href="#idempotency">Idempotency &amp; "changed"</a>
+  <a href="#errors">Error handling</a>
+  <a href="#secrets">Secrets</a>
+
+  <div class="section-label">Quality</div>
+  <a href="#tooling">Lint, hooks, CI, Renovate</a>
+  <a href="#tests">Tests</a>
+  <a href="#workflow">Workflow</a>
+  <a href="#pitfalls">Pitfalls</a>
+  <a href="#learning">Learning path</a>
+</nav>
+
+<main>
+<h1>Ansible code: how it works</h1>
+<p class="subtitle">How the playbooks and roles in this repository fit together – for anyone who wants to understand,
+change or extend the code. Day-to-day operation is covered in the operations guides
+(<a href="wordpress-operations.html">WordPress</a>, <a href="nextcloud-operations.html">Nextcloud</a>).</p>
+
+<!-- ===================================================================== -->
+<h2 id="overview">Overview</h2>
+<p>Ansible is a <strong>push tool</strong>: one machine (the <em>controller</em>) connects to the servers over SSH and
+carries out, step by step, what the playbooks describe. No agent runs on the servers; all they need is SSH and Python.
+The description is <strong>declarative</strong>: a task does not say "install package X" but "package X must be
+present" – if it already is, nothing happens.</p>
+
+<div class="arch">
+<span class="c-host">Controller</span> (ansible-playbook, repo, vault password)
+   │  SSH as root, port 10022 (host key is checked)
+   ├──► <span class="c-pod">Blog server</span>       blog.yml / blog-update.yml
+   └──► <span class="c-pod">Nextcloud server</span>  nextcloud-k3s.yml / nextcloud-update.yml
+          │
+          └─ on every server: host services (nftables, SSH, fail2ban, monitoring …)
+             + <span class="c-ingress">K3s</span> running the applications as Kubernetes workloads
+</div>
+
+<p>The repository manages two kinds of servers, both AlmaLinux 9 with a single-node K3s cluster:</p>
+<ul>
+  <li><strong>Blog</strong> (group <code>blog</code>): WordPress, MariaDB and Redis run entirely in K3s.</li>
+  <li><strong>Nextcloud</strong> (group <code>nextcloud</code>): Nextcloud, Collabora and notify_push run in K3s,
+    MariaDB and Redis as services on the host.</li>
+</ul>
+<p>Everything shared – hardening, firewall, monitoring, K3s itself – lives in roles prefixed <code>common_</code> and is
+used by both playbooks.</p>
+
+<!-- ===================================================================== -->
+<h2 id="layout">Repository layout</h2>
+<pre><code>blog.yml                 set up + configure the blog server (all roles)
+nextcloud-k3s.yml        the same for Nextcloud servers
+blog-update.yml          update while running (plugins, themes, rebuilt images)
+nextcloud-update.yml     update while running (images, occ upgrade, apps)
+ansible.cfg              connection and output settings
+requirements.yml         Ansible collections, exact versions
+
+inventory/
+  hosts.yml              which server belongs to which group (gitignored)
+  group_vars/all/
+    main.yml             shared settings (CIDRs, paths, resources)
+    versions.yml         ALL version pins
+  host_vars/&lt;host&gt;/
+    vars.yml             this server's values (host names, IPs …, gitignored)
+    vault.yml            passwords, encrypted (gitignored)
+    *.example            templates with CHANGE_ME, in the repo
+
+roles/&lt;role&gt;/
+  tasks/main.yml         the steps (split via import_tasks where large)
+  handlers/main.yml      actions "only if something changed" (e.g. reload a service)
+  templates/*.j2         config files / Kubernetes manifests with Jinja2 placeholders
+  files/                 files copied or run unchanged
+  defaults/main.yml      the role's default values (lowest precedence)
+  meta/argument_specs.yml  expected inputs, checked by Ansible when the role starts
+
+tests/k8s/               test of the Kubernetes roles against a throwaway K3s in podman
+tests/update/            scenario test of the update playbooks
+scripts/check-drift.sh   dry run against a real server: what would change?
+.ansible-lint, .yamllint, .pre-commit-config.yaml, .github/workflows/lint.yml, renovate.json5</code></pre>
+
+<!-- ===================================================================== -->
+<h2 id="variables">Inventory &amp; variables</h2>
+<p>The <strong>inventory</strong> (<code>inventory/hosts.yml</code>) assigns each server to a group. The playbooks target
+a group (<code>hosts: blog</code>); <code>--limit &lt;host&gt;</code> picks one server from it.</p>
+<p>Variables come from several places. If a variable is set in more than one, the higher precedence wins. These levels
+matter in this repo (low to high):</p>
+<table>
+  <tr><th>Level</th><th>Location</th><th>Used here for</th></tr>
+  <tr><td>1</td><td><code>roles/&lt;role&gt;/defaults/main.yml</code></td><td>a role's defaults, e.g. <code>clamav_profiles</code></td></tr>
+  <tr><td>2</td><td><code>inventory/group_vars/all/*.yml</code></td><td>same for all servers: versions, paths, resource defaults</td></tr>
+  <tr><td>3</td><td><code>inventory/host_vars/&lt;host&gt;/*.yml</code></td><td>per server: host names, IPs, passwords, own sizing</td></tr>
+  <tr><td>4</td><td>parameters on the role in the playbook</td><td><code>{ role: common_clamav, clamav_target: wordpress }</code></td></tr>
+  <tr><td>5</td><td><code>register</code> / <code>set_fact</code></td><td>task results during the run</td></tr>
+  <tr><td>6</td><td><code>-e</code> on the command line</td><td>beats everything – for tests and one-offs</td></tr>
+</table>
+<div class="callout callout-info"><strong>Example</strong>
+<code>nextcloud_fpm_mem_limit: "4Gi"</code> is set in <code>group_vars/all/main.yml</code>. A server with more RAM sets a
+higher value in its <code>host_vars/&lt;host&gt;/vars.yml</code> – that one wins, because host_vars ranks higher. All other
+servers keep the default.</div>
+<p>The full precedence order has more than 20 levels (Ansible docs: "Variable precedence"). In practice the table above
+is enough; most hard-to-explain effects come from the same variable being set in two places unexpectedly.</p>
+
+<h3>Vault</h3>
+<p><code>vault.yml</code> is encrypted with <code>ansible-vault</code>. Ansible decrypts it during the run with the vault
+password (<code>--ask-vault-pass</code> or a <code>.vault_pass</code> file, which never goes into the repo). To edit:
+<code>ansible-vault edit inventory/host_vars/&lt;host&gt;/vault.yml</code>.</p>
+
+<h3>Inputs are validated</h3>
+<p>Every role that needs values from host_vars describes them in <code>meta/argument_specs.yml</code> – type,
+description, required or not, and <code>no_log</code> for secrets. Ansible checks this when the role starts: if, say, a
+vault entry is missing, the run stops at once with the variable's name instead of halfway through the installation.
+"Required" is only what every server running the role actually has – shared roles such as <code>common_grafana</code>
+read <code>blog_hostname</code> on the blog and <code>nextcloud_hostname</code> on Nextcloud.</p>
+<div class="callout callout-warn"><strong>Good to know</strong>
+These checks carry the tag <code>always</code>: they run for all roles even with <code>--tags …</code>. They are fast and
+read-only.</div>
+
+<!-- ===================================================================== -->
+<h2 id="versions">Versions in one place</h2>
+<p><code>inventory/group_vars/all/versions.yml</code> holds every version that gets installed or deployed: K3s, Helm,
+Calico, the Helm charts, all container images, WP-CLI (with checksum), the monitoring binaries and the MariaDB
+repository series of the Nextcloud servers. The values are listed compactly at the top, the reasons and history per
+entry below.</p>
+<ul>
+  <li><strong>Always exact</strong>, never <code>latest</code> or a floating tag: K3s pulls with <code>IfNotPresent</code>
+    – a floating tag silently stays on whatever build happens to be cached.</li>
+  <li><strong>Not in that file</strong>: the Ansible collections (<code>requirements.yml</code>, where
+    <code>ansible-galaxy</code> reads them) and the versions of the checking tools (pre-commit, GitHub Action).</li>
+  <li><strong>Renovate</strong> proposes bumps of these lines as pull requests (see <a href="#tooling">tooling</a>).</li>
+</ul>
+
+<!-- ===================================================================== -->
+<h2 id="cfg">ansible.cfg</h2>
+<table>
+  <tr><th>Setting</th><th>Effect</th></tr>
+  <tr><td><code>remote_user = root</code>, <code>become = false</code></td><td>connect as root directly, no sudo</td></tr>
+  <tr><td><code>host_key_checking = True</code> + <code>StrictHostKeyChecking=accept-new</code></td><td>new servers are remembered on first contact, a <em>changed</em> key aborts (protection against man-in-the-middle)</td></tr>
+  <tr><td><code>pipelining = True</code>, <code>ControlPersist=600s</code></td><td>fewer SSH round trips, one connection for the whole run</td></tr>
+  <tr><td><code>forks = 5</code></td><td>several servers in parallel; the update playbooks set <code>serial: 1</code> themselves</td></tr>
+  <tr><td><code>callbacks_enabled = profile_tasks</code></td><td>time per task at the end of the run</td></tr>
+  <tr><td><code>callback_result_format = yaml</code></td><td>readable multi-line output instead of one JSON line</td></tr>
+  <tr><td><code>deprecation_warnings = True</code></td><td>on purpose: the earliest signal that something will break with a future version</td></tr>
+</table>
+
+<!-- ===================================================================== -->
+<h2 id="playbooks">The playbooks</h2>
+<h3>blog.yml and nextcloud-k3s.yml</h3>
+<p>Both consist of one play with a list of roles. The <strong>order is deliberate</strong>:</p>
+<ol class="steps">
+  <li><code>common_version_check</code> – shows installed and available versions first.</li>
+  <li>Packages, SSH, firewall, sysctl, CIS hardening – the base, before anything listens.</li>
+  <li><code>common_selinux</code> <em>before</em> the deploy – the HostPath directories need their SELinux label before a
+    container uses them.</li>
+  <li><code>common_k3s</code>, <code>common_calico</code>, then the application deploy (<code>blog_k3s_deploy</code> or
+    <code>next_k3s_deploy</code>). The pods start in the background.</li>
+  <li>Monitoring, fail2ban, mail, automatic updates, rkhunter, ClamAV, auditd, Monit – run while the pods come up
+    (saves minutes).</li>
+  <li>Configuration <em>inside</em> the application (<code>blog_wordpress</code> or <code>next_config</code>, via
+    <code>kubectl exec</code>) – by now the pods are ready.</li>
+  <li><code>*_verify</code> – smoke tests with a coloured report and an e-mail.</li>
+  <li><code>common_aide_refresh</code> <em>always last</em> – refreshes the AIDE baseline so the nightly check does not
+    report the run's own, intended changes as an alarm.</li>
+</ol>
+<p>Every role has a tag with its name. <code>--tags common_k3s,blog_k3s_deploy</code> runs just those roles. The merged
+roles keep the old tags (<code>blog_clamav</code>, <code>next_selinux</code> …) so familiar calls keep working.</p>
+
+<h3>The update playbooks</h3>
+<p><code>blog-update.yml</code> and <code>nextcloud-update.yml</code> are for updates while running and do not touch the
+host. Both require <code>--limit</code>; Nextcloud uses <code>serial: 1</code>, one server after the other, and stops at
+the first failure.</p>
+<div class="arch">
+<span class="c-host">Pre-flight</span> (outside the block)   healthy? otherwise stop, nothing is touched
+<span class="c-pod">block:</span>
+   pull the Deployments' images again, compare digests with the running pods
+   restart only Deployments with a rebuilt image             (role common_image_refresh)
+   Blog:      run the nightly update job now (DB dump first), evaluate it
+   Nextcloud: occ upgrade, occ app:update --all, second restart for OPcache
+   post-check (Nextcloud: no maintenance mode, no pending DB upgrade)
+<span class="c-storage">rescue:</span>
+   collect the state (occ status, pods, events, nextcloud.log / newest DB dump)
+   Nextcloud: switch maintenance mode off only if the upgrade itself has completed
+   stop clearly – no further server
+</div>
+
+<!-- ===================================================================== -->
+<h2 id="roles">Roles</h2>
+<p>A role is a self-contained task with a fixed directory layout (see <a href="#layout">layout</a>). Large roles are split
+into thematic files that <code>tasks/main.yml</code> pulls in with <code>import_tasks</code> in a fixed order (e.g.
+<code>blog_wordpress</code>: install, security_muplugin, plugins, appearance, ai_disclosure, settings, updates).</p>
+
+<h3>Shared roles with a profile</h3>
+<p>Where blog and Nextcloud need the same thing with different values, there is one role with a selector variable:</p>
+<table>
+  <tr><th>Role</th><th>Selector</th><th>What the profile defines</th></tr>
+  <tr><td><code>common_clamav</code></td><td><code>clamav_target: wordpress | nextcloud</code></td><td>scan directory, excludes, skip media, time</td></tr>
+  <tr><td><code>common_selinux</code></td><td><code>selinux_target: wordpress | nextcloud</code></td><td>HostPath directories with owner and mode</td></tr>
+  <tr><td><code>common_verify</code></td><td>imported via <code>import_role … tasks_from</code></td><td>16 shared checks; the application-specific ones stay in <code>blog_verify</code> / <code>nextcloud_verify</code></td></tr>
+  <tr><td><code>common_image_refresh</code></td><td><code>image_refresh_namespace</code></td><td>which Deployments have a rebuilt image (for the update playbooks)</td></tr>
+</table>
+
+<h3>Role catalogue</h3>
+<table>
+  <tr><th>Role</th><th>Stack</th><th>Job</th></tr>
+  <tr><td><code>common_version_check</code></td><td>both</td><td>show installed vs. available versions</td></tr>
+  <tr><td><code>blog_packages</code> / <code>next_packages</code></td><td>each</td><td>host packages, repositories (EPEL, MariaDB), system update</td></tr>
+  <tr><td><code>common_ssh</code></td><td>both</td><td>SSH on port 10022, hardened sshd_config, SELinux port label</td></tr>
+  <tr><td><code>common_firewall</code></td><td>both</td><td>nftables for IPv4/IPv6, geo filter for SSH</td></tr>
+  <tr><td><code>common_sysctl</code></td><td>both</td><td>kernel tuning (TCP BBR, timeouts, backlog)</td></tr>
+  <tr><td><code>common_cis_hardening</code></td><td>both</td><td>CIS benchmark: AIDE, kernel modules, core dumps, mount options</td></tr>
+  <tr><td><code>common_selinux</code></td><td>both</td><td>SELinux enforcing, labels for HostPath directories</td></tr>
+  <tr><td><code>next_mariadb</code>, <code>next_redis</code></td><td>Nextcloud</td><td>database and cache on the host</td></tr>
+  <tr><td><code>common_k3s</code></td><td>both</td><td>K3s, Helm, cert-manager, F5 nginx-ingress, ServiceAccount hardening</td></tr>
+  <tr><td><code>common_calico</code></td><td>both</td><td>Calico in policy-only mode: NetworkPolicies are enforced</td></tr>
+  <tr><td><code>blog_k3s_deploy</code> / <code>next_k3s_deploy</code></td><td>each</td><td>the application's Kubernetes objects (Deployments, Secrets, Ingress, CronJobs, policies)</td></tr>
+  <tr><td><code>common_node_exporter</code>, <code>common_prometheus</code>, <code>common_grafana</code>, <code>common_mysqld_exporter</code></td><td>both / Nextcloud</td><td>monitoring, local only, Grafana via Ingress</td></tr>
+  <tr><td><code>common_fail2ban</code>, <code>common_monit</code>, <code>common_auditd</code>, <code>common_rkhunter</code>, <code>common_clamav</code></td><td>both</td><td>protection, watchdog, audit, rootkit and virus scan</td></tr>
+  <tr><td><code>common_msmtp</code>, <code>common_dnf_automatic</code>, <code>common_logrotate</code></td><td>both</td><td>mail relay, security updates, log rotation</td></tr>
+  <tr><td><code>blog_visitor_stats</code></td><td>blog</td><td>anonymous visitor statistics, computed on the host</td></tr>
+  <tr><td><code>blog_wordpress</code> / <code>next_config</code></td><td>each</td><td>settings inside the application via wp-cli or occ</td></tr>
+  <tr><td><code>blog_verify</code> / <code>nextcloud_verify</code> (+ <code>common_verify</code>)</td><td>each</td><td>smoke tests, report, e-mail, hard check of critical items</td></tr>
+  <tr><td><code>common_aide_refresh</code></td><td>both</td><td>refresh the AIDE baseline if anything changed</td></tr>
+</table>
+
+<!-- ===================================================================== -->
+<h2 id="run">What happens during a run</h2>
+<ol class="steps">
+  <li><strong>Gather facts</strong> – only <code>gather_subset: min</code>; nothing more is used anywhere.</li>
+  <li><strong>Per role</strong>: first the argument validation, then the tasks in order. Each task reports
+    <code>ok</code> (nothing to do), <code>changed</code> (changed something), <code>skipped</code> (condition not met)
+    or <code>failed</code>.</li>
+  <li><strong>Handlers</strong>: a task with <code>notify: Reload nftables</code> only queues the handler when it reports
+    <code>changed</code>. Handlers run together at the end of the play – or earlier where a role uses
+    <code>meta: flush_handlers</code> (e.g. K3s must be restarted before the play continues). Several handlers can react
+    to the same event via <code>listen:</code> (reload nftables, then let fail2ban re-apply its bans).</li>
+  <li><strong>Summary</strong> (<code>PLAY RECAP</code>) with <code>ok/changed/failed</code> per server, plus the time per
+    task.</li>
+</ol>
+<h3>Dry run: --check --diff</h3>
+<p>With <code>--check</code> Ansible changes nothing and reports what it <em>would</em> change; <code>--diff</code> shows
+the differences. To make that meaningful here:</p>
+<ul>
+  <li>Pure queries (versions, <code>occ config:system:get</code>, <code>kubectl get</code>, <code>systemctl is-active</code>)
+    have <code>check_mode: false</code> and run in the dry run too – otherwise later tasks would have no data.</li>
+  <li>Writing commands are skipped. Where that would hide a pending change, a dedicated task reports it (e.g.
+    "mail_smtphost would be updated").</li>
+  <li>The <code>k8s</code> module compares Kubernetes objects with the cluster via a server-side dry run – the diff
+    shows exactly the fields that change.</li>
+</ul>
+
+<!-- ===================================================================== -->
+<h2 id="kubernetes">Kubernetes from Ansible</h2>
+<p>The applications are Kubernetes objects. Ansible renders them from Jinja2 templates and hands them straight to the
+K3s API with the <code>kubernetes.core.k8s</code> module:</p>
+<pre><code>- name: Redis | Apply Deployment + Service
+  kubernetes.core.k8s:
+    kubeconfig: "{{ k3s_kubeconfig }}"
+    state: present
+    apply: true
+    definition: "{{ item }}"
+  loop: "{{ lookup('ansible.builtin.template', 'redis-deployment.yml.j2') | ansible.builtin.from_yaml_all | select | list }}"
+  loop_control:
+    label: "{{ item.kind }}/{{ item.metadata.name }}"
+  register: redis_apply</code></pre>
+<ul>
+  <li><code>lookup('template', …)</code> renders the template in memory; <code>from_yaml_all</code> splits it into the
+    single objects. Nothing ends up in <code>/tmp</code> – no Secrets either.</li>
+  <li><code>apply: true</code> behaves like <code>kubectl apply</code> (via the <code>last-applied-configuration</code>
+    annotation), so it is compatible with the existing objects.</li>
+  <li>The <strong>loop per object</strong> is deliberate: only then does <code>--diff</code> show each object's change, and
+    the output names <code>Deployment/redis</code>, <code>Service/redis</code>.</li>
+  <li>The module only reports <code>changed</code> when the object really changes. Follow-up tasks such as "wait for the
+    rollout" depend on <code>redis_apply.changed</code>.</li>
+  <li>Queries use <code>kubernetes.core.k8s_info</code> (does the Secret exist yet?).</li>
+  <li>The Helm charts (cert-manager, nginx-ingress) are managed by <code>kubernetes.core.helm</code>: it compares chart
+    version and values of the running release and only upgrades on a difference.</li>
+  <li>Needed on the server: the <code>python3-kubernetes</code> package (installed by <code>common_k3s</code>); on the
+    controller: the <code>kubernetes.core</code> collection ≥ 6.5.0 (Helm 4).</li>
+</ul>
+<p>What happens <em>inside</em> the containers – <code>occ</code> for Nextcloud, <code>wp-cli</code> for WordPress (always
+as <code>www-data</code>) – still runs via <code>k3s kubectl exec</code>.</p>
+
+<!-- ===================================================================== -->
+<h2 id="idempotency">Idempotency &amp; "changed"</h2>
+<p><strong>Idempotent</strong> means: the second run in a row changes nothing and reports <code>changed=0</code>
+everywhere. Only then does a <code>changed</code> mean something – and a dry run reliably shows what a real run would
+do. The patterns in this code:</p>
+<table>
+  <tr><th>Pattern</th><th>Example</th></tr>
+  <tr><td>module instead of a command</td><td><code>ansible.builtin.dnf</code>, <code>file</code>, <code>template</code>, <code>kubernetes.core.k8s</code> know themselves whether there is anything to do</td></tr>
+  <tr><td><code>creates:</code></td><td><code>freshclam</code> only while <code>/var/lib/clamav/freshclam.dat</code> is missing</td></tr>
+  <tr><td><code>changed_when</code> from the output</td><td><code>occ upgrade</code> is only "changed" when it says "Update successful"</td></tr>
+  <tr><td>read – compare – write</td><td>Nextcloud's nine mail settings: <code>config:system:get</code> first, set only what differs; the exporter DB user: check password hash and grants first</td></tr>
+  <tr><td><code>changed_when: false</code></td><td>only for real queries – never for a command that writes</td></tr>
+</table>
+<div class="callout callout-warn"><strong>The trap</strong>
+A <code>command</code> task that writes every time and has <code>changed_when: false</code> looks harmless but hides every
+change. A task that reports <code>changed</code> every time turns every run into "drift". Both are gone here;
+<code>scripts/check-drift.sh</code> shows at once if one comes back.</div>
+
+<!-- ===================================================================== -->
+<h2 id="errors">Error handling</h2>
+<ul>
+  <li><code>ansible.builtin.assert</code> checks preconditions and stops with an understandable message (update without
+    <code>--limit</code>, Nextcloud not healthy, exporter password missing from the vault).</li>
+  <li><code>failed_when</code> defines what counts as a failure – e.g. "already installed" from
+    <code>occ app:install</code> is not one.</li>
+  <li><code>block</code>/<code>rescue</code> in the update playbooks: if a step in the block fails, the <code>rescue</code>
+    part runs. It can read <code>ansible_failed_task</code> and <code>ansible_failed_result</code> and prints task name,
+    error message and output.</li>
+  <li>The <strong>pre-flight check sits outside the block on purpose</strong>: the rescue must only deal with states the
+    run itself caused. If Nextcloud is already in maintenance mode beforehand, the playbook refuses instead of
+    "cleaning it up".</li>
+</ul>
+
+<!-- ===================================================================== -->
+<h2 id="secrets">Secrets</h2>
+<ul>
+  <li>Passwords live only in <code>vault.yml</code> (encrypted, gitignored).</li>
+  <li><code>no_log: true</code> on every task that handles them – also on <code>k8s_info</code> queries of Secrets,
+    because the result contains the data. In loops, <code>no_log</code> can apply per item
+    (<code>no_log: "{{ item.secret | default(false) }}"</code>).</li>
+  <li>Argument specs mark vault values with <code>no_log</code> – tested: they show up neither with <code>-vvv</code> nor
+    in an error message.</li>
+  <li>Kubernetes Secrets are rendered in memory and handed to the API, never written to a file on the server.</li>
+  <li>Values for <code>occ</code> go via <code>argv</code>, not through a shell line – a quote in a password cannot change
+    the command.</li>
+  <li>Before every commit, <code>gitleaks</code> looks for keys and tokens (see next section).</li>
+</ul>
+
+<!-- ===================================================================== -->
+<h2 id="tooling">Lint, hooks, CI, Renovate</h2>
+<table>
+  <tr><th>Tool</th><th>File</th><th>Checks</th></tr>
+  <tr><td>ansible-lint</td><td><code>.ansible-lint</code>, <code>.ansible-lint-ignore</code></td><td>Ansible rules: missing <code>changed_when</code>, pipes without <code>pipefail</code>, wrong module names, permissions … Exceptions are listed with their reason in these files.</td></tr>
+  <tr><td>yamllint</td><td><code>.yamllint</code></td><td>YAML form; aligned columns are allowed, long lines are only a warning</td></tr>
+  <tr><td>gitleaks</td><td><code>.gitleaksignore</code></td><td>keys, tokens, passwords in what is being committed</td></tr>
+  <tr><td>pre-commit</td><td><code>.pre-commit-config.yaml</code></td><td>runs all three on every <code>git commit</code> – once per clone: <code>pre-commit install</code></td></tr>
+  <tr><td>GitHub Actions</td><td><code>.github/workflows/lint.yml</code></td><td>the same on GitHub for every push, gitleaks over the whole history</td></tr>
+  <tr><td>Renovate</td><td><code>renovate.json5</code></td><td>proposes version updates as pull requests (needs the Renovate app on GitHub)</td></tr>
+</table>
+<p>Renovate is set up cautiously: weekly, at most five open PRs, nothing merged automatically. Major versions
+(Nextcloud 35, MariaDB 11+, Redis 8 …) and K3s/Calico minor jumps only come after approval on the "Dependency
+Dashboard", with a note in the PR. nginx stays on the stable branch (even minor). A WP-CLI PR reminds you to update the
+SHA-512 checksum too.</p>
+<pre><code>ansible-lint                      # whole repo
+pre-commit run --all-files        # all hooks over all files
+yamllint .</code></pre>
+
+<!-- ===================================================================== -->
+<h2 id="tests">Tests</h2>
+<h3>tests/k8s/run.sh – the Kubernetes roles without a server</h3>
+<p>Starts K3s (same version as <code>k3s_version</code>) as a bare API server in podman, applies the manifests first with
+the roles from <code>main</code> (the servers' state), then with the working tree: dry run, real run, second real run, dry
+run. Fails if the second run still changes something, a pod would be rolled out again, a Helm release gets a new
+revision – or if a deliberately changed image version is <em>not</em> detected. No pods run: what happens inside the
+containers (occ, wp-cli) is not part of this test.</p>
+<h3>tests/update/run.sh – failure cases of the update playbooks</h3>
+<p>14 scenarios against stand-ins for <code>kubectl</code>/<code>crictl</code>: healthy, rebuilt image, maintenance mode
+already on, upgrade aborts, failure after a completed upgrade, rollout hangs, update job fails, blog not running, dry run.
+Checked: exit code, the commands that ran, and the maintenance mode afterwards.</p>
+<h3>scripts/check-drift.sh – against a real server</h3>
+<pre><code>scripts/check-drift.sh nextcloud-k3s.yml &lt;host&gt; --ask-vault-pass
+scripts/check-drift.sh blog.yml &lt;host&gt; --tags blog_k3s_deploy --ask-vault-pass</code></pre>
+<p>A dry run with <code>--check --diff</code>; it prints only the tasks that would change something, with a readable diff
+(Kubernetes bookkeeping fields hidden). Exit code 0 = no drift. Right after a real run it must say "NO DRIFT" – otherwise
+a task is not idempotent.</p>
+
+<!-- ===================================================================== -->
+<h2 id="workflow">Workflow for a change</h2>
+<ol class="steps">
+  <li>Change it – role, template or <code>versions.yml</code>.</li>
+  <li><code>ansible-lint</code> (runs on commit anyway).</li>
+  <li>Kubernetes roles touched: <code>tests/k8s/run.sh</code>; an update playbook touched: <code>tests/update/run.sh</code>.</li>
+  <li><code>scripts/check-drift.sh &lt;playbook&gt; &lt;host&gt;</code> – shows what the real run will change. Does that match the intent?</li>
+  <li>Real run, on one server first, limited with <code>--tags</code> to what is needed.</li>
+  <li><code>check-drift.sh</code> once more → "NO DRIFT".</li>
+  <li>Commit (the hooks check lint and secrets), push.</li>
+</ol>
+<div class="callout callout-info"><strong>Version update</strong>
+Read the Renovate PR (or your own change in <code>versions.yml</code>) → check the component's release notes →
+<code>check-drift.sh</code> → roll out with the matching tag (e.g. <code>--tags common_k3s,blog_k3s_deploy</code>) →
+merge.</div>
+
+<!-- ===================================================================== -->
+<h2 id="pitfalls">Pitfalls</h2>
+<ul>
+  <li><strong>Same variable in two places</strong> – check precedence (<code>ansible -m debug -a var=…</code> against the
+    host shows the value that actually applies).</li>
+  <li><strong><code>item</code> in nested loops</strong> – an outer loop around <code>include_role</code> needs
+    <code>loop_control: loop_var: …</code>, otherwise the role's own loops overwrite <code>item</code>.</li>
+  <li><strong>Loop and <code>when</code></strong> – the loop is evaluated before the condition; a template in
+    <code>loop:</code> must render even when <code>when</code> is false.</li>
+  <li><strong>Tags and <code>include_role</code></strong> – tags are inherited only by <code>import_*</code> (static), not
+    by <code>include_*</code> (dynamic).</li>
+  <li><strong><code>/tmp</code> is <code>noexec</code></strong> (CIS) – call scripts there with <code>sh script</code>, do
+    not execute them directly.</li>
+  <li><strong>Module names with collection</strong> – <code>ansible.builtin.ini_file</code> only "worked" through a
+    redirect to <code>community.general</code>. ansible-lint finds this (<code>syntax-check[unknown-module]</code>).</li>
+  <li><strong>Cron entries</strong> are identified by their <code>name</code> – change the name and you get two
+    entries.</li>
+</ul>
+
+<!-- ===================================================================== -->
+<h2 id="learning">Learning path</h2>
+<ol>
+  <li><strong>Read with a goal</strong>: pick a role (e.g. <code>common_clamav</code>) and explain for every task why it
+    looks the way it does – module, condition, <code>changed_when</code>.</li>
+  <li><strong>Experience idempotency</strong>: run a role twice via <code>--tags</code>; the second run must show
+    <code>changed=0</code>; then <code>check-drift.sh</code>.</li>
+  <li><strong>Write a role yourself</strong> – without a template, with <code>argument_specs</code>, a handler and a test;
+    then compare it with an existing one.</li>
+  <li><strong>Tools</strong>: <code>ansible-doc &lt;module&gt;</code>, <code>ansible &lt;host&gt; -m setup</code>,
+    <code>--start-at-task</code>, <code>--step</code>, <code>-vvv</code>.</li>
+  <li><strong>A structured goal</strong>: the RHCE exam (EX294) is a hands-on Ansible exam on RHEL and fits AlmaLinux
+    well.</li>
+</ol>
+</main>
+</body>
+</html>
