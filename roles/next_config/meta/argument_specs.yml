@@ -1,0 +1,62 @@
+---
+# Inputs from host_vars - keep in sync with inventory/host_vars/*/*.example.
+argument_specs:
+  main:
+    short_description: Post-deploy Nextcloud configuration via occ
+    description:
+      - Host-specific inputs of this role (inventory/host_vars/<host>/vars.yml and vault.yml).
+      - Ansible validates them when the role starts - a missing or wrongly typed value fails
+      - right there instead of halfway through the play. Values with no_log never show up in output.
+      - Role defaults (defaults/main.yml) and group_vars/all.yml are not repeated here.
+    options:
+      collabora_hostname:
+        description: Public hostname of Collabora (e.g. collabora.example.de)
+        type: str
+        required: true
+      collabora_url:
+        description: Public Collabora URL (https://...)
+        type: str
+        required: true
+      mail_domain:
+        description: Sender mail domain (e.g. example.de)
+        type: str
+        required: true
+      mail_from_address:
+        description: Sender local part (before the @) (local part only (before @))
+        type: str
+        required: true
+      mail_smtpauth:
+        description: SMTP authentication on/off
+        type: bool
+        required: true
+      mail_smtphost:
+        description: SMTP relay host (e.g. smtp.strato.de)
+        type: str
+        required: true
+      mail_smtpname:
+        description: SMTP login
+        type: str
+        required: true
+        no_log: true
+      mail_smtppassword:
+        description: SMTP password
+        type: str
+        required: true
+        no_log: true
+      mail_smtpport:
+        description: SMTP port (587 = STARTTLS)
+        type: int
+        required: true
+      nextcloud_hostname:
+        description: Public hostname of Nextcloud (e.g. nextcloud.example.de)
+        type: str
+        required: true
+      nextcloud_url:
+        description: Public Nextcloud URL (https://...)
+        type: str
+        required: true
+      wopi_allowed_hosts:
+        description: Hosts/CIDRs allowed to call the WOPI endpoint
+        type: list
+        elements: str
+        required: true

@@ -1,0 +1,19 @@
+---
+# Inputs from host_vars - keep in sync with inventory/host_vars/*/*.example.
+argument_specs:
+  main:
+    short_description: Harden SSH by setting a custom port (10022), deploying a locked-down sshd_config, and ensuring
+      SELinux...
+    description:
+      - Host-specific inputs of this role (inventory/host_vars/<host>/vars.yml and vault.yml).
+      - Ansible validates them when the role starts - a missing or wrongly typed value fails
+      - right there instead of halfway through the play. Values with no_log never show up in output.
+      - Role defaults (defaults/main.yml) and group_vars/all.yml are not repeated here.
+    options:
+      server_ipv4:
+        description: Public IPv4 of the server (e.g. 1.2.3.4)
+        type: str
+        required: true
+      nextcloud_ipv4:
+        description: Public IPv4 of the Nextcloud host
+        type: str

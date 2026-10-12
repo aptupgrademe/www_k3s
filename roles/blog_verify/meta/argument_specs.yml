@@ -1,0 +1,24 @@
+---
+# Inputs from host_vars - keep in sync with inventory/host_vars/*/*.example.
+argument_specs:
+  main:
+    short_description: Post-deployment smoke tests for the WordPress blog stack
+    description:
+      - Host-specific inputs of this role (inventory/host_vars/<host>/vars.yml and vault.yml).
+      - Ansible validates them when the role starts - a missing or wrongly typed value fails
+      - right there instead of halfway through the play. Values with no_log never show up in output.
+      - Role defaults (defaults/main.yml) and group_vars/all.yml are not repeated here.
+    options:
+      blog_hostname:
+        description: Public hostname of the blog (e.g. www.example.de)
+        type: str
+        required: true
+      blog_url:
+        description: Public blog URL (https://...)
+        type: str
+        required: true
+      email:
+        description: Admin e-mail address for alerts, reports and Let's Encrypt
+        type: str
+        required: true
+        no_log: true

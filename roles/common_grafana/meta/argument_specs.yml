@@ -1,0 +1,37 @@
+---
+# Inputs from host_vars - keep in sync with inventory/host_vars/*/*.example.
+argument_specs:
+  main:
+    short_description: Install Grafana OSS on AlmaLinux 9, configure a Prometheus datasource and import dashboard
+      1860 (Node...
+    description:
+      - Host-specific inputs of this role (inventory/host_vars/<host>/vars.yml and vault.yml).
+      - Ansible validates them when the role starts - a missing or wrongly typed value fails
+      - right there instead of halfway through the play. Values with no_log never show up in output.
+      - Role defaults (defaults/main.yml) and group_vars/all.yml are not repeated here.
+    options:
+      email:
+        description: Admin e-mail address for alerts, reports and Let's Encrypt
+        type: str
+        required: true
+        no_log: true
+      grafana_admin_pass:
+        description: Grafana admin password
+        type: str
+        required: true
+        no_log: true
+      grafana_basic_auth_user:
+        description: Basic-auth user in front of Grafana
+        type: str
+        required: true
+        no_log: true
+      grafana_proxy_hostname:
+        description: Public hostname of the Grafana reverse proxy
+        type: str
+        required: true
+      blog_hostname:
+        description: Public hostname of the blog (e.g. www.example.de)
+        type: str
+      nextcloud_hostname:
+        description: Public hostname of Nextcloud (e.g. nextcloud.example.de)
+        type: str

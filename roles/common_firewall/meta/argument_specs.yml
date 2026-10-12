@@ -1,0 +1,19 @@
+---
+# Inputs from host_vars - keep in sync with inventory/host_vars/*/*.example.
+argument_specs:
+  main:
+    short_description: Deploy IPv4/IPv6 nftables packet-filter rules via a single template
+    description:
+      - Host-specific inputs of this role (inventory/host_vars/<host>/vars.yml and vault.yml).
+      - Ansible validates them when the role starts - a missing or wrongly typed value fails
+      - right there instead of halfway through the play. Values with no_log never show up in output.
+      - Role defaults (defaults/main.yml) and group_vars/all.yml are not repeated here.
+    options:
+      server_ipv4:
+        description: Public IPv4 of the server (e.g. 1.2.3.4)
+        type: str
+        required: true
+      server_ipv6:
+        description: Public IPv6 of the server (optional) (e.g. 2001:db8::1  – or remove if no public IPv6)
+        type: str
+        required: true

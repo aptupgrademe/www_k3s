@@ -1,0 +1,112 @@
+---
+# Inputs from host_vars - keep in sync with inventory/host_vars/*/*.example.
+argument_specs:
+  main:
+    short_description: Deploy Nextcloud (FPM + Nginx sidecar) and Collabora CODE as Kubernetes workloads, plus Ingress
+      resources...
+    description:
+      - Host-specific inputs of this role (inventory/host_vars/<host>/vars.yml and vault.yml).
+      - Ansible validates them when the role starts - a missing or wrongly typed value fails
+      - right there instead of halfway through the play. Values with no_log never show up in output.
+      - Role defaults (defaults/main.yml) and group_vars/all.yml are not repeated here.
+    options:
+      collabora_hostname:
+        description: Public hostname of Collabora (e.g. collabora.example.de)
+        type: str
+        required: true
+      mail_domain:
+        description: Sender mail domain (e.g. example.de)
+        type: str
+        required: true
+      mail_from_address:
+        description: Sender local part (before the @) (local part only (before @))
+        type: str
+        required: true
+      mail_smtphost:
+        description: SMTP relay host (e.g. smtp.strato.de)
+        type: str
+        required: true
+      mail_smtpname:
+        description: SMTP login
+        type: str
+        required: true
+        no_log: true
+      mail_smtppassword:
+        description: SMTP password
+        type: str
+        required: true
+        no_log: true
+      mail_smtpport:
+        description: SMTP port (587 = STARTTLS)
+        type: int
+        required: true
+      nextcloud_admin_pass:
+        description: Nextcloud admin password
+        type: str
+        required: true
+        no_log: true
+      nextcloud_admin_user:
+        description: Nextcloud admin user name
+        type: str
+        required: true
+        no_log: true
+      nextcloud_data_dir:
+        description: Nextcloud data directory on the host
+        type: str
+        required: true
+      nextcloud_db:
+        description: Nextcloud database name
+        type: str
+        required: true
+      nextcloud_hostname:
+        description: Public hostname of Nextcloud (e.g. nextcloud.example.de)
+        type: str
+        required: true
+      nextcloud_ipv4:
+        description: Public IPv4 of the Nextcloud host
+        type: str
+        required: true
+      nextcloud_pass:
+        description: Nextcloud database password
+        type: str
+        required: true
+        no_log: true
+      nextcloud_redis_pass:
+        description: Redis password
+        type: str
+        required: true
+        no_log: true
+      nextcloud_url:
+        description: Public Nextcloud URL (https://...)
+        type: str
+        required: true
+      nextcloud_user:
+        description: Nextcloud database user
+        type: str
+        required: true
+      wopi_allowed_hosts:
+        description: Hosts/CIDRs allowed to call the WOPI endpoint
+        type: list
+        elements: str
+        required: true
+      collabora_mem_limit:
+        description: Memory limit of the Collabora container (default 3Gi; ~8 concurrent Collabora editors)
+        type: str
+      collabora_num_prealloc:
+        description: Pre-spawned Collabora document processes
+        type: int
+      nextcloud_fpm_max_children:
+        description: PHP-FPM pm.max_children
+        type: int
+      nextcloud_fpm_max_spare:
+        description: PHP-FPM pm.max_spare_servers
+        type: int
+      nextcloud_fpm_mem_limit:
+        description: Memory limit of the Nextcloud FPM container (default 4Gi)
+        type: str
+      nextcloud_fpm_min_spare:
+        description: PHP-FPM pm.min_spare_servers
+        type: int
+      nextcloud_fpm_start_servers:
+        description: PHP-FPM pm.start_servers
+        type: int

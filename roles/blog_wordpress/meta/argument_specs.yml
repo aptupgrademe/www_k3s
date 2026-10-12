@@ -1,0 +1,51 @@
+---
+# Inputs from host_vars - keep in sync with inventory/host_vars/*/*.example.
+argument_specs:
+  main:
+    short_description: Run the WordPress initial installation and plugin setup via kubectl exec into the running
+      wordpress-fpm...
+    description:
+      - Host-specific inputs of this role (inventory/host_vars/<host>/vars.yml and vault.yml).
+      - Ansible validates them when the role starts - a missing or wrongly typed value fails
+      - right there instead of halfway through the play. Values with no_log never show up in output.
+      - Role defaults (defaults/main.yml) and group_vars/all.yml are not repeated here.
+    options:
+      blog_admin_email:
+        description: WordPress admin e-mail
+        type: str
+        required: true
+      blog_admin_pass:
+        description: WordPress admin password
+        type: str
+        required: true
+        no_log: true
+      blog_admin_user:
+        description: WordPress admin user name
+        type: str
+        required: true
+        no_log: true
+      blog_title:
+        description: Blog title
+        type: str
+        required: true
+      blog_url:
+        description: Public blog URL (https://...)
+        type: str
+        required: true
+      email:
+        description: Admin e-mail address for alerts, reports and Let's Encrypt
+        type: str
+        required: true
+        no_log: true
+      blog_wordpress_keep_themes:
+        description: Themes that must not be removed
+        type: list
+        elements: str
+      blog_wordpress_plugins:
+        description: Plugins to install/activate
+        type: list
+        elements: str
+      blog_wordpress_remove_plugins:
+        description: Plugins to remove
+        type: list
+        elements: str

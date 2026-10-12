@@ -1,0 +1,66 @@
+---
+# Inputs from host_vars - keep in sync with inventory/host_vars/*/*.example.
+argument_specs:
+  main:
+    short_description: Deploy the complete WordPress stack into K3s
+    description:
+      - Host-specific inputs of this role (inventory/host_vars/<host>/vars.yml and vault.yml).
+      - Ansible validates them when the role starts - a missing or wrongly typed value fails
+      - right there instead of halfway through the play. Values with no_log never show up in output.
+      - Role defaults (defaults/main.yml) and group_vars/all.yml are not repeated here.
+    options:
+      blog_admin_email:
+        description: WordPress admin e-mail
+        type: str
+        required: true
+      blog_admin_pass:
+        description: WordPress admin password
+        type: str
+        required: true
+        no_log: true
+      blog_admin_user:
+        description: WordPress admin user name
+        type: str
+        required: true
+        no_log: true
+      blog_db:
+        description: WordPress database name
+        type: str
+        required: true
+      blog_db_pass:
+        description: WordPress database password
+        type: str
+        required: true
+        no_log: true
+      blog_db_user:
+        description: WordPress database user
+        type: str
+        required: true
+      blog_hostname:
+        description: Public hostname of the blog (e.g. www.example.de)
+        type: str
+        required: true
+      blog_ipv4:
+        description: Public IPv4 of the blog host
+        type: str
+        required: true
+      email:
+        description: Admin e-mail address for alerts, reports and Let's Encrypt
+        type: str
+        required: true
+        no_log: true
+      mysql_root_password:
+        description: MariaDB root password
+        type: str
+        required: true
+        no_log: true
+      blog_db_exporter_pass:
+        description: Password of the least-privilege mysqld_exporter DB user
+        type: str
+        no_log: true
+      blog_k3s_db_dir:
+        description: HostPath of the MariaDB data
+        type: str
+      blog_k3s_www_dir:
+        description: HostPath of the WordPress files
+        type: str
