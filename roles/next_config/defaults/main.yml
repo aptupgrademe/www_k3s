@@ -13,3 +13,7 @@ nextcloud_password_policy:
   - { key: minLength,                value: "12", type: integer }
   - { key: enforceNonCommonPassword, value: "1",  type: boolean }
   - { key: enforceHaveIBeenPwned,    value: "1",  type: boolean }
+  # 0 = passwords never expire. Set EXPLICITLY: cvjm still had expiration=300
+  # from the old server; enabling the app on 2026-10-13 made every password
+  # older than 300 days "expired" at the next login, until this was set.
+  - { key: expiration,               value: "0",  type: integer }
