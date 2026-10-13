@@ -1,4 +1,9 @@
 ---
+# defaults/ = lowest-priority role variables. verify_f2ban_min_jails is only a
+# lower bound: both stacks run the same 7 jails (common_fail2ban jail.local),
+# this role just accepts fewer (2) than blog_verify (4) before reporting it.
+# verify_cert_min_days is currently not read by any task.
+
 verify_cert_min_days: 30
 verify_http_timeout: 15
 verify_f2ban_min_jails: 2

@@ -6,4 +6,9 @@
 # Same pattern as blog_db_exporter_pass on the WordPress side.
 #
 # The account itself is created by next_mariadb.
+#
+# defaults/ = lowest-priority role variables. This one only maps the
+# exporter's generic name to the stack-specific vault variable, so the
+# tasks do not need to know which stack they run on.
+
 mysqld_exporter_db_password: "{{ nextcloud_db_exporter_pass }}"

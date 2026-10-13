@@ -6,6 +6,27 @@
 #          Grafana is exposed via K3s Ingress at /grafana/ on the main hostname.
 #          Access is protected by Grafana's own admin password (no host-level proxy auth).
 # =============================================================================
+#
+# How it works: main.yml only pulls in three task files, in this order:
+#   install.yml     repo, package, grafana.ini settings, start + wait
+#   dashboards.yml  Prometheus datasource + three dashboards from grafana.com
+#   alerting.yml    SMTP, e-mail contact point, alert rules
+# The order matters: the API calls in the last two files need a running
+# Grafana, which install.yml guarantees by waiting for /api/health.
+#
+# import_tasks vs include_tasks: import_tasks is STATIC - Ansible reads the
+# files when the playbook is parsed, so every task shows up in
+# --list-tasks and tags/when on the import apply to each task inside.
+# include_tasks would be DYNAMIC (decided at run time). Static is the
+# better default when the file list never changes.
+#
+# Talking to Grafana: there is no Grafana module in ansible.builtin, so the
+# role uses ansible.builtin.uri against Grafana's HTTP API on 127.0.0.1:3000
+# (the play runs on the server, so 127.0.0.1 is Grafana itself). Bigger
+# jobs (alert rules, dashboard variable patch) are small Python scripts the
+# role writes to the server and runs. The uri module never reports
+# "changed" on its own, so API writes do not show up as changes in the
+# recap - the "check first, then create" pairs keep them from repeating.
 
 - name: common_grafana | Package, configuration, service
   ansible.builtin.import_tasks: install.yml

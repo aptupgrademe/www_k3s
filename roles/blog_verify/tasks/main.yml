@@ -6,6 +6,23 @@
 #          Results are collected and displayed as a colored terminal report.
 #          The play fails at the end if any CRITICAL check did not pass.
 # =============================================================================
+#
+# How it works ("collect, judge, report, assert"):
+#   checks.yml   runs every check and only REGISTERS the results (_v_*);
+#                nothing fails there, so one broken service cannot hide the
+#                state of all the others. Host, K8s and HTTPS basics come
+#                from common_verify (import_role ... tasks_from), the
+#                WordPress-specific ones are written here.
+#   report.yml   turns the results into true/false values (_r_*), prints
+#                the colored report, mails the result, and finally ASSERTS
+#                the critical checks - only that last step can fail the
+#                play.
+# Same structure as nextcloud_verify, so both reports look alike.
+#
+# Why not simply fail on the first problem? A deployment check is most
+# useful when it shows the WHOLE picture in one run; the assert at the end
+# still stops the play (and with it the next host) if something critical
+# is broken.
 
 # ANSI color codes – double-quoted YAML strings interpret \x1b as ESC (ASCII 27)
 - name: Verify | Set report color codes

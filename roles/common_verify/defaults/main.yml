@@ -1,4 +1,7 @@
 ---
 # HTTP timeout for URL checks (seconds) - same value as in blog_verify and
 # nextcloud_verify, which keep their own copy for their remaining checks.
+#
+# defaults/ = lowest-priority role variables (any inventory value wins).
+
 verify_http_timeout: 15

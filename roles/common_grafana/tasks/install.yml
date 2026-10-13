@@ -1,7 +1,25 @@
 ---
+# A .repo file in /etc/yum.repos.d/ is all dnf needs to know a repository.
+# gpgcheck/repo_gpgcheck: packages AND the repo metadata must carry a
+# valid Grafana signature; exclude=*beta* keeps beta builds out.
 # -----------------------------------------------------------------------------
 # Repository and package
 # -----------------------------------------------------------------------------
+#
+# Part 1 of common_grafana (see main.yml): package from the official Grafana
+# repo, a handful of grafana.ini settings, start the service, wait for it.
+#
+# Ansible concepts used here:
+#   lineinfile   edits ONE line in an existing file: "regexp" finds the line
+#                (here also the commented-out default ";key ="), "line"
+#                replaces it. If nothing matches, the line is appended.
+#                Changes only what differs -> idempotent. Good for a few
+#                keys in a big vendor config you do not want to own fully.
+#   until/retries/delay  repeat a task until the condition is true (here:
+#                the API answers 200) - at most "retries" times, "delay"
+#                seconds apart. Needed because "systemctl start" returns
+#                before Grafana is ready to serve requests.
+
 - name: Grafana | Add official Grafana repository
   ansible.builtin.copy:
     dest: /etc/yum.repos.d/grafana.repo
@@ -20,12 +38,17 @@
       sslcacert=/etc/pki/tls/certs/ca-bundle.crt
       exclude=*beta*
 
+# state: present = install if missing, never upgrade here (upgrades come
+# from dnf-automatic / the update playbooks, not from a config run).
 - name: Grafana | Install grafana-oss
   ansible.builtin.dnf:
     name: grafana
     state: present
 
 
+# Despite its name, grafana_basic_auth_user is simply Grafana's admin login
+# (there is no nginx basic auth in front of /grafana/ any more). The API calls
+# later in this role authenticate with it + grafana_admin_pass.
 # -----------------------------------------------------------------------------
 # Configuration
 # -----------------------------------------------------------------------------
@@ -88,6 +111,9 @@
   notify: restart grafana
 
 
+# Handlers notified above (restart grafana) only run at the end of the
+# play - this task makes sure Grafana runs NOW, because the next files
+# talk to its API.
 # -----------------------------------------------------------------------------
 # Enable and start Grafana (must be running before API calls)
 # -----------------------------------------------------------------------------

@@ -1,4 +1,7 @@
 ---
+# Handler of common_grafana - runs once at the end of the play (or at
+# meta: flush_handlers in alerting.yml) when a grafana.ini edit notified it.
+
 - name: restart grafana
   ansible.builtin.systemd:
     name: grafana-server

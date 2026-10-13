@@ -1,5 +1,13 @@
 ---
 # Inputs from host_vars - keep in sync with inventory/host_vars/*/*.example.
+#
+# meta/argument_specs.yml (ansible-core >= 2.11): declares the role's inputs.
+# When the role starts, Ansible checks every listed option - required ones
+# must exist, and each value must match its type (str, int, bool, list ...).
+# A wrong or missing input stops the run before the first task instead of
+# failing somewhere in the middle. "no_log: true" on an option keeps its
+# value out of the validation error message.
+
 argument_specs:
   main:
     short_description: Install Prometheus mysqld_exporter for host-side MariaDB (Nextcloud)

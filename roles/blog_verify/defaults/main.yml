@@ -1,5 +1,10 @@
 ---
 # Minimum days before TLS cert expiry to consider it "valid"
+#
+# defaults/ = lowest-priority role variables (any inventory value wins).
+# verify_cert_min_days is currently not read by any task - the TLS check
+# relies on validate_certs (valid chain, not expired) instead.
+
 verify_cert_min_days: 30
 
 # HTTP timeout for URL checks (seconds)

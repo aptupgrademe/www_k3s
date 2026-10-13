@@ -1,4 +1,6 @@
 ---
+# Handlers of common_mysqld_exporter - see common_prometheus/handlers.
+
 - name: reload systemd
   ansible.builtin.systemd:
     daemon_reload: true

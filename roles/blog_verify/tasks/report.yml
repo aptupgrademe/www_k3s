@@ -2,6 +2,24 @@
 # =============================================================================
 # COMPUTE BOOLEAN RESULTS
 # =============================================================================
+#
+# Part 2 of blog_verify: judge, report, mail, assert.
+#
+# Ansible/Jinja concepts used here:
+#   default(x)       a fallback for a missing value. Every _v_* result is
+#                    read with one, so a skipped or crashed check gives a
+#                    clear "failed" instead of an "undefined variable" error.
+#   regex_search(pattern, '\\1')  returns the first capture group as a
+#                    list ("default([], true) | first" then turns
+#                    "no match" into a fallback).
+#   select / rejectattr  filter lists: "select" keeps true values (count of
+#                    passed checks), "rejectattr('1')" keeps the [name,
+#                    result] pairs whose result is false (the failed ones).
+#   assert           fails the task (and the host) when any "that:"
+#                    expression is false. quiet: true prints only the
+#                    fail/success message, not every expression.
+#   include_role ... tasks_from + when  runs another role's task file only
+#                    when asked for (-e monit_selftest=true).
 
 - name: Verify | Compute pass/fail for each check
   ansible.builtin.set_fact:
@@ -53,6 +71,8 @@
 # COUNT TOTAL PASS / FAIL
 # =============================================================================
 
+# _total_count is the length of the list above - keep both in sync
+# when adding a check (also add it to the report and the e-mail list).
 - name: Verify | Count passing checks
   ansible.builtin.set_fact:
     _pass_count: >-
@@ -153,6 +173,9 @@
         ] | rejectattr('1') | map(attribute='0') | list
       }}
 
+# The Jinja {% if %}/{% for %} lines are rendered BEFORE the shell runs,
+# so the shell only sees plain echo lines. "mail" hands the text to msmtp
+# (common_msmtp). Not run in --check (shell tasks are skipped there).
 - name: Verify | Send deployment result email
   ansible.builtin.shell: |
     set -o pipefail
@@ -176,6 +199,9 @@
 # ASSERT – kritische Checks müssen bestehen, sonst schlägt das Play fehl
 # =============================================================================
 
+# Only these checks are "critical": a failure here means the blog is
+# down or exposed. The others (BBR, OPcache, headers ...) show up in the
+# report and the mail, but do not stop the play.
 - name: Verify | Assert critical checks
   ansible.builtin.assert:
     that:

@@ -5,7 +5,36 @@
 #          have no rotation (Grafana, Prometheus) or incomplete configs
 #          (fail2ban missing daily/compress, rkhunter missing compress).
 # =============================================================================
+#
+# How it works: four independent copy tasks, one per file in
+# /etc/logrotate.d/. logrotate itself runs daily from a systemd timer that
+# ships with the OS; it reads every file in that directory, so dropping a
+# file there is all it takes - no service restart, no handler.
+#
+# Ansible concepts used here:
+#   ansible.builtin.copy with "content:"  writes the text below into the
+#       file on the server (no separate source file needed). copy compares
+#       the content with what is on disk and only writes - and reports
+#       "changed" - when it differs. Running the role twice therefore shows
+#       "ok" the second time (idempotent).
+#   owner/group/mode  copy also enforces them; mode is quoted ("0644") so
+#       YAML does not read it as an octal or decimal number.
+#
+# The logrotate directives, once for all four files:
+#   daily/weekly      how often a log is rotated
+#   rotate N          how many old copies are kept
+#   compress          gzip old copies; delaycompress keeps the newest old
+#                     copy uncompressed (a process may still write to it)
+#   missingok         no error if the log does not exist (yet)
+#   notifempty        do not rotate an empty log
+#   create MODE U G   permissions of the fresh, empty log after rotating
+#   postrotate        commands run after rotating - used to tell a daemon
+#                     to reopen its log file, otherwise it keeps writing
+#                     into the renamed old one
 
+# Grafana reopens its log on SIGHUP. "sharedscripts" runs postrotate once
+# for all matched files instead of once per file; "|| true" keeps
+# logrotate from reporting an error when Grafana is not running.
 - name: logrotate | Deploy Grafana log rotation
   ansible.builtin.copy:
     dest: /etc/logrotate.d/grafana
@@ -44,6 +73,9 @@
           create 0640 prometheus prometheus
       }
 
+# Replaces the file the fail2ban package ships (same path), which lacked
+# daily + compress. "fail2ban-client flushlogs" makes fail2ban reopen
+# its log after the rename.
 - name: logrotate | Fix fail2ban log rotation (add daily + compress)
   ansible.builtin.copy:
     dest: /etc/logrotate.d/fail2ban
@@ -63,6 +95,8 @@
           endscript
       }
 
+# rkhunter writes its log only during a scan (daily cron), so weekly is
+# enough; no postrotate needed because no process keeps the file open.
 - name: logrotate | Fix rkhunter log rotation (add compress + rotate count)
   ansible.builtin.copy:
     dest: /etc/logrotate.d/rkhunter

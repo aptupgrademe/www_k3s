@@ -6,8 +6,42 @@
 #          Scrapes the local Node Exporter (127.0.0.1:9100).
 #          Grafana (common_grafana) uses this as its data source.
 # =============================================================================
+#
+# How it works (top to bottom):
+#   1. system user + directories      Prometheus must not run as root
+#   2. binary                         download the pinned release from
+#                                     GitHub only if the installed version
+#                                     differs, unpack, copy into
+#                                     /usr/local/bin
+#   3. configuration                  prometheus.yml (scrape targets) and
+#                                     alert rules from Jinja templates
+#   4. systemd unit + hardening       the service definition plus a drop-in
+#                                     that locks the process down
+# Every task that changes something Prometheus reads "notifies" the
+# handler "restart prometheus" (handlers/main.yml). Handlers run once at
+# the end of the play, no matter how many tasks notified them - so a new
+# binary plus a new config still means a single restart.
+#
+# Ansible concepts used here:
+#   register + when    a task's result is stored (register) and a later
+#                      task decides on it (when)
+#   loop               one task, run once per list item ("{{ item }}")
+#   notify / handlers  "restart only if something changed"
+#   check_mode: false  lets a read-only task run in --check too, so later
+#                      tasks can make the same decisions as in a real run
+#   ansible_check_mode built-in variable, true during --check
+#   template vs copy   template renders Jinja ({{ ... }}) first, copy writes
+#                      the file as it is
+#
+# Versions: prometheus_version comes from
+# inventory/group_vars/all/versions.yml, prometheus_retention from
+# defaults/main.yml (the lowest-priority place for a role's variables -
+# any inventory value overrides it).
 
 
+# system: true = a low UID without password aging; nologin + no home dir
+# because nobody ever logs in as this user, it only owns the process
+# and its data.
 # -----------------------------------------------------------------------------
 # System user and directories
 # -----------------------------------------------------------------------------
@@ -19,6 +53,8 @@
     home: /var/lib/prometheus
     create_home: false
 
+# state: directory creates the path if missing and otherwise only fixes
+# owner/mode. /var/lib/prometheus holds the time-series database (TSDB).
 - name: Prometheus | Create required directories
   ansible.builtin.file:
     path: "{{ item }}"
@@ -31,6 +67,9 @@
     - /var/lib/prometheus
 
 
+# Prints e.g. "prometheus, version 3.15.0 (branch: ...)"; awk keeps the
+# third word. set -o pipefail: without it the shell would report the exit
+# code of awk only, never a failing prometheus binary.
 # -----------------------------------------------------------------------------
 # Binary installation
 # -----------------------------------------------------------------------------
@@ -47,6 +86,9 @@
   check_mode: false   # read-only query, also runs in --check
   failed_when: false  # not installed yet -> empty, so it gets installed
 
+# get_url downloads to the server itself (not to the controller). The
+# URL is split over three lines with a trailing backslash: in a YAML
+# double-quoted string that joins the lines without spaces.
 - name: Prometheus | Download archive
   when: (prometheus_installed_version.stdout | trim) != prometheus_version
   ansible.builtin.get_url:
@@ -56,6 +98,9 @@
     dest: "/tmp/prometheus-{{ prometheus_version }}.tar.gz"
     mode: "0644"
 
+# remote_src: true = the archive is already on the server (default would
+# be: copy it from the controller). creates: skips the task if that file
+# already exists, e.g. after an interrupted run.
 - name: Prometheus | Extract archive
   when:
     - (prometheus_installed_version.stdout | trim) != prometheus_version
@@ -66,6 +111,9 @@
     remote_src: true
     creates: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64/prometheus"
 
+# Copies prometheus + promtool (config checker) out of the unpacked
+# folder. Only this task notifies the restart - the download alone does
+# not change the running service.
 - name: Prometheus | Install binaries
   when:
     - (prometheus_installed_version.stdout | trim) != prometheus_version
@@ -83,6 +131,9 @@
   notify: restart prometheus
 
 
+# templates/prometheus.yml.j2 decides per host type which exporters are
+# scraped (node exporter everywhere, MariaDB/PHP-FPM exporters per
+# stack); the result is plain YAML for Prometheus.
 # -----------------------------------------------------------------------------
 # Configuration
 # -----------------------------------------------------------------------------
@@ -105,6 +156,11 @@
   notify: restart prometheus
 
 
+# The unit file is written inline (content:) so the ExecStart flags sit
+# next to the variables they use. --web.listen-address=127.0.0.1 keeps
+# the web UI/API off the network; Grafana on the same host reaches it
+# locally. Two handlers are notified in order: systemd must re-read the
+# unit before the restart can use it.
 # -----------------------------------------------------------------------------
 # Systemd service
 # -----------------------------------------------------------------------------
@@ -135,6 +191,8 @@
     - reload systemd
     - restart prometheus
 
+# A drop-in (*.conf in <unit>.service.d/) adds settings to a unit without
+# editing the unit file itself.
 - name: Prometheus | Ensure prometheus.service.d drop-in directory exists
   ansible.builtin.file:
     path: /etc/systemd/system/prometheus.service.d
@@ -143,6 +201,11 @@
     group: root
     mode: "0755"
 
+# systemd sandboxing: read-only OS (ProtectSystem=strict) except the data
+# directory (ReadWritePaths), no home directories, no new privileges, no
+# Linux capabilities at all (empty CapabilityBoundingSet), only IP
+# sockets. "systemd-analyze security prometheus" shows the resulting
+# exposure score.
 - name: Prometheus | Deploy systemd hardening drop-in
   ansible.builtin.copy:
     dest: /etc/systemd/system/prometheus.service.d/hardening.conf
@@ -169,6 +232,10 @@
     - reload systemd
     - restart prometheus
 
+# enabled = start at boot, started = make sure it runs now. This task
+# does not restart a running service - that is the handler's job, and
+# only when something changed. daemon_reload covers the first run, where
+# the unit was just written.
 - name: Prometheus | Enable and start service
   ansible.builtin.systemd:
     name: prometheus

@@ -1,4 +1,10 @@
 ---
+# Handlers of common_prometheus. A handler is a task that only runs when
+# another task "notifies" it by name and that task reported "changed".
+# Handlers run at the end of the play (or at "meta: flush_handlers"), each
+# one at most once, in the order they are listed HERE - not in the order
+# they were notified. That is why "reload systemd" comes first.
+
 - name: reload systemd
   ansible.builtin.systemd:
     daemon_reload: true

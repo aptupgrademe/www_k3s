@@ -2,6 +2,9 @@
 # =============================================================================
 # COMPUTE BOOLEAN RESULTS
 # =============================================================================
+#
+# Part 2 of nextcloud_verify: judge, report, mail, assert - the Jinja
+# concepts are explained in blog_verify/tasks/report.yml.
 
 - name: Verify | Compute pass/fail for each check
   ansible.builtin.set_fact:

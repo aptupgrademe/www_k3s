@@ -1,4 +1,8 @@
 ---
+# meta/main.yml: role metadata. galaxy_info is only descriptive (for Ansible
+# Galaxy / documentation); dependencies would list roles that must run
+# before this one - none here.
+
 galaxy_info:
   role_name: common_verify
   author: raphael

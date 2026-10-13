@@ -2,6 +2,10 @@
 # =============================================================================
 # BLOCK 1 – SYSTEMDIENSTE
 # =============================================================================
+#
+# Part 1 of nextcloud_verify: collect raw results (_v_*), never fail -
+# see common_verify/tasks/host.yml for the pattern and
+# blog_verify/tasks/checks.yml for the curl status-code fallbacks.
 
 - name: Verify | Shared host checks (common_verify)
   ansible.builtin.import_role:
@@ -52,7 +56,7 @@
     tasks_from: k8s
 
 # =============================================================================
-# BLOCK 3 – HTTPS / NEXTCLOUD (local: delegate_to localhost)
+# BLOCK 3 – HTTPS / NEXTCLOUD (status.php from the controller, the rest on the server)
 # =============================================================================
 
 - name: Verify | Shared http checks (common_verify)
@@ -139,6 +143,9 @@
 # BLOCK 5 – NEXTCLOUD-SPEZIFISCH (remote: occ via kubectl exec)
 # =============================================================================
 
+# occ is Nextcloud's command-line tool; "status --output=json" returns
+# installed/maintenance/needsDbUpgrade/version as JSON, which report.yml
+# reads with from_json. '{}' as the fallback keeps that parse working.
 - name: Verify | Nextcloud – OCC status
   ansible.builtin.shell: |
     k3s kubectl exec deployment/nextcloud -n nextcloud \
@@ -149,6 +156,9 @@
   check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
+# "cron" = background jobs run every 5 minutes from a Kubernetes CronJob
+# (next_k3s_deploy, cronjob.yml); "ajax"/"webcron" would mean they only run
+# when someone uses the web UI.
 - name: Verify | Nextcloud – Background-Job-Modus (soll cron sein)
   ansible.builtin.shell: |
     k3s kubectl exec deployment/nextcloud -n nextcloud \
@@ -159,6 +169,9 @@
   check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
+# "redis" and "mariadb" are Kubernetes Services that point to the HOST
+# (Redis and MariaDB run outside K3s on the Nextcloud servers); this
+# proves the pod can reach them through the firewall.
 - name: Verify | Performance – Redis erreichbar vom Nextcloud-Pod?
   ansible.builtin.shell: |
     k3s kubectl exec deployment/nextcloud -n nextcloud \
@@ -186,12 +199,10 @@
   check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
-# Not yet verified against a live instance (no Nextcloud+richdocuments
-# deployment was up at the time this was written) – the richdocuments app
-# config key for the Collabora server URL is documented as "wopi_url" across
-# current richdocuments versions, but double-check the actual key name here
-# (occ config:app:get richdocuments wopi_url) once this runs for real, in
-# case a version mismatch renames or splits it.
+# The richdocuments app stores the Collabora server URL under the app config
+# key "wopi_url" (verified live on cvjm and sofie 2026-10-13, Nextcloud 34:
+# returns https://collabora.<domain>). Recheck the key name after a major
+# richdocuments upgrade in case it gets renamed or split.
 - name: Verify | Nextcloud – richdocuments WOPI URL configured correctly
   ansible.builtin.shell: |
     k3s kubectl exec deployment/nextcloud -n nextcloud \

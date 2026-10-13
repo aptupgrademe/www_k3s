@@ -6,6 +6,21 @@
 #          Prometheus (common_prometheus) scrapes this endpoint.
 #          The Prometheus DB user 'prometheus'@'127.0.0.1' is created by next_mariadb.
 # =============================================================================
+#
+# How it works: same pattern as common_node_exporter / common_prometheus
+# (system user, pinned binary only when the version differs, systemd unit),
+# plus one extra file: the database credentials the exporter logs in with.
+# Only used on the Nextcloud hosts, where MariaDB runs on the host itself;
+# the blog's MariaDB runs in K3s and has its exporter as a sidecar
+# container (blog_k3s_deploy).
+#
+# Ansible concepts new in this role:
+#   no_log: true   hides the task's arguments and result from the output
+#                  and logs - here because "content:" contains a password.
+#                  Without it, "-v" or a failed task would print it.
+#   variable from the vault   mysqld_exporter_db_password (defaults/) points
+#                  to nextcloud_db_exporter_pass, which lives encrypted in
+#                  host_vars/<host>/vault.yml.
 
 
 # -----------------------------------------------------------------------------
@@ -69,10 +84,14 @@
   notify: restart mysqld_exporter
 
 
+# mode 0600 + owner mysqld_exporter: only the exporter (and root) can read
+# the password. The [client] section is the standard MySQL/MariaDB
+# option-file format the exporter reads via --config.my-cnf.
 # -----------------------------------------------------------------------------
 # MySQL client config (.my.cnf style)
 # mysqld_exporter reads credentials from this file via --config.my-cnf flag.
-# The prometheus user is created by next_mariadb with PROCESS, REPLICATION CLIENT, SELECT.
+# The prometheus user is created by next_mariadb with PROCESS, BINLOG MONITOR
+# (MariaDB 10.11 name of REPLICATION CLIENT) and SELECT.
 # -----------------------------------------------------------------------------
 - name: mysqld_exporter | Write MySQL client config
   ansible.builtin.copy:
@@ -90,6 +109,9 @@
   notify: restart mysqld_exporter
 
 
+# After=mariadb.service: at boot, start after the database so the first
+# scrapes do not all fail. (After= only orders the start; it does not make
+# the exporter depend on MariaDB running.)
 # -----------------------------------------------------------------------------
 # Systemd service
 # -----------------------------------------------------------------------------

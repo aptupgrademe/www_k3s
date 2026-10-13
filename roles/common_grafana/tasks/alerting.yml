@@ -2,7 +2,24 @@
 # =============================================================================
 # SMTP – enables Grafana to send alert notification emails
 # =============================================================================
+#
+# Part 3 of common_grafana (see main.yml): e-mail alerting.
+#
+# Ansible concepts used here:
+#   blockinfile  manages a whole BLOCK of lines between two marker
+#                comments ("# BEGIN/END ANSIBLE MANAGED BLOCK – smtp").
+#                Rerunning replaces exactly that block, nothing else.
+#                insertafter places it right after the [smtp] header the
+#                first time.
+#   meta: flush_handlers  runs all handlers notified so far RIGHT NOW
+#                instead of at the end of the play. Needed here: the new SMTP
+#                settings only take effect after "restart grafana", and the
+#                contact point below is created against the running Grafana.
+#   environment: sets environment variables for one task only - the way the
+#                Python script gets its credentials.
 
+# The msmtp_* values are the same mail relay common_msmtp uses for the
+# host's own mails, so Grafana needs no separate mail account.
 - name: Grafana | Configure SMTP section
   ansible.builtin.blockinfile:
     path: /etc/grafana/grafana.ini
@@ -68,6 +85,9 @@
     (_gf_contacts.json | default([]) | selectattr('name', 'equalto', 'email-admin') | list | length) == 0
   no_log: true
 
+# PUT replaces the whole policy tree with this one route on every run:
+# alerts are grouped per alert name + instance, the first mail goes out
+# after 30 s, repeats at most every 4 h while the alert keeps firing.
 - name: Grafana | Set default notification policy to email-admin
   ansible.builtin.uri:
     url: "http://127.0.0.1:3000/api/v1/provisioning/policies"
@@ -90,6 +110,8 @@
 # ALERT FOLDER
 # =============================================================================
 
+# Alert rules must live in a folder. Instead of "check, then create",
+# this POST simply accepts "already exists" (409/412) as success.
 - name: Grafana | Create alert folder "Homelab Alerts"
   ansible.builtin.uri:
     url: "http://127.0.0.1:3000/api/folders"
@@ -110,6 +132,9 @@
 # ALERT RULES – deployed as a Python script to keep YAML readable
 # =============================================================================
 
+# The script is plain Python 3 (stdlib only) and is idempotent itself: for
+# each rule it tries a GET and then updates (PUT) or creates (POST).
+# mode 0700 + owner root: only root can read or run it.
 - name: Grafana | Write alert provisioning script
   ansible.builtin.copy:
     dest: /usr/local/libexec/grafana/gf_alerts.py
@@ -255,6 +280,9 @@
 
       print("Fertig.")
 
+# changed_when: false - the script rewrites all rules every run and
+# cannot tell "same" from "different", so reporting "changed" would be
+# noise on every run.
 - name: Grafana | Apply alert rules
   ansible.builtin.command: python3 /usr/local/libexec/grafana/gf_alerts.py
   environment:

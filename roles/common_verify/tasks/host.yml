@@ -5,7 +5,34 @@
 # Read-only: every check registers its result (_v_*) with failed_when: false;
 # the calling role turns them into the report and the final assert.
 # =============================================================================
+#
+# How this file is used: common_verify is never listed in a playbook. It is
+# a "library role" - blog_verify and nextcloud_verify pull its task files in
+# with
+#     ansible.builtin.import_role:
+#       name: common_verify
+#       tasks_from: host        # = tasks/host.yml
+# so the same checks run on both stacks without being written twice.
+# tasks_from picks a file other than tasks/main.yml (this role has none).
+#
+# The pattern of every task here ("collect, judge later"):
+#   command/shell      runs a read-only check on the server
+#   register: _v_x     stores rc, stdout, stderr ... under that name
+#   failed_when: false never fails here - a broken service must still show
+#                      up in the report next to all the other results, not
+#                      stop the play at the first problem
+#   changed_when: false a check changes nothing, so never "changed"
+#   check_mode: false  also run in --check (command/shell would be skipped)
+# The calling role evaluates the _v_* results afterwards (report + assert).
+#
+# command vs shell: "command" runs the program directly - no pipes, no
+# redirects, no shell variables, which also means nothing can be injected.
+# "shell" is used only where a pipe (|) or redirect is needed, and then
+# with "set -o pipefail" so a failure early in the pipe is not hidden by a
+# later command that succeeds.
 
+# "systemctl is-active" prints active/inactive/failed and exits 0 only for
+# "active" - the report later looks at stdout.
 - name: Verify | nftables – service active?
   ansible.builtin.command: systemctl is-active nftables
   register: _v_nft_svc
@@ -20,6 +47,8 @@
   check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
+# grep -c counts matching lines: "1" = the input chain drops everything
+# that no rule allowed (default-deny).
 - name: Verify | nftables – policy drop present?
   ansible.builtin.shell: |
     set -o pipefail
@@ -29,6 +58,8 @@
   check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
+# banned4 is the IPv4 set fail2ban adds banned addresses to; rc != 0
+# means the set (and therefore banning) is missing.
 - name: Verify | nftables – banned4 set exists?
   ansible.builtin.command: nft list set inet filter banned4
   register: _v_nft_banned4
@@ -71,6 +102,7 @@
   check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
+# Set by common_sysctl; "bbr" expected. -n prints only the value.
 - name: Verify | Performance – TCP BBR active?
   ansible.builtin.command: sysctl -n net.ipv4.tcp_congestion_control
   register: _v_bbr

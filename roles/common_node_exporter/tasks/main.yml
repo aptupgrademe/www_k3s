@@ -5,6 +5,17 @@
 #          Binds to 127.0.0.1:9100 – only accessible from localhost.
 #          Prometheus (common_prometheus) scrapes this endpoint.
 # =============================================================================
+#
+# How it works: same four steps as common_prometheus (system user, pinned
+# binary from GitHub only when the version differs, systemd unit, hardening
+# drop-in); the Ansible concepts are explained in detail there. Node
+# Exporter has no config file - everything is a command-line flag in the
+# unit, so a flag change means a new unit file -> handlers "reload systemd"
+# + "restart node_exporter".
+#
+# What it exports: host metrics (CPU, memory, disks, filesystems, network,
+# systemd) as text on http://127.0.0.1:9100/metrics. Prometheus pulls that
+# page every scrape interval; nothing is pushed.
 
 
 # -----------------------------------------------------------------------------
@@ -19,6 +30,9 @@
     create_home: false
 
 
+# "node_exporter, version 1.12.1 (...)" -> awk keeps "1.12.1", the format
+# of node_exporter_version in versions.yml, so the "when:" below can
+# compare the two strings directly.
 # -----------------------------------------------------------------------------
 # Binary installation
 # -----------------------------------------------------------------------------
@@ -68,6 +82,9 @@
   notify: restart node_exporter
 
 
+# Lines starting with "#" inside content: are part of the FILE (systemd
+# ignores them as comments), not YAML comments - the "|" block keeps
+# everything literally.
 # -----------------------------------------------------------------------------
 # Systemd service
 # -----------------------------------------------------------------------------

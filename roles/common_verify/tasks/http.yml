@@ -6,7 +6,16 @@
 # Read-only: every check registers its result (_v_*) with failed_when: false;
 # the calling role turns them into the report and the final assert.
 # =============================================================================
+#
+# Same "collect, judge later" pattern as host.yml (see there). The two
+# inputs verify_url and verify_hostname are passed by the calling role
+# (blog_verify / nextcloud_verify) as "vars:" on its import_role task.
 
+# uri runs on the controller (delegate_to: localhost) - a request from
+# outside, through DNS, the internet and the firewall, the way a visitor
+# connects. validate_certs: true makes an expired or wrong certificate
+# a failure. status_code: 200 = anything else counts as a failed request
+# (stored in _v_https, not fatal because of failed_when: false).
 # External connectivity test only – GET / returns 200, never triggers fail2ban.
 - name: Verify | HTTPS – external connectivity (HTTP 200)
   ansible.builtin.uri:
@@ -22,6 +31,11 @@
   delegate_to: localhost
   become: false
 
+# Runs ON the server. --resolve sends the request for the real host name
+# to 127.0.0.1, so it hits the local ingress without DNS (and SNI/Host are
+# still correct). -k skips certificate checks (that was the job of the
+# task above), -I fetches headers only. Lower-casing makes the later
+# "is the header present?" tests case-insensitive.
 - name: Verify | HTTPS – response headers via 127.0.0.1 (HSTS, Server, X-Powered-By)
   ansible.builtin.shell: |
     set -o pipefail
@@ -33,6 +47,13 @@
   check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
+# /.env often holds secrets in web apps and is a favourite scanner target;
+# nginx must refuse it (403/404). -w "%{http_code}" prints only the status.
+# If curl itself fails, "|| echo 200" reports 200 = "not blocked", so a
+# broken check shows up as a finding instead of passing silently.
+# Requested via 127.0.0.1 on purpose: probing a forbidden path from the
+# controller over the internet could get the controller's IP banned by
+# fail2ban.
 - name: Verify | Security – /.env blocked?
   ansible.builtin.shell: |
     curl -sk --max-time {{ verify_http_timeout }} \

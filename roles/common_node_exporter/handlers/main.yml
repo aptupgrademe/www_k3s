@@ -1,4 +1,8 @@
 ---
+# Handlers of common_node_exporter - see common_prometheus/handlers for how
+# handlers work. Order matters: systemd re-reads the unit first, then the
+# service restarts with it.
+
 - name: reload systemd
   ansible.builtin.systemd:
     daemon_reload: true

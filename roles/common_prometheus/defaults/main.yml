@@ -1,4 +1,11 @@
 ---
 # prometheus_version is pinned in inventory/group_vars/all/versions.yml
 # (one place for all versions - no second, stale default here).
+#
+# defaults/ = role variables with the LOWEST priority: any value set in the
+# inventory (group_vars/host_vars), the playbook or on the command line
+# (-e) wins. Good for sensible fallbacks that a host may override.
+# prometheus_retention: how long Prometheus keeps samples before deleting
+# them (--storage.tsdb.retention.time).
+
 prometheus_retention: "30d"

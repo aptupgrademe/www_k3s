@@ -1,8 +1,12 @@
 ---
 # Sensitive – set in host_vars/<host>/vault.yml:
 # grafana_admin_pass:       "CHANGE_ME"   # Grafana admin UI password
-# grafana_basic_auth_user:  "CHANGE_ME"   # nginx Basic Auth username for /grafana/
-# grafana_basic_auth_pass:  "CHANGE_ME"   # nginx Basic Auth password for /grafana/
+# grafana_basic_auth_user:  "CHANGE_ME"   # Grafana admin login name (historic name: there is no
+#                                         # nginx basic auth in front of /grafana/)
+#
+# No real defaults here - only a reminder which inputs the role needs and
+# where they belong (vault.yml for secrets, vars.yml for the rest). The
+# actual check that they exist is meta/argument_specs.yml.
 
 # Non-sensitive – set in host_vars/<host>/vars.yml:
 # grafana_proxy_hostname:   "CHANGE_ME"   # hostname under which nginx serves /grafana/ (set to nextcloud_hostname or blog_hostname)

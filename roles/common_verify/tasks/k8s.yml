@@ -5,6 +5,10 @@
 # Read-only: every check registers its result (_v_*) with failed_when: false;
 # the calling role turns them into the report and the final assert.
 # =============================================================================
+#
+# Same "collect, judge later" pattern as host.yml (see there).
+# The awk | sort | uniq -c chain turns the STATUS column of
+# "kubectl get pods" into a summary like "Running: 1x".
 
 - name: Verify | K8s – ingress-nginx pods
   ansible.builtin.shell: |
@@ -26,6 +30,9 @@
   check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
+# -A = all namespaces. "|| true" because grep exits 1 when it finds
+# nothing - which is the good case here and must not count as an error.
+# Empty stdout = no pod in a crash/error state.
 - name: Verify | K8s – pods in error state (any namespace)?
   ansible.builtin.shell: |
     set -o pipefail

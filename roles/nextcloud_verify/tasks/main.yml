@@ -6,6 +6,11 @@
 #          Results are displayed as a colored terminal report.
 #          The play fails at the end if any CRITICAL check did not pass.
 # =============================================================================
+#
+# How it works: same "collect, judge, report, assert" structure as
+# blog_verify (see blog_verify/tasks/main.yml), with Nextcloud-specific
+# checks: host MariaDB/Redis, Collabora, status.php, occ status, cron mode,
+# the richdocuments WOPI URL, and blocked /config + /data paths.
 
 - name: Verify | Set report color codes
   ansible.builtin.set_fact:

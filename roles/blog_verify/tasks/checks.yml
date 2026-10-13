@@ -2,6 +2,15 @@
 # =============================================================================
 # BLOCK 1 – SYSTEMDIENSTE (remote: runs on server)
 # =============================================================================
+#
+# Part 1 of blog_verify: collect. Every task registers its raw result
+# (_v_*) with failed_when: false / changed_when: false / check_mode: false
+# - see common_verify/tasks/host.yml for why. report.yml judges them.
+#
+# HTTP status checks: curl -o /dev/null -w "%{http_code}" prints nothing but
+# the three-digit status. The fallback after "||" is chosen per check so a
+# broken check FAILS instead of passing: "000" where 200 is expected, "200"
+# where a block (403/404) is expected.
 
 - name: Verify | Shared host checks (common_verify)
   ansible.builtin.import_role:
@@ -28,7 +37,7 @@
     tasks_from: k8s
 
 # =============================================================================
-# BLOCK 3 – HTTPS / WORDPRESS (local: delegate_to localhost)
+# BLOCK 3 – HTTPS / WORDPRESS (first check from the controller, the rest on the server)
 # =============================================================================
 
 - name: Verify | Shared http checks (common_verify)
@@ -55,7 +64,7 @@
 
 
 # =============================================================================
-# BLOCK 4 – SECURITY BLOCKING (local)
+# BLOCK 4 – SECURITY BLOCKING (on the server, via 127.0.0.1)
 # =============================================================================
 
 # Security checks run via curl on the server itself (--resolve → 127.0.0.1).
@@ -84,6 +93,10 @@
   check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
+# WordPress lists user accounts (with their login "slug") at this REST
+# endpoint unless blocked - half of what a brute-force attack needs. The
+# output is "status|number of slugs"; report.yml accepts either a refusal
+# (401/403) or a response without any slug.
 - name: Verify | Security – REST API /wp/v2/users (no username leak)
   ansible.builtin.shell: |
     set -o pipefail
@@ -105,6 +118,8 @@
 # BLOCK 5 – PERFORMANCE (remote)
 # =============================================================================
 
+# kubectl exec runs a command inside the running pod; php -r runs one
+# line of PHP there and prints yes/no from the live PHP configuration.
 - name: Verify | Performance – OPcache enabled in FPM container?
   ansible.builtin.shell: |
     k3s kubectl exec deployment/wordpress -n wordpress \
@@ -115,6 +130,10 @@
   check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
+# A plain TCP connect from the WordPress pod to the "mariadb" Service -
+# proves DNS, the NetworkPolicy and the database port, without a login.
+# MariaDB logs each of these as "Aborted connection ... unauthenticated"
+# (a warning, harmless - it is this check).
 - name: Verify | Performance – MariaDB reachable from WordPress pod?
   ansible.builtin.shell: |
     k3s kubectl exec deployment/wordpress -n wordpress \

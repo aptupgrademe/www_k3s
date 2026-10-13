@@ -21,7 +21,7 @@ argument_specs:
         required: true
         no_log: true
       grafana_basic_auth_user:
-        description: Basic-auth user in front of Grafana
+        description: Grafana admin login name (historic variable name - no nginx basic auth in front of Grafana)
         type: str
         required: true
         no_log: true

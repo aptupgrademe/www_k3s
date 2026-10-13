@@ -1,7 +1,24 @@
 ---
+# status_code: [200, 404] = both answers are expected (exists / does not
+# exist); anything else (401, 500 ...) fails the task.
 # -----------------------------------------------------------------------------
 # Prometheus datasource
 # -----------------------------------------------------------------------------
+#
+# Part 2 of common_grafana (see main.yml): datasource + dashboards.
+#
+# Ansible concepts used here:
+#   "check, then create"  a GET registers the current state, the POST runs
+#                only "when" the GET says it is missing (status 404). That
+#                makes an API without idempotency of its own safe to call
+#                on every run.
+#   slurp        reads a file FROM the server into a variable - base64
+#                encoded, hence "| b64decode | from_json" before use.
+#   combine      merges two dicts; here it forces a fixed "uid" into the
+#                downloaded dashboard so every import overwrites the same
+#                dashboard instead of adding a copy.
+#   block + when one condition for a whole group of tasks.
+
 - name: Grafana | Check if Prometheus datasource already exists
   ansible.builtin.uri:
     url: "http://127.0.0.1:3000/api/datasources/name/Prometheus"
@@ -13,6 +30,8 @@
   register: grafana_ds_check
   check_mode: false   # read-only API query, also runs in --check
 
+# access: proxy = the Grafana SERVER queries Prometheus (127.0.0.1:9090),
+# not the visitor's browser - Prometheus is never reachable from outside.
 - name: Grafana | Create Prometheus datasource
   ansible.builtin.uri:
     url: "http://127.0.0.1:3000/api/datasources"
@@ -37,6 +56,8 @@
 - name: Grafana | Import dashboards (skipped in --check)
   when: not ansible_check_mode
   block:
+    # force: false = download only when the file is not there yet (the
+    # "latest" revision is fetched once per /tmp lifetime, i.e. until reboot).
     # -----------------------------------------------------------------------------
     # Dashboard 1860 – Node Exporter Full
     # -----------------------------------------------------------------------------
@@ -127,6 +148,10 @@
           })
           print(r.get("status", "?"))
 
+    # The script reads its inputs from environment variables, so the
+    # password never appears in the command line (visible in "ps") or in the
+    # script file. changed_when: false because it rewrites the same values
+    # every run; no_log because the environment holds the password.
     - name: Grafana | Patch Node Exporter Full variable defaults
       ansible.builtin.command: python3 /usr/local/libexec/grafana/gf_patch_1860.py
       environment:
