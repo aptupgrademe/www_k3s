@@ -83,13 +83,36 @@
 # Self-test: push server reachable via the public /push route, can reach
 # Nextcloud back, and is seen as a trusted proxy. Saves the endpoint only on
 # success, so a failure leaves clients on polling.
+# "notify_push:setup" saves the endpoint and prints "configuration saved" on
+# EVERY run, so it reported "changed" every time (found 2026-10-13 on sofie).
+# Read the stored endpoint first: setup only when it differs (first run, new
+# host name), otherwise the read-only "notify_push:self-test" - same checks,
+# nothing written. Both fail the task when a check fails.
+- name: notify_push | Read the configured push endpoint
+  ansible.builtin.command: "{{ np_occ }} config:app:get notify_push base_endpoint"
+  register: np_endpoint
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false  # rc 1 = not configured yet
+  when: nextcloud_notify_push_enabled | bool
+
 - name: notify_push | Configure + self-test (occ notify_push:setup)
   ansible.builtin.command: "{{ np_occ }} notify_push:setup https://{{ nextcloud_hostname }}/push"
   register: np_setup
   changed_when: "'configuration saved' in (np_setup.stdout | lower)"
-  when: nextcloud_notify_push_enabled | bool
+  when:
+    - nextcloud_notify_push_enabled | bool
+    - (np_endpoint.stdout | default('') | trim) != 'https://' ~ nextcloud_hostname ~ '/push'
+
+- name: notify_push | Self-test only (endpoint already configured)
+  ansible.builtin.command: "{{ np_occ }} notify_push:self-test"
+  register: np_selftest
+  changed_when: false
+  when:
+    - nextcloud_notify_push_enabled | bool
+    - np_setup is skipped
 
 - name: notify_push | Report setup result
   ansible.builtin.debug:
-    var: np_setup.stdout_lines
+    var: (np_selftest if np_setup is skipped else np_setup).stdout_lines
   when: nextcloud_notify_push_enabled | bool

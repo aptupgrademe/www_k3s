@@ -25,10 +25,9 @@
 # Ansible concepts used here:
 #   selinux_profiles[selinux_target]  one role, two stacks: the playbook
 #                  sets selinux_target, the dict picks that stack's dirs
-#   changed_when / failed_when on stderr  semanage exits non-zero with
-#                  "already defined" when the rule exists - that is the
-#                  normal case on every run after the first, so it is
-#                  neither a failure nor a change
+#   read first, add only what is missing  "semanage fcontext -l -C" lists
+#                  the local rules; the add task runs only "when" a rule is
+#                  not in that list (see the comment at the task)
 #   ansible.posix.selinux / seboolean  modules from the ansible.posix
 #                  collection (requirements.yml), not from ansible.builtin
 
@@ -73,15 +72,26 @@
 # -----------------------------------------------------------------------------
 # container_file_t allows the container runtime (containerd) to read/write
 # these directories while SELinux is enforcing.
+# Read the local rules first, add only the missing ones. semanage 3.6 (EL 9.6+)
+# no longer fails on an existing rule: it prints "already defined, modifying
+# instead" to STDOUT and exits 0, so the old "already defined in stderr" check
+# reported "changed" on every run (found 2026-10-13 on sofie).
+- name: SELinux | Read the local file-context rules
+  ansible.builtin.command: semanage fcontext -l -C
+  register: semanage_fc_local
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+
 - name: SELinux | Label the HostPath directories as container_file_t
   ansible.builtin.command: >
     semanage fcontext -a -t container_file_t "{{ item.path }}(/.*)?"
   loop: "{{ selinux_profiles[selinux_target] }}"
   loop_control:
     label: "{{ item.label }}"
-  register: semanage_dirs
-  changed_when: semanage_dirs.rc == 0 and "already defined" not in (semanage_dirs.stderr | default(""))
-  failed_when: semanage_dirs.rc != 0 and "already defined" not in (semanage_dirs.stderr | default(""))
+  when: >-
+    (item.path ~ '(/.*)?') not in
+    (semanage_fc_local.stdout_lines | select | map('split') | map('first') | list)
+  changed_when: true   # only runs for a missing rule
 
 - name: SELinux | Apply the SELinux context to the HostPath directories
   ansible.builtin.command: restorecon -Rv "{{ item.path }}"
