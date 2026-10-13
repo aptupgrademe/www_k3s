@@ -14,7 +14,7 @@
 # runuser -u www-data: occ must run as the user that owns config.php,
 # otherwise it refuses (and files it creates would belong to root).
 # Order: system config (nc_config.yml) -> database maintenance -> apps ->
-# Collabora/WOPI settings.
+# Collabora/WOPI settings -> password policy.
 #
 # The pattern used for almost every setting ("get, compare, set"):
 #   1. occ config:...:get  -> register (changed_when: false, check_mode: false)
@@ -44,3 +44,5 @@
   ansible.builtin.import_tasks: apps.yml
 - name: next_config | Collabora/WOPI settings
   ansible.builtin.import_tasks: wopi.yml
+- name: next_config | Password policy (min. length, leaked-password check)
+  ansible.builtin.import_tasks: password_policy.yml

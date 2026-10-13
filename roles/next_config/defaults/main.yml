@@ -5,3 +5,11 @@
 # override does not look like a typo; safe to delete together with any such
 # override.
 nextcloud_run_repair: false
+
+# Password policy (tasks/password_policy.yml). Applies to every Nextcloud host;
+# override per host in host_vars if one instance needs different rules.
+# type = how Nextcloud 34 stores the value (typed app config).
+nextcloud_password_policy:
+  - { key: minLength,                value: "12", type: integer }
+  - { key: enforceNonCommonPassword, value: "1",  type: boolean }
+  - { key: enforceHaveIBeenPwned,    value: "1",  type: boolean }
