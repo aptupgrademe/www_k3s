@@ -1799,7 +1799,7 @@ k3s kubectl logs -n nextcloud -l job-name=nextcloud-cron-&lt;id&gt;</code></pre>
   <li><code>dnf upgrade -y</code> fails to install a new kernel with a misleading
       "not enough disk space on /usr/lib/modules" error (Ansible works around
       this by excluding <code>kernel*</code> from the automated upgrade task
-      in <code>blog_packages</code>; security kernel updates still land via the
+      in <code>next_packages</code>; security kernel updates still land via the
       daily <code>dnf-automatic</code> timer, which runs locally, not over SSH).</li>
   <li><code>sysctl --system</code> / <code>sysctl -w ...</code> fails with
       "permission denied" on nearly every key.</li>

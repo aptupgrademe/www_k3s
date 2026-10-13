@@ -1395,7 +1395,7 @@ systemd-run --wait --pipe -- dnf upgrade -y</code></pre>
       scheitert dadurch bei Kernel-Paketen mit einer irreführenden
       "nicht genug Speicherplatz"-Meldung (Ansible umgeht das, indem
       <code>kernel*</code> im automatisierten Upgrade-Task der Rolle
-      <code>blog_packages</code> ausgeschlossen wird; Security-Kernel-Updates
+      <code>next_packages</code> ausgeschlossen wird; Security-Kernel-Updates
       landen trotzdem täglich über <code>dnf-automatic</code>, das lokal läuft,
       nicht über SSH). <code>systemd-run</code> führt den Befehl stattdessen als
       eigenständige Unit unter PID&nbsp;1 aus, außerhalb dieser Sandbox. Details
@@ -1817,7 +1817,7 @@ k3s kubectl logs -n nextcloud -l job-name=nextcloud-cron-&lt;id&gt;</code></pre>
   <li><code>dnf upgrade -y</code> scheitert beim Installieren eines neuen Kernels
       mit einer irreführenden "nicht genug Speicherplatz auf /usr/lib/modules"-Meldung
       (Ansible umgeht das, indem <code>kernel*</code> im automatisierten Upgrade-Task
-      der Rolle <code>blog_packages</code> ausgeschlossen wird; Security-Kernel-Updates
+      der Rolle <code>next_packages</code> ausgeschlossen wird; Security-Kernel-Updates
       landen trotzdem täglich über den <code>dnf-automatic</code>-Timer, der lokal
       läuft, nicht über SSH).</li>
   <li><code>sysctl --system</code> / <code>sysctl -w ...</code> scheitert bei fast
@@ -1831,6 +1831,34 @@ k3s kubectl logs -n nextcloud -l job-name=nextcloud-cron-&lt;id&gt;</code></pre>
   z.B. <code>systemd-run --wait --pipe -- sysctl --system</code>. Das ist bereits
   in den Tasks und Handlern der Rolle <code>common_sysctl</code> umgesetzt. Die
   sshd-Härtung dafür nicht abschwächen oder entfernen — sie ist beabsichtigt.
+</p>
+<p>
+  <strong>Was die Sandbox genau sperrt</strong> – die vollständige Liste im Drop-in:
+</p>
+<table>
+  <tr><th>Einstellung</th><th>Gesperrt in der SSH-Sitzung</th></tr>
+  <tr><td><code>ProtectKernelModules=yes</code></td><td>Kernel-Module laden; <code>/usr/lib/modules</code> erscheint leer (daher kein Kernel-Update über SSH)</td></tr>
+  <tr><td><code>ProtectKernelTunables=yes</code></td><td><code>/proc/sys</code> und <code>/sys</code> nur lesbar (<code>sysctl -w</code>, THP)</td></tr>
+  <tr><td><code>ProtectControlGroups=yes</code></td><td>cgroup-Dateisystem nur lesbar</td></tr>
+  <tr><td><code>RestrictRealtime=yes</code>, <code>LockPersonality=yes</code></td><td>Echtzeit-Priorität, Wechsel des Ausführungsmodus</td></tr>
+  <tr><td><code>RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK</code></td><td>andere Socket-Typen als IP, Unix-Sockets und Netlink</td></tr>
+</table>
+<p>
+  <strong>Alles andere funktioniert normal</strong>: Dateien unter <code>/etc</code> bearbeiten, Pakete
+  installieren und aktualisieren (nur kein neuer Kernel), <code>systemctl</code>, <code>kubectl</code>,
+  <code>nft</code>, <code>ip</code>, Benutzer und Rechte. Für die gesperrten Aktionen braucht man ohnehin
+  <strong>Root</strong>, ebenso für <code>systemd-run</code> als System-Unit; ein normaler Benutzer kann nur
+  <code>systemd-run --user</code> nutzen, das mit seinen eigenen Rechten läuft.
+</p>
+<p>
+  <strong>Einordnung:</strong> Die Sandbox ist eine zusätzliche Hürde, keine unüberwindbare Grenze – wer
+  schon Root ist, kann sie mit <code>systemd-run</code> umgehen oder den Drop-in entfernen. Sie hält aber
+  automatisierte Angriffe auf, die nach dem Login sofort ein Kernel-Modul nachladen, und macht eine
+  Umgehung zu einem bewussten Schritt, der Spuren hinterlässt: auditd protokolliert jeden Aufruf von
+  <code>modprobe</code>/<code>insmod</code>/<code>rmmod</code> (Schlüssel <code>modules</code>, auch über
+  <code>systemd-run</code>), und AIDE meldet in der nächsten Nacht jede Änderung unter
+  <code>/etc/systemd</code>, also auch am Drop-in. Ein Aufruf von <code>systemd-run</code> selbst wird
+  dagegen nicht eigens protokolliert.
 </p>
 
 <h3>"Cannot create repo temporary directory /tmp/libdnf.XXXXXX" bei dnf über SSH</h3>
