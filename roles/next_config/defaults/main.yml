@@ -17,3 +17,10 @@ nextcloud_password_policy:
   # from the old server; enabling the app on 2026-10-13 made every password
   # older than 300 days "expired" at the next login, until this was set.
   - { key: expiration,               value: "0",  type: integer }
+  # Off on purpose (2026-10-13): length + leak check matter more than
+  # character classes, and cvjm still had these from the old server. Pinned so
+  # every host has the same rules and no leftover can come back.
+  - { key: enforceUpperLowerCase,    value: "0",  type: boolean }
+  - { key: enforceNumericCharacters, value: "0",  type: boolean }
+  - { key: enforceSpecialCharacters, value: "0",  type: boolean }
+  - { key: historySize,              value: "0",  type: integer }
