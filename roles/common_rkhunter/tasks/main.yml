@@ -6,6 +6,19 @@
 #          Must run AFTER all other software is installed so that --propupd
 #          captures a clean baseline of the system.
 # =============================================================================
+#
+# How it works: rkhunter compares system binaries and config against a
+# stored "file properties" database (hashes, permissions) and looks for
+# known rootkit traces. The role sets its options, (re)builds that database
+# (--propupd), schedules a nightly check, and installs a dnf plugin that
+# rebuilds the database after every package update - otherwise every
+# update would show up as "file changed" warnings the next night.
+#
+# Ansible concepts used here:
+#   lineinfile in a loop over key/value dicts  one task sets many
+#                  "KEY=value" lines; regexp finds each existing key
+#   cron module    one named root crontab entry (see common_auditd)
+#   file state: absent  delete a file if it exists, no error if it does not
 
 
 # -----------------------------------------------------------------------------
@@ -106,6 +119,8 @@
     state: absent
 
 
+# The path is tied to the Python version of dnf (3.9 on EL 9); on EL 10
+# it would have to change.
 # -----------------------------------------------------------------------------
 # Auto-propupd after ANY dnf transaction (manual and automatic)
 # A native dnf plugin is the most reliable hook – it runs in the same

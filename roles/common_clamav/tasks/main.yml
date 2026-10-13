@@ -13,6 +13,20 @@
 #          Replaces the former blog_clamav and next_clamav roles, which were
 #          identical apart from the values now in clamav_profiles.
 # =============================================================================
+#
+# How it works: install ClamAV, fetch the virus signatures once (later
+# updates come from the clamav-freshclam service), write a scan script and
+# a cron entry. The script runs clamscan at night with low CPU/IO priority
+# and mails only when something was found.
+#
+# Ansible concepts used here:
+#   set_fact clamav: profiles[target]  pick one dict for the rest of the role
+#   Jinja loops building a regex  the media-extension pattern is GENERATED:
+#                  "jpg" becomes "[jJ][pP][gG]", so the exclude matches any
+#                  upper/lower case without clamscan supporting a flag for it
+#   {% for %} / {% if %} inside copy content  render optional lines of the
+#                  shell script (exclude dirs, media exclude) before it is
+#                  written
 
 - name: ClamAV | Pick the scan profile
   ansible.builtin.set_fact:
@@ -80,6 +94,9 @@
       \.({% for e in clamav_skip_extensions %}{% for ch in e %}{% if ch.isalpha() %}[{{ ch }}{{ ch | upper }}]{% else %}{{ ch }}{% endif %}{% endfor %}{% if not loop.last %}|{% endif %}{% endfor %})$
   when: clamav.skip_media | bool
 
+# clamscan exit codes: 0 = clean, 1 = virus found, 2 = error. Only 1 sends
+# mail; the script always exits 0 so cron does not mail its own error
+# notice on top.
 - name: ClamAV | Deploy nightly scan script
   ansible.builtin.copy:
     dest: "/usr/local/sbin/{{ clamav_target }}-clamav-scan.sh"

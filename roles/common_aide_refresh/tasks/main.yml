@@ -16,6 +16,20 @@
 # so it sees the fully-settled end state, not an intermediate one from
 # earlier in the run.
 # =============================================================================
+#
+# Ansible concepts used here:
+#   stat           reads facts about a path (exists, size, mode ...) without
+#                  changing it - here: "is AIDE set up at all?"
+#   when as a list every condition must be true (logical AND)
+#   "rc is defined" a skipped task registers no rc - this guards the later
+#                  tasks for hosts where the scan did not run
+#   range(1, 8)    Jinja range = 1..7 (the end is exclusive)
+#   systemd-run --wait --pipe  runs the command as a transient unit under
+#                  PID 1, outside the sandboxed SSH session (see
+#                  common_sysctl/handlers for why that matters), and still
+#                  returns its output and exit code to Ansible
+# Only the "mv" task reports changed - so the recap counts a refreshed
+# baseline exactly once.
 
 - name: AIDE refresh | Check whether AIDE is set up on this host
   ansible.builtin.stat:

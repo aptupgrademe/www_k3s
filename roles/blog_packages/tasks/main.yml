@@ -2,12 +2,33 @@
 # =============================================================================
 # Role: blog_packages (K3s-only mode)
 # Purpose: Minimal host-level packages for the blog server.
-#          All application services (MariaDB, WordPress, Nginx) run inside K3s.
-#          Only nftables and SSH remain on the host.
+#          The application (MariaDB, WordPress, nginx, Redis) runs inside
+#          K3s. On the host itself run only infrastructure services: SSH,
+#          nftables, fail2ban, auditd, monitoring (node_exporter,
+#          Prometheus, Grafana, Monit), ClamAV/rkhunter/AIDE - installed by
+#          their own roles; this role adds the base packages.
 #
-#          All packages below are available in the default AlmaLinux 9
-#          BaseOS/AppStream repos – no EPEL or CRB needed.
+#          The packages in "Install host packages" come from the default
+#          AlmaLinux 9 BaseOS/AppStream repos. EPEL is enabled here anyway
+#          because later roles need it (fail2ban, Monit, rkhunter).
 # =============================================================================
+#
+# How it works (in this order, which matters):
+#   1. hostname + /etc/hosts      so mails show which server sent them
+#   2. EPEL, then "dnf upgrade" of everything except the kernel
+#   3. reboot if needed - two checks, see the comments
+#   4. base packages, then switch off services this host does not use
+#
+# Ansible concepts used here:
+#   hostname module  sets the hostname persistently (hostnamectl)
+#   dnf name: "*" state: latest  = full system update; "# noqa:
+#                    package-latest" tells ansible-lint this one is wanted
+#   reboot module    reboots, waits until SSH answers again, then the play
+#                    simply continues with the next task
+#   failed_when: false on optional services  "stop/disable/mask X" must
+#                    not fail on a host where X is not installed
+#   systemd masked: true  links the unit to /dev/null - it can then not be
+#                    started at all, not even as a dependency of another unit
 
 
 # -----------------------------------------------------------------------------

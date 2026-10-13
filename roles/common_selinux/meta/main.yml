@@ -1,4 +1,6 @@
 ---
+# meta/main.yml: descriptive metadata; "platforms" documents EL 9 only.
+
 galaxy_info:
   role_name: common_selinux
   author: raphael

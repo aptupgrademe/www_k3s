@@ -4,6 +4,21 @@
 # Purpose: Install dnf-automatic and configure it to apply security patches
 #          automatically once a day. Non-security updates remain manual.
 # =============================================================================
+#
+# How it works: dnf-automatic is a systemd timer + service from the OS that
+# runs "dnf upgrade" unattended. The role restricts it to security updates
+# (automatic.conf), moves its timer to 01:00 (drop-in), and adds two cron
+# jobs: reboot at 03:30 if needs-restarting says so, and a 06:00 warning if
+# a reboot is still pending.
+#
+# Ansible concepts used here:
+#   register on copy + "is changed"  the timer is RESTARTED only when its
+#                  drop-in changed (a running timer keeps its old schedule
+#                  until then), otherwise just kept "started" - a conditional
+#                  state computed with an inline Jinja if/else
+#   drop-in with "OnCalendar=" (empty) first  an empty assignment clears
+#                  the packaged value; without it systemd would ADD 01:00 to
+#                  the original 06:00 instead of replacing it
 
 - name: dnf-automatic | Install package
   ansible.builtin.dnf:
@@ -71,6 +86,9 @@
     daemon_reload: true
 
 
+# "needs-restarting -r" exits 1 when a reboot is required (new kernel,
+# glibc, systemd ...), 0 otherwise. The ">-" folded block turns the
+# job into one crontab line.
 # -----------------------------------------------------------------------------
 # Automatic reboot after security update
 # dnf-automatic silently installs security updates (including the kernel) in

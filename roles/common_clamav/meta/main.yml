@@ -1,4 +1,6 @@
 ---
+# meta/main.yml: descriptive metadata only.
+
 galaxy_info:
   role_name: common_clamav
   author: raphael

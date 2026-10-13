@@ -29,6 +29,41 @@
 # Target:  K3s single-node on AlmaLinux 9 (Nextcloud and blog – see
 #          nextcloud-k3s.yml and blog.yml)
 # =============================================================================
+#
+# THE K8S APPLY PATTERN - used by 26 tasks in this repo, explained once here:
+#
+#   - name: ... | Apply <something>
+#     kubernetes.core.k8s:
+#       kubeconfig: "{{ k3s_kubeconfig }}"
+#       state: present
+#       apply: true
+#       definition: "{{ item }}"
+#     loop: "{{ k8s_objects if ansible_diff_mode else [k8s_objects] }}"
+#     vars:
+#       k8s_objects: "{{ lookup('ansible.builtin.template', 'x.yml.j2')
+#                        | ansible.builtin.from_yaml_all | select | list }}"
+#
+# Read it from the inside out:
+#   lookup('template', ...)  renders the Jinja template ON THE CONTROLLER
+#                  into a string (no file is copied to the server)
+#   from_yaml_all  parses a multi-document YAML string ("---" separated)
+#                  into a list of objects (dicts)
+#   select         drops empty documents (e.g. a trailing "---")
+#   kubernetes.core.k8s  talks to the Kubernetes API directly - no kubectl,
+#                  no temp file. state: present + apply: true behaves like
+#                  "kubectl apply": it creates missing objects, updates
+#                  changed ones, and reports "changed" ONLY when the live
+#                  object really differs (idempotent).
+#   loop ... if ansible_diff_mode  with --diff the loop runs once per
+#                  object, so the diff shows each object separately;
+#                  otherwise one loop item holds the whole list -> a single
+#                  module call for all objects (faster).
+#   loop_control.label  shows "Kind/name" per item, or "N objects".
+# "vars:" on a task defines variables for that task only.
+#
+# Waiting afterwards: "kubectl rollout status" blocks until a DaemonSet or
+# Deployment runs its new pods; it only runs "when: calico_apply.changed",
+# so an unchanged run does not wait at all.
 
 - name: Calico | Apply policy-only manifest
   kubernetes.core.k8s:

@@ -5,6 +5,10 @@
 # SSH session's private mount namespace, so writing there directly always
 # fails with "permission denied" / "Read-only file system". systemd-run
 # escapes that namespace without touching the hardening itself.
+#
+# Handlers of common_sysctl (explained below). They run at the end of the
+# play when a sysctl file or the THP unit changed.
+
 - name: apply sysctl
   ansible.builtin.command: systemd-run --wait --pipe --quiet -- sysctl --system
   changed_when: false

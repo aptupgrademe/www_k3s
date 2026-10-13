@@ -5,6 +5,23 @@
 #          timeouts, backlog).  Applied via /etc/sysctl.d/ – persistent
 #          across reboots.
 # =============================================================================
+#
+# Also deploys the CIS network hardening sysctls (98-cis-hardening.conf) and
+# sets Transparent Huge Pages to madvise.
+#
+# How it works: files in /etc/sysctl.d/ are read at boot (persistent);
+# "sysctl --system" applies them now. A file in /etc/modules-load.d/ loads
+# a kernel module at every boot.
+#
+# Ansible concepts used here:
+#   template + notify "apply sysctl"  re-apply only when a file changed...
+#   ...plus an unconditional "Apply settings immediately" task: that one
+#                  also restores values someone changed at runtime with
+#                  "sysctl -w", which no file change would notice.
+#                  changed_when: false because it cannot tell either way.
+#   systemd-run    see the comments below - the SSH session is sandboxed
+#                  by common_ssh, so kernel tunables are written from a
+#                  transient unit under PID 1 instead
 
 # community.general.modprobe reads /lib/modules/<kernel>/modules.builtin to
 # check module state. sshd's hardening drop-in (common_ssh, already deployed

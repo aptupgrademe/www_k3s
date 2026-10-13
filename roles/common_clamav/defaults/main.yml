@@ -1,6 +1,10 @@
 ---
 # What to scan - set by the playbook (blog.yml: wordpress, nextcloud-k3s.yml:
 # nextcloud). Selects one of the profiles below.
+#
+# defaults/ = lowest-priority role variables; any of them (e.g. the scan
+# time of a profile) can be overridden in host_vars.
+
 clamav_target: ""
 
 # Passed to the nightly scan's alert email; uses the host's 'email' variable

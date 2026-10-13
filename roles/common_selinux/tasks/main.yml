@@ -11,6 +11,26 @@
 #          identical apart from the directories now in selinux_profiles.
 # Target:  AlmaLinux 9
 # =============================================================================
+#
+# How it works: SELinux labels every file with a type; a confined process
+# may only touch the types its policy allows. Containers run as
+# container_t and may write files labelled container_file_t. The HostPath
+# directories (host folders mounted into pods) are created by this role
+# and labelled that way:
+#   1. "semanage fcontext -a"  adds a RULE: "<path>(/.*)? = container_file_t"
+#                              (stored in the policy, survives relabels)
+#   2. "restorecon -R"         applies the rule to the existing files
+# New files inside get the type automatically from the rule.
+#
+# Ansible concepts used here:
+#   selinux_profiles[selinux_target]  one role, two stacks: the playbook
+#                  sets selinux_target, the dict picks that stack's dirs
+#   changed_when / failed_when on stderr  semanage exits non-zero with
+#                  "already defined" when the rule exists - that is the
+#                  normal case on every run after the first, so it is
+#                  neither a failure nor a change
+#   ansible.posix.selinux / seboolean  modules from the ansible.posix
+#                  collection (requirements.yml), not from ansible.builtin
 
 # -----------------------------------------------------------------------------
 # Packages
@@ -72,9 +92,15 @@
 
 
 # -----------------------------------------------------------------------------
-# SELinux boolean: allow containers to make outbound network connections
-# (container -> MariaDB / Redis on the host, SMTP, WordPress HTTP calls)
+# SELinux boolean container_manage_cgroup
 # -----------------------------------------------------------------------------
+# NOTE: this comment used to say "allow containers to make outbound network
+# connections" - that is not what this boolean does. container_manage_cgroup
+# lets container processes manage cgroups ("Allow container to manage
+# cgroup" in semanage boolean -l). Outbound connections (pod -> host MariaDB/
+# Redis, SMTP, WordPress HTTP calls) work without any boolean: checked
+# 2026-10-13, container_connect_any is off and all of them work. Whether
+# anything here still needs this boolean is open; it is left on as before.
 - name: SELinux | Allow container processes to make outbound network connections
   ansible.posix.seboolean:
     name: container_manage_cgroup

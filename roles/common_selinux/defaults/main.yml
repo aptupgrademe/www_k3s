@@ -1,6 +1,11 @@
 ---
 # Which stack's HostPath directories to prepare - set by the playbook
 # (blog.yml: wordpress, nextcloud-k3s.yml: nextcloud).
+#
+# defaults/ = lowest-priority role variables. owner/group are numeric
+# UIDs/GIDs because the users exist only inside the containers (33 =
+# www-data, 999 = mysql); the host has no user with these names.
+
 selinux_target: ""
 
 # Set selinux_debug: true in host_vars to show the SELinux contexts of the
