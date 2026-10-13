@@ -1,4 +1,8 @@
 ---
+# One restart at the end of the play, no matter how many of the filter,
+# action or jail files changed. Note: a fail2ban restart re-applies the
+# current bans from its database.
+
 - name: restart fail2ban
   ansible.builtin.systemd:
     name: fail2ban

@@ -3,6 +3,11 @@
 # Nextcloud system configuration (occ config:system:*)
 # occ runs as www-data (uid 33) via runuser inside the nextcloud-fpm container.
 # -----------------------------------------------------------------------------
+#
+# Part 1 of next_config: config:system:* values (they end up in config.php).
+# set_fact occ_exec holds the "k3s kubectl exec ... --" part once; every task
+# below starts its command with it, followed by "runuser -u www-data -- php
+# /var/www/html/occ <command>".
 
 # Shared prefix used by all occ tasks in this file.
 - name: Config | Set kubectl exec occ prefix
@@ -102,6 +107,9 @@
   failed_when: false  # rc 1 = not set yet
   no_log: "{{ item.secret | default(false) }}"
 
+# loop over the RESULTS of the read task: each item carries the original
+# wanted value as item.item (the loop item of the read task) plus what
+# occ returned (item.stdout, item.rc). rc != 0 means "not set at all".
 # argv instead of a command string: values go to occ verbatim, a quote or
 # space in the password cannot break the command line.
 - name: Config | Set mail settings that differ

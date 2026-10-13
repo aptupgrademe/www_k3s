@@ -1,4 +1,6 @@
 ---
+# Restart Redis after a redis.conf change - flushed early in tasks/main.yml.
+
 - name: Restart Redis
   ansible.builtin.service:
     name: redis

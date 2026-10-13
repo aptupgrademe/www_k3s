@@ -1,4 +1,8 @@
 ---
+# daemon_reload makes systemd re-read changed unit files. Flushed early in
+# tasks/main.yml (meta: flush_handlers) so the timers start with the new
+# units.
+
 - name: Reload systemd for visitor-stats
   ansible.builtin.systemd:
     daemon_reload: true

@@ -10,6 +10,10 @@
 #     - "{{ k3s_service_cidr }}"  # kept for completeness
 #     - "{{ collabora_hostname }}"
 # -----------------------------------------------------------------------------
+#
+# Part 4 of next_config: the two settings Nextcloud Office needs - which
+# hosts may call Nextcloud's WOPI endpoint (the allowlist) and where
+# Collabora is (wopi_url). Same "get, compare, set" pattern as nc_config.yml.
 
 - name: WOPI | Get current WOPI allowlist
   ansible.builtin.command: >
@@ -61,6 +65,9 @@
   when: current_wopi_url.stdout | trim != collabora_url
   changed_when: true
 
+# collabora_apply is registered by next_k3s_deploy earlier in the same
+# play - registered variables stay available to all later roles on that
+# host. "is defined" guards runs where that role was skipped (--tags).
 # Nextcloud caches Collabora's discovery (incl. the WOPI proof key). After the
 # Collabora deployment changed, re-read it so proof-key verification uses the
 # current key right away instead of after the cache expires.

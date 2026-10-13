@@ -1,6 +1,11 @@
 ---
 # SMTP relay configuration – non-sensitive defaults
 # Sensitive values (mail_smtpname, mail_smtppassword) must be in vault.yml
+#
+# defaults/ = lowest-priority role variables. These only map the host's
+# mail_* inventory values to the names the template uses; mail_smtpname
+# and mail_smtppassword come from the host's vault.yml.
+
 msmtp_host:     "{{ mail_smtphost }}"
 msmtp_port:     "{{ mail_smtpport }}"
 msmtp_from:     "{{ mail_from_address }}@{{ mail_domain }}"

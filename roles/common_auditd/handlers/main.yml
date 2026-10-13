@@ -1,4 +1,8 @@
 ---
+# augenrules --load merges /etc/audit/rules.d/*.rules and loads them into
+# the kernel. changed_when: false - the change was already reported by the
+# task that notified this handler.
+
 - name: reload audit rules
   ansible.builtin.command: augenrules --load
   changed_when: false

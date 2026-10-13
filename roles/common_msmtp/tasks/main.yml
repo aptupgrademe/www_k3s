@@ -3,9 +3,21 @@
 # Role: common_msmtp
 # Purpose: Install msmtp as a lightweight sendmail replacement so that
 #          system services (cron, rkhunter, dnf-automatic) can relay mail
-#          through an external SMTP account (e.g. Strato, Gmail).
+#          through an external SMTP account (any provider with SMTP AUTH).
 #          No daemon – msmtp is called directly by /usr/sbin/sendmail.
 # =============================================================================
+#
+# How it works: three tasks - package, /etc/msmtprc (relay, port, login,
+# sender) from a template, and the log file. No service: every program that
+# calls "sendmail" or "mail" runs msmtp, which delivers the mail to the
+# relay right away and exits.
+#
+# Ansible concepts used here:
+#   ansible.builtin.package  the distro-neutral package module (picks dnf,
+#                  apt ... itself); fine for a single package without
+#                  dnf-specific options
+#   file state: touch + preserve  see common_fail2ban: create the log once
+#                  without "changed" on every later run
 
 
 # -----------------------------------------------------------------------------

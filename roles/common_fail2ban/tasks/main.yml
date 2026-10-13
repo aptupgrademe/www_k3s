@@ -1,11 +1,35 @@
 ---
 # =============================================================================
 # Role: common_fail2ban  (K3s mode)
-# Purpose: SSH brute-force protection via Fail2Ban.
+# Purpose: Ban abusive IPs via Fail2Ban + nftables.
 #
-# HTTP-level protection is handled by nginx-ingress (F5) rate-limiting inside K3s.
-# Only the sshd jail runs on the host.
+# Seven jails on every host (templates/jail.local.j2): sshd, logins for
+# WordPress / Nextcloud / Grafana, scanners, bad paths, and recidive (repeat
+# offenders get a long ban). The HTTP jails read the ingress-nginx container
+# log on the host, so they work although nginx runs inside K3s. Rate
+# limiting of login URLs happens separately in nginx-ingress itself.
 # =============================================================================
+#
+# How it works:
+#   1. install fail2ban (EPEL)
+#   2. templates: a custom ban ACTION (puts IPs into the nftables sets
+#      banned4/banned6 that common_firewall created), five FILTERS (regexes
+#      that recognise an attack in a log line) and jail.local (which filter
+#      watches which log, how many hits within findtime lead to a ban)
+#   3. start the service
+#   4. a systemd timer that keeps the HTTP jails pointed at the current
+#      ingress log file (the file name changes with every pod restart)
+#
+# Ansible concepts used here:
+#   template + notify   any changed config file -> one fail2ban restart
+#                       at the end of the play
+#   file state: touch + modification_time/access_time: preserve
+#                       creates an empty file if missing, but does NOT
+#                       bump the timestamps of an existing one - otherwise
+#                       "touch" would report "changed" on every run
+#   loop over dicts + loop_control.label   each item is a dict (name +
+#                       content); "label" shows only the name in the output
+#                       instead of the whole unit file text
 
 
 # -----------------------------------------------------------------------------
@@ -136,6 +160,8 @@
     state: started
     daemon_reload: true
 
+# systemd state: started on a oneshot unit runs it once; changed_when:
+# false because running a check is not a change to the system.
 # Fix a blind jail immediately instead of waiting for the first timer tick.
 - name: Fail2Ban | Run ingress log watcher once now
   ansible.builtin.systemd:

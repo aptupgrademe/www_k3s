@@ -1,3 +1,11 @@
 ---
 # Kubernetes namespace whose Deployments are checked (set by the caller).
+#
+# The caller passes the namespace, e.g. in blog-update.yml:
+#     - name: Update | Find Deployments with a rebuilt image
+#       ansible.builtin.include_role:
+#         name: common_image_refresh
+#       vars:
+#         image_refresh_namespace: "{{ wp_ns }}"
+
 image_refresh_namespace: ""

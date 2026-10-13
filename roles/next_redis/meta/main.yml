@@ -1,7 +1,7 @@
 ---
 galaxy_info:
   author: raphael
-  description: Install and secure Redis (localhost-only binding, protected-mode) on AlmaLinux 9
+  description: Secure host Redis for Nextcloud (bind localhost + node IP for K3s pods, password, protected-mode) on AlmaLinux 9
   license: MIT
   min_ansible_version: "2.10"
   platforms:

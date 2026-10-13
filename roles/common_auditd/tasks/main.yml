@@ -6,6 +6,19 @@
 #          Rules cover: identity files, sudoers, SSH config, cron, kernel
 #          modules, sudo usage, and network configuration changes.
 # =============================================================================
+#
+# How it works: auditd is the kernel's audit log. The rules file
+# (files/hardening.rules) tells the kernel which file accesses and system
+# calls to record; "augenrules --load" (the handler) compiles everything in
+# /etc/audit/rules.d/ into the active rule set. A cron job then mails the
+# few events that should never happen in normal operation.
+#
+# Ansible concepts used here:
+#   copy src: (no path)  looks in the role's files/ directory
+#   cron module          manages ONE crontab entry, identified by "name"
+#                        (Ansible writes it as a "#Ansible: <name>" comment
+#                        above the line). Changing minute/job updates that
+#                        entry; changing the name would add a second one.
 
 
 # -----------------------------------------------------------------------------
@@ -30,6 +43,9 @@
   notify: reload audit rules
 
 
+# No restart handler for auditd itself: rules are loaded into the
+# running kernel by augenrules, a daemon restart is not needed (and
+# auditd refuses "systemctl restart" by design).
 # -----------------------------------------------------------------------------
 # Service
 # -----------------------------------------------------------------------------

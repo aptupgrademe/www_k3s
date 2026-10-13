@@ -1,3 +1,6 @@
 ---
 # No host-level handlers needed: nginx and PHP-FPM run as containers inside K3s.
 # Pod restarts are triggered by kubectl rollout restart, not by service handlers.
+#
+# (No handlers.) An empty handlers/main.yml is valid; it only documents
+# that nothing here needs one.

@@ -14,6 +14,24 @@
 #
 # Read the trend:  visitor-stats --trend /var/lib/visitor-stats/daily.jsonl
 # =============================================================================
+#
+# How it works: install the script and two systemd timers (daily counts,
+# monthly GeoIP database), download the GeoIP file once, then backfill the
+# days that are still in the logs - both of those only on the first run.
+#
+# Ansible concepts used here:
+#   copy src: "{{ playbook_dir }}/..."  a file from OUTSIDE the role (the
+#                  repo's scripts/ folder); playbook_dir is the directory of
+#                  the playbook being run. A plain "src: name" (next task)
+#                  looks in the role's files/ folder instead.
+#   meta: flush_handlers  "reload systemd" must happen before the timers
+#                  are started below, not at the end of the play
+#   args: creates  skip a command when that file already exists - the usual
+#                  way to make a one-time command idempotent
+#   strftime       Jinja filter that formats a Unix timestamp; here "today
+#                  minus N days" for the backfill loop
+#   {% for %} inside a command  the Jinja loop is rendered into extra
+#                  "--exclude <net>" arguments before the command runs
 
 - name: Visitor stats | mmdblookup for GeoIP lookups
   ansible.builtin.dnf:

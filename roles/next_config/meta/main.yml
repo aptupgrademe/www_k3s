@@ -1,4 +1,6 @@
 ---
+# meta/main.yml: role metadata (galaxy_info) and role dependencies.
+
 galaxy_info:
   role_name: next_config
   author: raphael

@@ -1,9 +1,14 @@
 ---
+# defaults/ = lowest-priority role variables; jail.local.j2 uses the first
+# three as the [DEFAULT] values every jail inherits unless it sets its own.
+
 fail2ban_bantime:  3600    # seconds a bad IP stays banned (1 h)
 fail2ban_findtime:  600    # observation window (10 min)
 fail2ban_maxretry:    5    # allowed failures before ban
 
-# Application-specific jails – enable per play via vars:
+# UNUSED: no task or template reads these two switches - all seven jails are
+# always enabled (jail.local.j2). Kept so old overrides are not typos; safe to
+# delete.
 fail2ban_jail_nextcloud: false
 fail2ban_jail_wordpress: false
 

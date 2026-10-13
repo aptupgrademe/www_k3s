@@ -10,6 +10,20 @@
 # Variables: bind address and port come from the inventory
 #            (nextcloud_ipv4 in host_vars/<host>/vars.yml).
 # =============================================================================
+#
+# How it works: Redis is installed by next_packages; this role makes sure it
+# runs, edits three lines of /etc/redis/redis.conf (bind, protected-mode,
+# requirepass), restarts Redis right away if one changed, and waits until
+# it answers on the node IP - because the next roles in the same play need
+# it there.
+#
+# Ansible concepts used here:
+#   lineinfile + backup: true  edit one line; backup keeps a timestamped
+#                  copy of the old file next to it whenever it changes
+#   ansible.builtin.service   the init-system-neutral service module
+#                  (systemd module elsewhere in this repo - same effect here)
+#   meta: flush_handlers  run the notified restart NOW, not at play end
+#   wait_for host/port    waits until a TCP port accepts connections
 
 
 - name: Redis | Check that the Redis password is present in the vault
@@ -56,6 +70,8 @@
     backup: true
   notify: Restart Redis
 
+# no_log: the line contains the password; lineinfile would otherwise
+# print it in the diff (--diff) and on failure.
 # Defence in depth. The bind address above is the node's *public* IP (pods
 # reach Redis through the ExternalService -> Endpoints -> node IP path), so
 # until now the only thing standing between the internet and this Redis was

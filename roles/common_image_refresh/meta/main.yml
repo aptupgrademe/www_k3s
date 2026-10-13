@@ -1,4 +1,6 @@
 ---
+# meta/main.yml: descriptive metadata only, no dependencies.
+
 galaxy_info:
   role_name: common_image_refresh
   author: raphael

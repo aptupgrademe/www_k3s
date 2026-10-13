@@ -2,6 +2,10 @@
 # Where the daily aggregates and the GeoIP database live. Nothing in here is
 # personal data: one JSON line per day with counts only (see --record in
 # scripts/analytics/visitor-stats.py).
+#
+# defaults/ = lowest-priority role variables; OnCalendar values use
+# systemd's calendar syntax ("*-*-* 00:20:00" = every day 00:20).
+
 visitor_stats_dir: /var/lib/visitor-stats
 
 # Prefixes to keep out of the numbers entirely - typically your own

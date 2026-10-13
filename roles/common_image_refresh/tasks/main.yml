@@ -9,7 +9,24 @@
 # Output:  image_refresh_rebuilt - dict {deployment: [rebuilt images]}
 #          ({} in a --check run: pulling is skipped there, it changes the host)
 # =============================================================================
+#
+# How it works: one Python script (files/rebuilt-images.py) does the work on
+# the server - for each Deployment in the namespace it pulls the image tag
+# the pods use and compares the digest of the fresh pull with the digest
+# the running pod was started from. It prints a JSON dict of Deployments
+# whose image was rebuilt; the update playbooks restart exactly those.
+#
+# Ansible concepts used here:
+#   ansible.builtin.script  copies a script from the role's files/ folder to
+#                  the server, runs it there and removes it again - handy for
+#                  logic too long for a shell one-liner
+#   "is skipped"   a test on a registered result: true when the task did not
+#                  run (here: script is skipped in --check)
+#   dict2items     turns {a: [...], b: [...]} into [{key: a, value: [...]}, ...]
+#                  so the keys (Deployment names) can be listed
 
+# changed_when: something "changed" only when a rebuilt image was found
+# (a pull of an unchanged tag changes nothing that matters).
 - name: Image refresh | Pull current tags, compare with the running pods
   ansible.builtin.script:
     cmd: rebuilt-images.py {{ image_refresh_namespace }}

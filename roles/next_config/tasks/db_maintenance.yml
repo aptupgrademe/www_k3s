@@ -2,6 +2,11 @@
 # -----------------------------------------------------------------------------
 # Database maintenance
 # -----------------------------------------------------------------------------
+#
+# Part 2 of next_config: two occ maintenance commands that Nextcloud's admin
+# overview otherwise nags about. Both are idempotent by themselves - they
+# check what is missing and do nothing when everything is in place.
+
 - name: DB | Add missing database indices (occ db:add-missing-indices)
   ansible.builtin.command: >
     k3s kubectl exec deployment/nextcloud

@@ -5,7 +5,26 @@
 #          All occ commands run inside the nextcloud-fpm container via
 #          kubectl exec; no host-level PHP or nginx is involved.
 # =============================================================================
+#
+# How it works: Nextcloud runs in K3s (next_k3s_deploy); this role sets it
+# up from the outside with occ, Nextcloud's command-line tool, run inside
+# the pod:
+#     k3s kubectl exec deployment/nextcloud -n nextcloud -c nextcloud-fpm \
+#       -- runuser -u www-data -- php /var/www/html/occ <command>
+# runuser -u www-data: occ must run as the user that owns config.php,
+# otherwise it refuses (and files it creates would belong to root).
+# Order: system config (nc_config.yml) -> database maintenance -> apps ->
+# Collabora/WOPI settings.
+#
+# The pattern used for almost every setting ("get, compare, set"):
+#   1. occ config:...:get  -> register (changed_when: false, check_mode: false)
+#   2. occ config:...:set  -> only "when" the value differs, changed_when: true
+# So a run that changes nothing shows changed=0, and a value someone
+# changed by hand in the admin UI is put back AND shows up as a change.
 
+# "kubectl wait --for=condition=ready" blocks until the pod's readiness
+# probe passes (or the timeout hits, which fails the task). Selecting by
+# label (app=nextcloud) works no matter what the pod is currently called.
 # Wait for the pod to be ready before issuing occ commands.
 # On first start the official image auto-installs, which can take a few minutes.
 - name: Config | Wait for Nextcloud pod to be ready (up to 5 min)

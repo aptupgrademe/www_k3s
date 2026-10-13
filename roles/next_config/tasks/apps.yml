@@ -5,6 +5,12 @@
 #   richdocuments    – Nextcloud Office (Collabora integration)
 #   previewgenerator – pre-generates file previews via background jobs
 # -----------------------------------------------------------------------------
+#
+# Part 3 of next_config: two apps. One "occ app:list" at the top is read
+# by all following tasks; "is search('richdocuments: ')" tests whether
+# the app name appears in that list (search = regex anywhere in the text).
+# The richdocuments tasks only run when the app is missing, i.e. on a new
+# instance - on every later run they are all skipped.
 
 - name: Apps | Get Nextcloud app list (plain text)
   ansible.builtin.command: >
@@ -131,6 +137,9 @@
   when: "nc_app_list.stdout is not search('previewgenerator: ')"
   changed_when: true
 
+# "occ app:enable" on an enabled app prints "... already enabled" and
+# exits 0 - changed_when reads exactly that. failed_when: false: a
+# disabled-by-incompatibility app must not stop the play.
 - name: Apps | Enable preview_generator
   ansible.builtin.command: >
     k3s kubectl exec deployment/nextcloud
