@@ -8,6 +8,17 @@
 # ServiceLB (Klipper) is also disabled; F5 nginx-ingress uses hostNetwork=true
 # and binds directly to the host's ports 80/443.
 # =============================================================================
+#
+# Ansible concepts used here:
+#   get_url with "when: version differs" + notify  download only for an
+#                  install or upgrade; the restart handler applies it
+#   meta: flush_handlers  run that restart HERE instead of at play end -
+#                  everything after this point must talk to the new K3s
+#   environment:   INSTALL_K3S_SKIP_DOWNLOAD for the installer script only
+#   args: creates  the installer runs once; afterwards the unit file exists
+#   until/retries on "kubectl get nodes"  wait for the API server
+#   find + loop    find all *.crt files, then fix each file's mode
+#   "| urlencode"  "+" in "v1.36.5+k3s1" must be %2B in a URL path
 
 
 # -----------------------------------------------------------------------------

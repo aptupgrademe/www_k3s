@@ -1,4 +1,6 @@
 ---
+# journald re-reads its configuration only on restart.
+
 - name: restart journald
   ansible.builtin.systemd:
     name: systemd-journald

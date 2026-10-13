@@ -6,6 +6,15 @@
 # protocol. It replaces certbot (which ran on the host). The HTTP-01
 # challenge is answered by F5 nginx-ingress (port 80 on the host).
 # =============================================================================
+#
+# Ansible concepts used here:
+#   kubernetes.core.helm_repository  "helm repo add" as a module - idempotent
+#   kubernetes.core.helm  installs/upgrades a release; compares chart version
+#                  and values with the deployed release and does nothing if
+#                  both match (no new Helm revision on an unchanged run)
+#   waiting for a CRD  the ClusterIssuer kind only exists after cert-manager
+#                  registered its CustomResourceDefinitions - applying it
+#                  earlier fails with "no matches for kind"
 
 - name: cert-manager | Add Jetstack Helm repository
   kubernetes.core.helm_repository:

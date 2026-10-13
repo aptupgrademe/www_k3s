@@ -9,6 +9,13 @@
 # namespace_secrets.yml, since they don't exist yet at this point in a
 # fresh install.
 # =============================================================================
+#
+# Ansible concepts used here:
+#   kubernetes.core.k8s_info  READ objects from the API (like "kubectl get"),
+#                  never changes anything; field_selectors filters server-side
+#   k8s with a partial definition  only the fields given are applied
+#                  (automountServiceAccountToken: false); the rest of the
+#                  ServiceAccount stays as it is
 
 - name: K3s | Find non-kube-system default ServiceAccounts (CIS 5.1.5)
   kubernetes.core.k8s_info:

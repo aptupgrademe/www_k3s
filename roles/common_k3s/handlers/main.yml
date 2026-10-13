@@ -1,4 +1,8 @@
 ---
+# Restart K3s after a config or binary change. Flushed early in
+# install_k3s.yml (meta: flush_handlers) because the rest of the play needs
+# the restarted cluster.
+
 - name: Restart k3s service
   ansible.builtin.service:
     name: k3s

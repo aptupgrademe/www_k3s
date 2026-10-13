@@ -10,6 +10,13 @@
 # same pattern as k3s_version in install_k3s.yml. No Kubernetes-facing service
 # to restart here (Helm is just a CLI), so no handler/flush needed.
 # =============================================================================
+#
+# Same "pinned binary" pattern as the K3s binary and the exporters: check
+# the installed version, download the release tarball only when it differs,
+# unpack, copy into /usr/local/bin. Extract/install are skipped in --check
+# (nothing was downloaded there). The last task adds "export KUBECONFIG=..."
+# to /root/.bashrc, so helm finds the K3s cluster in an interactive root shell
+# and in the shell tasks of this repo that call helm directly.
 
 - name: Helm | Check if helm binary already exists
   ansible.builtin.stat:

@@ -12,6 +12,18 @@
 # controller.config.entries.http-snippets so Ingress server-snippets
 # annotations can reference them.
 # =============================================================================
+#
+# How it works: namespace, a self-signed default TLS certificate (served for
+# unknown host names so the controller starts even before Let's Encrypt
+# certificates exist), then the F5 nginx-ingress Helm release with the
+# values from templates/ingress-nginx-values.yml.j2 (hostNetwork on ports
+# 80/443, security headers, rate-limit zones). A one-time task removes the
+# old community kubernetes/ingress-nginx release if one is still present.
+#
+# Ansible concepts used here:
+#   slurp          reads the generated cert/key from the server (base64) so
+#                  they can be put into a Kubernetes Secret
+#   args: creates  the self-signed certificate is generated only once
 
 - name: ingress-nginx | Ensure ingress-nginx namespace exists
   # Needed before the default-TLS secret below; the Helm install further down

@@ -28,6 +28,28 @@
 #   - net.ipv4.ip_forward / conf.all.forwarding, rp_filter: see
 #     common_sysctl/templates/98-cis-hardening.conf.j2 - required by k3s.
 # =============================================================================
+#
+# How it works: a list of independent hardening items, each one a small
+# group of tasks with a comment explaining the CIS finding and why the fix
+# is safe here: AIDE (file integrity), kernel module blacklist, journald,
+# core dumps, cron/at permissions, sudo, cloud-init user, unused services
+# and packages, mount options for /tmp, /var/tmp, /dev/shm.
+#
+# Ansible concepts used here:
+#   lineinfile validate: "visudo -cf %s"  like template validate (see
+#                  common_firewall): a broken sudoers file never replaces the
+#                  real one - the most important safety net when editing
+#                  sudoers with automation
+#   getent         reads a system database (passwd, group ...) into the fact
+#                  getent_<database>; fail_key: false = no error if the key
+#                  is missing
+#   .get('x') is not none  safe dict lookup in Jinja: no error when the key
+#                  does not exist
+#   ansible.posix.mount state: mounted  writes the /etc/fstab line AND
+#                  mounts (or remounts) right away; "present" would only
+#                  write fstab
+#   stat + when "not ...stat.exists"  the one-time-setup pattern (initial
+#                  AIDE database)
 
 - name: CIS | Install AIDE (file integrity monitoring)
   ansible.builtin.dnf:
@@ -261,7 +283,7 @@
       Defaults logfile="/var/log/sudo.log"
       Defaults timestamp_timeout=0
 
-# Contabo's AlmaLinux image creates a cloud-init default user "almalinux" with
+# The Nextcloud VPS provider's AlmaLinux image creates a cloud-init default user "almalinux" with
 # NOPASSWD:ALL in /etc/sudoers.d/90-cloud-init-users (cvjm, sofie; the blog's
 # provider image has no such user). Locked, no keys, never logged in - but a
 # passwordless sudo grant has no business existing (found 2026-10-02).
@@ -334,10 +356,10 @@
 # capable daemon on the host.
 # cloud-init only matters for the very first boot of a provider image (network,
 # root key, hostname). After that it just re-reads the provider metadata on every
-# boot - and it is the tool that dropped Contabo's 50-cloud-init.conf with
+# boot - and it is the tool that dropped the Nextcloud VPS image's 50-cloud-init.conf with
 # "PasswordAuthentication yes" (see common_ssh). Checked 2026-09-30 before
 # disabling: the network profiles are plain files written once at provisioning
-# (Contabo: ifcfg-eth0, blog provider: "Wired connection 1", cloud-init logs "No network
+# (Nextcloud VPSes: ifcfg-eth0, blog: "Wired connection 1", cloud-init logs "No network
 # config applied" on later boots), so nothing depends on it any more.
 # The marker file is cloud-init's documented off switch; delete it to re-enable.
 - name: CIS | Check whether cloud-init is installed
