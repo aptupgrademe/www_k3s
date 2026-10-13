@@ -1,10 +1,24 @@
 ---
 # =============================================================================
-# Role: ssh
+# Role: common_ssh
 # Purpose: Harden SSH by setting a custom port (10022), deploying a locked-down
 #          sshd_config, and ensuring SELinux labels the new port correctly.
 # Target:  AlmaLinux 9 (SELinux enforcing by default)
 # =============================================================================
+#
+# How to read this role: it is already explained step by step below
+# (STEP 0-7). The Ansible concepts it adds to what other roles use:
+#   copy backup: true  keeps a timestamped copy of the replaced file
+#   a chain of handlers  one notify list (validate -> reload systemd ->
+#                  restart sshd -> reset connection -> wait) - handlers run in
+#                  the order they are DEFINED in handlers/main.yml, each once
+#   handlers that touch Ansible's own connection  restarting sshd kills the
+#                  SSH session Ansible works through; see handlers/main.yml
+#                  for async/poll 0, reset_connection and
+#                  wait_for_connection
+# ssh_first_run (STEP 0) is a fact other roles read later in the same play
+# (common_firewall) - facts set with set_fact stay available for the rest
+# of the play on that host.
 
 
 # -----------------------------------------------------------------------------
@@ -82,6 +96,10 @@
 #   backup     – keeps a timestamped copy of the previous config for rollback
 #   notify     – handlers run once at the end of the play (Ansible deduplicates
 #                them, so multiple notifies still only trigger one restart)
+# NOTE (2026-10-13): this task notifies ONLY "Validate sshd config" - not
+# "Reload sshd". A changed sshd_config is checked with sshd -t, but the
+# running sshd keeps the old settings until something else restarts it (the
+# 00-hardening.conf or hardening drop-in tasks below, or a reboot).
 # -----------------------------------------------------------------------------
 - name: SSH | Deploy hardened sshd_config
   ansible.builtin.copy:
@@ -96,7 +114,7 @@
 
 # The main sshd_config pulls in /etc/ssh/sshd_config.d/*.conf at the TOP, and
 # for sshd the first value of a keyword wins. Cloud images drop their own
-# 50-cloud-init.conf there: Contabo's says "PasswordAuthentication yes" and
+# 50-cloud-init.conf there: the Nextcloud VPS image's says "PasswordAuthentication yes" and
 # silently overrode our "no" (found 2026-09-30 on cvjm and sofie; the blog's image
 # ships "no", so the blog was fine). A 00- drop-in sorts first and pins the
 # authentication settings no matter what a provider image adds later.

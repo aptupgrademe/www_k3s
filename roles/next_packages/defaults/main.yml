@@ -1,2 +1,4 @@
 ---
 # No role-level defaults.  Package lists are defined inline in tasks/main.yml.
+#
+# (No defaults.)

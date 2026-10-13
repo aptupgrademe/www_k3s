@@ -1,4 +1,19 @@
 ---
+# Handlers of common_ssh. Order of definition = order of execution:
+#   Validate sshd config        sshd -t: a broken config stops the play
+#                               BEFORE sshd is restarted with it
+#   Reload systemd units        re-read the drop-in
+#   Reload sshd                 the actual restart, fire-and-forget
+#   Reset connection            drop Ansible's (now dead) SSH connection
+#   Confirm sshd is accepting   reconnect; fails the play if sshd is gone
+# Ansible concepts:
+#   async: 30 + poll: 0  start the task in the background and do not wait for
+#                  its result - the only way to survive the restart of the
+#                  very sshd the task runs through
+#   meta: reset_connection  closes the cached (multiplexed) SSH connection;
+#                  the next task opens a fresh one
+#   wait_for_connection  retries until Ansible can run a module again
+
 - name: Validate sshd config
   ansible.builtin.command: sshd -t
   changed_when: false

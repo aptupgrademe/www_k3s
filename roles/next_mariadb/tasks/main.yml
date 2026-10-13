@@ -7,6 +7,28 @@
 #          CIDR ({{ k3s_pod_cidr }}) and localhost.
 # Target:  AlmaLinux 9
 # =============================================================================
+#
+# How it works:
+#   1. assert the exporter password exists, install packages
+#   2. systemd hardening drop-in, reload systemd, start MariaDB
+#   3. config: logs dir, logrotate, my.cnf.d/nextcloud-k3s.cnf (bind,
+#      buffer pool, slow log ...)
+#   4. FIRST RUN ONLY ("when: db_check.rc != 0"): root password,
+#      /root/.my.cnf, Nextcloud database + user
+#   5. EVERY RUN: remove anonymous accounts + test DB, exporter user
+#
+# Ansible concepts used here:
+#   community.mysql.mysql_user / mysql_db  modules from the community.mysql
+#                  collection; they talk to MariaDB through Python
+#                  (python3-PyMySQL, installed above) and are idempotent:
+#                  "state: present" creates or corrects, "absent" removes
+#   login_unix_socket  connect over the local socket file instead of TCP
+#   set_fact with an inline if/else  picks whichever socket path exists
+#   a one-time block via "when: db_check.rc != 0"  db_check looks for the
+#                  Nextcloud database; if it exists, setup is done and all
+#                  first-run tasks are skipped. (No "block:" needed - each
+#                  task carries the same when.)
+#   no_log: true on every task that handles a password
 
 
 # Fail fast with an actionable message rather than a bare undefined-variable
@@ -61,6 +83,8 @@
     mode: "0644"
   notify: Restart MariaDB
 
+# A direct daemon_reload instead of a handler: the next task starts
+# MariaDB, and it must start WITH the drop-in on a fresh host.
 # The drop-in has to be live before the service starts, otherwise the first run
 # on a fresh host would start MariaDB unsandboxed and only restart it later.
 - name: MariaDB | Reload systemd so the drop-in takes effect
@@ -145,6 +169,9 @@
     group: root
     mode: "0644"
 
+# Careful when editing: the comment lines inside content: are part of the
+# file on the server. Changing even a comment there rewrites the file and
+# restarts MariaDB through the handler.
 - name: MariaDB | Configure bind-address to 0.0.0.0 (allow K3s pod connections)
   ansible.builtin.copy:
     dest: /etc/my.cnf.d/nextcloud-k3s.cnf
@@ -204,6 +231,8 @@
     mariadb_socket: "{{ '/var/lib/mysql/mysql.sock' if mysql_sock_varlib.stat.exists else '/run/mysqld/mysqld.sock' }}"
 
 
+# grep -Fx: fixed string, whole line - "nextcloud" must not match
+# "nextcloud_old". rc 0 = database found.
 # -----------------------------------------------------------------------------
 # Idempotency check
 # -----------------------------------------------------------------------------
@@ -314,7 +343,7 @@
 
 
 # -----------------------------------------------------------------------------
-# Prometheus exporter user (idempotent – CREATE USER IF NOT EXISTS)
+# Prometheus exporter user (idempotent: mysql_user creates or corrects it)
 # mysqld_exporter (common_mysqld_exporter role) connects via localhost TCP
 # with these minimal read-only privileges.
 # -----------------------------------------------------------------------------

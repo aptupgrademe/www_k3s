@@ -2,6 +2,9 @@
 # Firewall addresses are defined directly in the fw.nft.j2 template
 # using inventory variables (server_ipv4, server_ipv6, k3s_pod_cidr).
 # The only role defaults are the optional SSH country filter below.
+#
+# defaults/ = lowest-priority role variables; the country filter is enabled
+# per host by setting fw_ssh_geo_countries in its host_vars.
 
 # SSH country filter (off by default). When set, port 10022 only accepts new
 # connections from IP blocks that RIPE has delegated to these countries, plus

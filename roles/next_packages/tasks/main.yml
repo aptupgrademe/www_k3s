@@ -6,6 +6,25 @@
 #          Nginx and PHP run inside K3s (next_k3s_deploy), not on the host.
 # Variables: none role-internal - the package lists are inline in this file.
 # =============================================================================
+#
+# How it works: the numbered STEPs below run top to bottom - repositories
+# first (CRB, EPEL, MariaDB Community), then the system update, a reboot if
+# the running kernel is already gone, then the packages, then services.
+# Same structure as blog_packages, plus MariaDB and Redis, which run on the
+# HOST here (not in K3s like on the blog).
+#
+# Ansible concepts used here:
+#   "ask, then act" with dnf commands  "dnf repolist" / "dnf module list"
+#                  are read first (changed_when: false, check_mode: false),
+#                  the enabling command only runs "when" needed - the dnf
+#                  MODULE has no option for "enable repo X" or "disable
+#                  module Y", so command + a guard keeps it idempotent
+#   community.general.ini_file  sets one option in one [section] of an INI
+#                  file (a .repo file is INI) - from the community.general
+#                  collection, see requirements.yml
+#   rpm_key        imports a GPG key so dnf trusts the repository's packages
+#   {{ var }} inside a task NAME  the name shows the value at run time
+#                  ("... repository (10.11)")
 
 
 # -----------------------------------------------------------------------------

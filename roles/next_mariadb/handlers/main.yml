@@ -1,4 +1,7 @@
 ---
+# One MariaDB restart at the end of the play when the config, the log dir or
+# the hardening drop-in changed.
+
 - name: Restart MariaDB
   ansible.builtin.service:
     name: mariadb

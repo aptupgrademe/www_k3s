@@ -1,4 +1,10 @@
 ---
+# Handlers of common_firewall.
+# listen: a handler can subscribe to a TOPIC instead of being called by its
+# own name. Both handlers here react to "Reload nftables" - the first one
+# because that is its name, the second via "listen: Reload nftables". One
+# notify triggers both, in the order they are defined in this file.
+
 - name: Reload nftables
   ansible.builtin.service:
     name: nftables

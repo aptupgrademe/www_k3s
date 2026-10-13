@@ -3,6 +3,9 @@
 #   mysql_root_password, nextcloud_pass
 # and in host_vars/<host>/vars.yml:
 #   nextcloud_db, nextcloud_user
+#
+# defaults/ = lowest-priority role variables; set
+# mariadb_innodb_buffer_pool_size per host in its host_vars.
 
 # InnoDB buffer pool – set to ~25% of total RAM.
 # On a 4 GB server: 1024M, on 2 GB: 512M, on 1 GB: 256M.
