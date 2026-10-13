@@ -107,9 +107,12 @@
       until: wp_redis_install.rc == 0
       retries: 3
       delay: 10
-      changed_when: >
-        'Installing' in wp_redis_install.stdout or
-        'Activating' in wp_redis_install.stdout
+      # wp-cli prints "Activating 'redis-cache'..." even when the plugin is
+      # already active (followed by "already active" on stderr), so only a run
+      # that did NOT find it installed AND active is a change (found 2026-10-13).
+      changed_when: >-
+        not ('already installed' in (wp_redis_install.stdout ~ wp_redis_install.stderr) and
+             'already active' in (wp_redis_install.stdout ~ wp_redis_install.stderr))
 
     - name: WordPress | Enable Redis object-cache drop-in
       ansible.builtin.command: >

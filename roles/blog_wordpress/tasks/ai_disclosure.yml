@@ -35,7 +35,9 @@
         <p>Some images on this site are AI-generated or AI-edited &ndash; for example the comic-style portrait on the <a href="/about/">About</a> page, and some illustrative graphics created with tools like FLUX/ComfyUI. Screenshots, terminal output, dashboards, and API responses shown in posts are real and unedited unless a post says otherwise.</p>
         <p style="font-size:13px;color:#888;">This notice is provided for transparency, in line with Art. 50 of the EU AI Act on labelling AI-generated and AI-assisted content.</p>';
         $existing = get_page_by_path($slug);
-        if ($existing) {
+        if ($existing && trim($existing->post_content) === trim($content) && $existing->post_title === 'AI Usage Notice') {
+            echo "unchanged\n";
+        } elseif ($existing) {
             wp_update_post(['ID' => $existing->ID, 'post_title' => 'AI Usage Notice', 'post_content' => $content]);
             echo "updated\n";
         } else {
@@ -46,6 +48,9 @@
       - --path=/var/www/html
       - --allow-root
   register: wp_ai_notice_page
+  # Compare first, write only on a difference: the page used to be rewritten on
+  # every run and reported "updated" each time (found 2026-10-13). A manual
+  # edit in wp-admin is still put back - it differs from $content.
   changed_when: "'created' in wp_ai_notice_page.stdout or 'updated' in wp_ai_notice_page.stdout"
 
 - name: WordPress | Link AI Usage Notice from the About page
