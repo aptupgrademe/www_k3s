@@ -9,6 +9,12 @@
 # nftables rules (common_firewall) restrict access to these ports to the K3s
 # pod CIDR ({{ k3s_pod_cidr }}) only.
 # =============================================================================
+#
+# Uses THE K8S APPLY PATTERN (explained in common_calico/tasks/main.yml): the
+# template is rendered on the controller, parsed into objects and applied via
+# the API; "changed" only when a live object really differs.
+# Points the Services "mariadb", "redis" and the Grafana service at the host
+# IP, so pods use plain DNS names while the daemons run outside K3s.
 
 - name: ExtSvc | Apply external services (MariaDB, Redis, Grafana)
   kubernetes.core.k8s:

@@ -1,4 +1,7 @@
 ---
+# meta/main.yml: descriptive role metadata (galaxy_info) and role
+# dependencies (none).
+
 galaxy_info:
   author: raphael
   description: Install packages and enable repositories for AlmaLinux 9 web stack (MariaDB, Redis — PHP/Nginx run in K3s pods)

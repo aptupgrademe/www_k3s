@@ -7,6 +7,12 @@
 # Collabora connects back to Nextcloud for WOPI from its pod IP (10.42.x.x),
 # so wopi_allowed_hosts must include k3s_pod_cidr (see next_config/wopi.yml).
 # =============================================================================
+#
+# First run only: generate the WOPI proof key (Collabora signs its requests
+# with it, Nextcloud verifies them) and store it as a Secret - k8s_info checks
+# first whether it exists. Then: Uses THE K8S APPLY PATTERN (explained in common_calico/tasks/main.yml): the
+# template is rendered on the controller, parsed into objects and applied via
+# the API; "changed" only when a live object really differs.
 
 # WOPI proof key. The collabora/code image (26.04+) starts coolwsd directly,
 # without the old start script that generated /etc/coolwsd/proof_key, so it

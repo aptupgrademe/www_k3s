@@ -3,6 +3,12 @@
 # The official mariadb:10.11 image auto-initialises the database on first
 # start when MARIADB_DATABASE / MARIADB_USER / MARIADB_PASSWORD are set.
 # Wait for MariaDB to be ready before deploying WordPress.
+#
+# Uses THE K8S APPLY PATTERN (explained in common_calico/tasks/main.yml): the
+# template is rendered on the controller, parsed into objects and applied via
+# the API; "changed" only when a live object really differs.
+# Then: wait for the rollout, and create the exporter DB user with plain SQL
+# inside the pod (compare first, write only when different).
 
 - name: MariaDB | Apply MariaDB Deployment + Service
   kubernetes.core.k8s:

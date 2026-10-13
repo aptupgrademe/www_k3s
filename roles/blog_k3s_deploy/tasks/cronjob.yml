@@ -1,6 +1,12 @@
 ---
 # Deploy a K8s CronJob that runs WordPress scheduled events every 5 minutes.
 # This replaces the system cron entry that used to call wp-cron via HTTP.
+#
+# Uses THE K8S APPLY PATTERN (explained in common_calico/tasks/main.yml): the
+# template is rendered on the controller, parsed into objects and applied via
+# the API; "changed" only when a live object really differs.
+# The CronJob runs wp-cron.php every few minutes instead of WordPress's own
+# per-visit trigger (DISABLE_WP_CRON, see blog_wordpress/tasks/settings.yml).
 
 - name: CronJob | Apply WordPress CronJob
   kubernetes.core.k8s:

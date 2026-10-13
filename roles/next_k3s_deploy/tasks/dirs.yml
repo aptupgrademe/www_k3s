@@ -2,6 +2,9 @@
 # =============================================================================
 # Host-side directories for K3s HostPath volumes
 # =============================================================================
+#
+# HostPath directories for app files, config and user data (owner 33 =
+# www-data inside the container; must match common_selinux, see there).
 
 # The Nextcloud FPM container writes Nextcloud's PHP files here on first run.
 # Using a HostPath PV guarantees data persists across pod restarts.

@@ -13,6 +13,10 @@
 # On first start the official Nextcloud image auto-installs via env vars
 # (MYSQL_*, NEXTCLOUD_ADMIN_*, REDIS_HOST …) – no manual occ install needed.
 # =============================================================================
+#
+# Uses THE K8S APPLY PATTERN (explained in common_calico/tasks/main.yml): the
+# template is rendered on the controller, parsed into objects and applied via
+# the API; "changed" only when a live object really differs.
 
 - name: Nextcloud | Apply Deployment + Service
   kubernetes.core.k8s:

@@ -1,6 +1,12 @@
 ---
 # Deploy the WordPress Deployment (wordpress:fpm + nginx sidecar) and
 # the ClusterIP Service.
+#
+# Uses THE K8S APPLY PATTERN (explained in common_calico/tasks/main.yml): the
+# template is rendered on the controller, parsed into objects and applied via
+# the API; "changed" only when a live object really differs.
+# Then "kubectl rollout status" blocks until the new WordPress pod is Ready,
+# so blog_wordpress (next role) can talk to it.
 
 - name: WordPress | Apply WordPress Deployment + Service
   kubernetes.core.k8s:

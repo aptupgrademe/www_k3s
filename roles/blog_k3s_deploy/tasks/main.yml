@@ -2,10 +2,26 @@
 # =============================================================================
 # Role: blog_k3s_deploy
 # Purpose: Deploy the complete WordPress stack into K3s.
-#          All services (MariaDB, WordPress PHP-FPM, Nginx) run as K8s
-#          workloads in the 'wordpress' namespace.
-#          Only nftables and SSH remain on the host.
+#          All application services (MariaDB, Redis, WordPress PHP-FPM with
+#          an nginx sidecar) run as K8s workloads in the 'wordpress'
+#          namespace; their data lives in HostPath directories on the host.
+#          Infrastructure (SSH, nftables, fail2ban, monitoring ...) stays on
+#          the host, see the other roles in blog.yml.
 # =============================================================================
+#
+# How it works: one task file per component, in dependency order - HostPath
+# dirs, namespace + Secret + ConfigMap, MariaDB, external services, Redis,
+# WordPress, Ingress, CronJob, exporter NodePorts, NetworkPolicy, image
+# policy. Each component is rendered from a Jinja template in templates/ and
+# applied with kubernetes.core.k8s - see THE K8S APPLY PATTERN in
+# common_calico/tasks/main.yml. Where a later component needs an earlier one
+# RUNNING (WordPress needs MariaDB), a "kubectl rollout status" task waits.
+#
+# Pods are only restarted by Kubernetes itself when their pod template
+# changes (new image tag, changed env ...). A changed ConfigMap alone does
+# not restart anything - the WordPress deployment template carries a
+# checksum annotation of its config for exactly that reason (see
+# templates/wordpress-deployment.yml.j2).
 
 # Fail fast with an actionable message instead of a bare "undefined variable"
 # halfway through the deployment. This variable was introduced when the

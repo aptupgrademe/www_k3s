@@ -4,6 +4,11 @@
 # =============================================================================
 # GA since Kubernetes 1.30, built into the apiserver — no extra component to
 # install, unlike common_calico for NetworkPolicy.
+#
+# Uses THE K8S APPLY PATTERN (explained in common_calico/tasks/main.yml): the
+# template is rendered on the controller, parsed into objects and applied via
+# the API; "changed" only when a live object really differs.
+# A ValidatingAdmissionPolicy rejects pods with images from other registries.
 
 - name: ImagePolicy | Apply nextcloud image allowlist
   kubernetes.core.k8s:

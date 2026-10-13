@@ -7,6 +7,17 @@
 #          with manually managed Endpoints.
 # Target:  K3s single-node on AlmaLinux 9
 # =============================================================================
+#
+# Also deploys notify_push (the "High Performance Backend" that pushes file
+# changes to clients) and reconciles enabled/disabled apps.
+#
+# How it works: one task file per component, in dependency order. Unlike the
+# blog, MariaDB and Redis run on the HOST (next_mariadb, next_redis); pods
+# reach them through "external services" - a Service without selector +
+# an Endpoints object with the host IP. Every component is a Jinja template
+# in templates/, applied with kubernetes.core.k8s (THE K8S APPLY PATTERN,
+# see common_calico/tasks/main.yml). "rollout status" waits run only
+# "when: <apply>.changed", so an unchanged run never waits.
 
 - name: next_k3s_deploy | HostPath directories
   ansible.builtin.import_tasks: dirs.yml

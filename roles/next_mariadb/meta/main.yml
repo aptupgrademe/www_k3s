@@ -1,4 +1,7 @@
 ---
+# meta/main.yml: descriptive role metadata (galaxy_info) and role
+# dependencies (none).
+
 galaxy_info:
   author: raphael
   description: Install and configure MariaDB, set root password and create Nextcloud database/user on AlmaLinux 9

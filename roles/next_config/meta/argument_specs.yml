@@ -1,5 +1,10 @@
 ---
 # Inputs from host_vars - keep in sync with inventory/host_vars/*/*.example.
+#
+# meta/argument_specs.yml: the role's declared inputs, checked by Ansible when
+# the role starts (type, required). How it works in detail: see
+# roles/common_mysqld_exporter/meta/argument_specs.yml.
+
 argument_specs:
   main:
     short_description: Post-deploy Nextcloud configuration via occ

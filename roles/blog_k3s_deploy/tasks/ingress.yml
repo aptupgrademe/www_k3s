@@ -1,6 +1,13 @@
 ---
 # Deploy the Nginx Ingress for the WordPress blog.
 # cert-manager issues the Let's Encrypt certificate automatically.
+#
+# Uses THE K8S APPLY PATTERN (explained in common_calico/tasks/main.yml): the
+# template is rendered on the controller, parsed into objects and applied via
+# the API; "changed" only when a live object really differs.
+# Then: if cert-manager has not issued a TLS secret yet (fresh host), a
+# self-signed placeholder is created so nginx can start; cert-manager later
+# replaces it with the Let's Encrypt certificate.
 
 - name: Ingress | Apply WordPress Ingress
   kubernetes.core.k8s:

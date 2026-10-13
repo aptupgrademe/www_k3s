@@ -12,6 +12,14 @@
 #                              tolerated to fail and the app simply stays disabled
 #                              -- the same thing Nextcloud's own upgrader does.
 # =============================================================================
+#
+# Ansible concepts used here:
+#   when: nextcloud_apps_manage | bool  the whole reconcile can be switched
+#                  off per host
+#   kubectl -o jsonpath  print exactly one field (the pod name) instead of a
+#                  table - registered once, reused by the occ tasks
+#   loop over a host_vars list  each app in nextcloud_apps_disabled /
+#                  _enabled is one loop item
 
 - name: Apps | Wait for the nextcloud deployment to be ready
   ansible.builtin.command: >-

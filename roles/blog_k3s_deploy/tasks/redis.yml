@@ -1,5 +1,11 @@
 ---
 # Deploy Redis as an in-memory object cache for WordPress.
+#
+# Uses THE K8S APPLY PATTERN (explained in common_calico/tasks/main.yml): the
+# template is rendered on the controller, parsed into objects and applied via
+# the API; "changed" only when a live object really differs.
+# Redis here is a pure in-memory object cache (no persistence), so a restart
+# only costs a cold cache.
 
 - name: Redis | Apply Deployment + Service
   kubernetes.core.k8s:

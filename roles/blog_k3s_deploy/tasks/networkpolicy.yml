@@ -5,6 +5,12 @@
 # Requires Calico (common_calico) for enforcement – Flannel alone accepts
 # but ignores NetworkPolicy objects, so applying this without common_calico
 # would be a silent no-op, not a broken deploy.
+#
+# Uses THE K8S APPLY PATTERN (explained in common_calico/tasks/main.yml): the
+# template is rendered on the controller, parsed into objects and applied via
+# the API; "changed" only when a live object really differs.
+# NetworkPolicies are only ENFORCED because Calico runs in policy-only mode
+# (common_calico) - plain Flannel would accept and silently ignore them.
 
 - name: NetworkPolicy | Apply WordPress stack NetworkPolicy
   kubernetes.core.k8s:

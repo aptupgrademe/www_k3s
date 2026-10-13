@@ -11,6 +11,11 @@
 # immediately), then delete deployment/service notify-push + ingress
 # nextcloud-push-routes.
 # =============================================================================
+#
+# Every task carries "when: nextcloud_notify_push_enabled | bool" (one switch
+# per host). Order: install + enable the app (it ships the binary), read its
+# version, deploy the notify-push pod for exactly that version, wait, then
+# "occ notify_push:setup" configures Nextcloud and runs a self-test.
 
 - name: notify_push | Set occ prefix
   ansible.builtin.set_fact:
