@@ -42,3 +42,4 @@
     --allow-root
   when: wp_installed.rc != 0
   changed_when: true
+  no_log: true   # the command line contains --admin_password

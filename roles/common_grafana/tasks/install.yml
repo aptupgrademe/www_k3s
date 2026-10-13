@@ -73,6 +73,7 @@
     line: "admin_password = {{ grafana_admin_pass }}"
     state: present
   notify: restart grafana
+  no_log: true   # the line holds the password; --diff would print it
 
 # Disable the "change password on first login" prompt when password is managed
 - name: Grafana | Disable forced password change on login

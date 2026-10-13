@@ -34,6 +34,8 @@
 # -----------------------------------------------------------------------------
 # Configuration  (owner root, mode 0600 – contains plaintext password)
 # -----------------------------------------------------------------------------
+# no_log: the rendered file holds the SMTP password, and --diff (check-drift.sh)
+# or a failing task would otherwise print it in clear text.
 - name: msmtp | Deploy /etc/msmtprc
   ansible.builtin.template:
     src:   msmtprc.j2
@@ -41,6 +43,7 @@
     owner: root
     group: root
     mode:  "0600"
+  no_log: true
 
 
 # -----------------------------------------------------------------------------
