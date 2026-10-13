@@ -30,54 +30,36 @@
 # INSTALLED VERSIONS (remote: runs on server)
 # =============================================================================
 
+# Both binaries are called directly (no shell) and their output is parsed in
+# "Compute comparison values": "k3s --version" prints two lines (k3s, then
+# go), "helm version --short" prints "v4.3.0+gbec5b06". A missing binary
+# leaves stdout empty -> "not installed".
 - name: Versions | K3s – installed version
-  ansible.builtin.shell: |
-    set -o pipefail
-    k3s --version 2>/dev/null | awk '{print $3}' || echo 'not installed'
+  ansible.builtin.command: k3s --version
   register: _vc_k3s_inst
   changed_when: false
   check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Versions | Helm – installed version
-  ansible.builtin.shell: |
-    set -o pipefail
-    helm version --short 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo 'not installed'
+  ansible.builtin.command: helm version --short
   register: _vc_helm_inst
   changed_when: false
   check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
+# helm prints JSON; it is parsed with from_json in "Compute comparison
+# values" below, so no shell, jq or python3 one-liner is needed here. If helm
+# is missing or fails, stdout stays empty and the parse falls back to "[]".
 - name: Versions | nginx-ingress – deployed chart version
-  ansible.builtin.shell: |
-    set -o pipefail
-    helm list -n ingress-nginx -o json 2>/dev/null | python3 -c "
-    import sys, json
-    data = json.load(sys.stdin)
-    if data:
-        print(data[0]['chart'].replace('nginx-ingress-', '', 1))
-    else:
-        print('not deployed')
-    " 2>/dev/null || echo 'not deployed'
+  ansible.builtin.command: helm list -n ingress-nginx -o json
   register: _vc_ingress_dep
   changed_when: false
   check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Versions | cert-manager – deployed chart version
-  ansible.builtin.shell: |
-    set -o pipefail
-    helm list -n cert-manager -o json 2>/dev/null | python3 -c "
-    import sys, json
-    data = json.load(sys.stdin)
-    if data:
-        # jetstack/cert-manager chart versions are 'v'-prefixed (unlike most
-        # charts, e.g. nginx-ingress); strip it so it compares equal to the
-        # unprefixed cert_manager_chart_version in group_vars/all/versions.yml.
-        print(data[0]['chart'].replace('cert-manager-', '', 1).lstrip('v'))
-    else:
-        print('not deployed')
-    " 2>/dev/null || echo 'not deployed'
+  ansible.builtin.command: helm list -n cert-manager -o json
   register: _vc_certmgr_dep
   changed_when: false
   check_mode: false   # read-only query, also runs in --check
@@ -99,28 +81,14 @@
   failed_when: false
 
 - name: Versions | nginx-ingress – latest chart version in repo
-  ansible.builtin.shell: |
-    set -o pipefail
-    helm search repo nginx-stable/nginx-ingress -o json 2>/dev/null | python3 -c "
-    import sys, json
-    data = json.load(sys.stdin)
-    print(data[0]['version'] if data else '?')
-    " 2>/dev/null || echo '?'
+  ansible.builtin.command: helm search repo nginx-stable/nginx-ingress -o json
   register: _vc_ingress_latest
   changed_when: false
   check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
 - name: Versions | cert-manager – latest chart version in repo
-  ansible.builtin.shell: |
-    set -o pipefail
-    helm search repo jetstack/cert-manager -o json 2>/dev/null | python3 -c "
-    import sys, json
-    data = json.load(sys.stdin)
-    # Strip the 'v' prefix jetstack uses (see deployed-version task above)
-    # so this compares equal to the unprefixed group_vars value.
-    print(data[0]['version'].lstrip('v') if data else '?')
-    " 2>/dev/null || echo '?'
+  ansible.builtin.command: helm search repo jetstack/cert-manager -o json
   register: _vc_certmgr_latest
   changed_when: false
   check_mode: false   # read-only query, also runs in --check
@@ -141,6 +109,7 @@
   register: _vc_k3s_api
   delegate_to: localhost
   become: false
+  check_mode: false   # read-only GET; uri is skipped in --check otherwise
   failed_when: false
 
 - name: Versions | Helm – latest release (GitHub API)
@@ -153,6 +122,7 @@
   register: _vc_helm_api
   delegate_to: localhost
   become: false
+  check_mode: false   # read-only GET; uri is skipped in --check otherwise
   failed_when: false
 
 
@@ -163,19 +133,25 @@
 - name: Versions | Compute comparison values
   ansible.builtin.set_fact:
     # K3s
-    _r_k3s_inst:  "{{ _vc_k3s_inst.stdout | default('?') | trim }}"
+    _r_k3s_inst:  "{{ _vc_k3s_inst.stdout | default('') | regex_search('v[0-9]+[.][0-9]+[.][0-9]+[+]k3s[0-9]+') | default('not installed', true) }}"
     _r_k3s_new:   "{{ (_vc_k3s_api.json.tag_name | default('?')) if (_vc_k3s_api.status | default(0) | int) == 200 else '?' }}"
     # Helm
-    _r_helm_inst: "{{ _vc_helm_inst.stdout | default('?') | trim }}"
+    _r_helm_inst: "{{ _vc_helm_inst.stdout | default('') | regex_search('v[0-9]+[.][0-9]+[.][0-9]+') | default('not installed', true) }}"
     _r_helm_new:  "{{ (_vc_helm_api.json.tag_name | default('?')) if (_vc_helm_api.status | default(0) | int) == 200 else '?' }}"
-    # nginx-ingress chart
+    # nginx-ingress chart ("chart" is "nginx-ingress-2.7.3")
     _r_nginx_cfg: "{{ ingress_nginx_chart_version }}"
-    _r_nginx_dep: "{{ _vc_ingress_dep.stdout | default('?') | trim }}"
-    _r_nginx_new: "{{ _vc_ingress_latest.stdout | default('?') | trim }}"
-    # cert-manager chart
+    _r_nginx_dep: "{{ (_j_ingress_dep[0].chart | regex_replace('^nginx-ingress-', '')) if _j_ingress_dep else 'not deployed' }}"
+    _r_nginx_new: "{{ _j_ingress_latest[0].version if _j_ingress_latest else '?' }}"
+    # cert-manager chart: jetstack versions are 'v'-prefixed ("cert-manager-v1.21.2"),
+    # stripped so they compare equal to the unprefixed cert_manager_chart_version.
     _r_cm_cfg:    "{{ cert_manager_chart_version }}"
-    _r_cm_dep:    "{{ _vc_certmgr_dep.stdout | default('?') | trim }}"
-    _r_cm_new:    "{{ _vc_certmgr_latest.stdout | default('?') | trim }}"
+    _r_cm_dep:    "{{ (_j_certmgr_dep[0].chart | regex_replace('^cert-manager-v?', '')) if _j_certmgr_dep else 'not deployed' }}"
+    _r_cm_new:    "{{ (_j_certmgr_latest[0].version | regex_replace('^v', '')) if _j_certmgr_latest else '?' }}"
+  vars:
+    _j_ingress_dep:    "{{ (_vc_ingress_dep.stdout | default('') | trim or '[]') | from_json }}"
+    _j_ingress_latest: "{{ (_vc_ingress_latest.stdout | default('') | trim or '[]') | from_json }}"
+    _j_certmgr_dep:    "{{ (_vc_certmgr_dep.stdout | default('') | trim or '[]') | from_json }}"
+    _j_certmgr_latest: "{{ (_vc_certmgr_latest.stdout | default('') | trim or '[]') | from_json }}"
 
 - name: Versions | Compute status flags
   ansible.builtin.set_fact:

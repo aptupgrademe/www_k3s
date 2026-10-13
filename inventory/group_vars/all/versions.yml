@@ -22,7 +22,7 @@
 k3s_version:                 "v1.36.5+k3s1"   # github.com/k3s-io/k3s/releases
 helm_version:                "v4.3.0"         # github.com/helm/helm/releases
 calico_version:              "v3.32.2"        # github.com/projectcalico/calico/releases (policy-only, see notes)
-ingress_nginx_chart_version: "2.6.4"          # F5 nginx-ingress chart, helm.nginx.com/stable index.yaml
+ingress_nginx_chart_version: "2.7.3"          # F5 nginx-ingress chart, helm.nginx.com/stable index.yaml
 cert_manager_chart_version:  "1.21.2"         # charts.jetstack.io index.yaml (listed there as v1.21.2)
 
 # --- Nextcloud containers -------------------------------------------------------
@@ -45,7 +45,7 @@ blog_wp_cli_sha512:         "be928f6b8ca1e8dfb9d2f4b75a13aa4aee0896f8a9a0a1c45cd
 
 # --- Host packages and binaries (outside K3s) ----------------------------------
 node_exporter_version:         "1.12.1"   # github.com/prometheus/node_exporter/releases
-prometheus_version:            "3.14.0"   # github.com/prometheus/prometheus/releases
+prometheus_version:            "3.15.0"   # github.com/prometheus/prometheus/releases
 mysqld_exporter_version:       "0.20.0"   # host MariaDB of the Nextcloud servers
 nextcloud_mariadb_repo_version: "10.11"   # MariaDB Community repo series on the Nextcloud hosts
 
@@ -91,7 +91,17 @@ nextcloud_mariadb_repo_version: "10.11"   # MariaDB Community repo series on the
 #   components this host actually runs.
 #
 # ingress_nginx_chart_version
-#   appVersion 5.5.4 (controller image). Re-checked 2026-08-20 against the
+#   2026-10-13 2.6.4 -> 2.7.3 (controller 5.5.4 -> 5.6.3). The controller
+#   image bundles its own nginx: 5.5.4 ships nginx 1.31.3, which is in the
+#   range of CVE-2026-90439 (HTTP/3 module, fixed in 1.31.6 = controller
+#   5.6.3). Not exploitable here - the F5 controller has no HTTP/3 option at
+#   all (no quic/http3 in its templates or ConfigMap keys up to 5.6.3), no
+#   UDP 443 listener exists and the firewall does not open UDP 443 - but no
+#   reason to keep the vulnerable code around. 5.6 drops NGINX Service Mesh
+#   support (unused); the CRDs only gained fields (e.g. HSTS policy) and no
+#   VirtualServer/Policy resources are used, so Helm not upgrading CRDs is
+#   harmless.
+#   Before: appVersion 5.5.4 (controller image). Re-checked 2026-08-20 against the
 #   published helm.nginx.com/stable index: still the newest chart actually
 #   released (2.7.0 existed on GitHub's main branch but was not yet packaged/
 #   published - don't trust Chart.yaml on main as a proxy for "latest
@@ -170,6 +180,9 @@ nextcloud_mariadb_repo_version: "10.11"   # MariaDB Community repo series on the
 #   sits next to the .phar): github.com/wp-cli/wp-cli/releases
 #
 # prometheus_version
+#   2026-10-13 3.14.0 -> 3.15.0 (bugfixes, e.g. TSDB no longer drops samples
+#   when head GC removes a series mid-append). Deprecates --log.level and
+#   --enable-feature=xor2-encoding - neither is used here.
 #   2026-08-28 3.13.2 -> 3.14.0.
 #
 # nextcloud_mariadb_repo_version

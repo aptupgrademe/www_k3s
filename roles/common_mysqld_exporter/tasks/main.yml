@@ -46,7 +46,9 @@
     mode: "0644"
 
 - name: mysqld_exporter | Extract archive
-  when: (mysqld_exporter_installed_version.stdout | trim) != mysqld_exporter_version
+  when:
+    - (mysqld_exporter_installed_version.stdout | trim) != mysqld_exporter_version
+    - not ansible_check_mode   # --check downloads nothing, so there is nothing to unpack
   ansible.builtin.unarchive:
     src: "/tmp/mysqld_exporter-{{ mysqld_exporter_version }}.tar.gz"
     dest: /tmp
@@ -54,7 +56,9 @@
     creates: "/tmp/mysqld_exporter-{{ mysqld_exporter_version }}.linux-amd64/mysqld_exporter"
 
 - name: mysqld_exporter | Install binary
-  when: (mysqld_exporter_installed_version.stdout | trim) != mysqld_exporter_version
+  when:
+    - (mysqld_exporter_installed_version.stdout | trim) != mysqld_exporter_version
+    - not ansible_check_mode   # --check downloads nothing, so there is nothing to unpack
   ansible.builtin.copy:
     src: "/tmp/mysqld_exporter-{{ mysqld_exporter_version }}.linux-amd64/mysqld_exporter"
     dest: /usr/local/bin/mysqld_exporter

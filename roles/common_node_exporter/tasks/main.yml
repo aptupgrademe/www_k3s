@@ -45,7 +45,9 @@
     mode: "0644"
 
 - name: Node Exporter | Extract archive
-  when: (node_exporter_installed_version.stdout | trim) != node_exporter_version
+  when:
+    - (node_exporter_installed_version.stdout | trim) != node_exporter_version
+    - not ansible_check_mode   # --check downloads nothing, so there is nothing to unpack
   ansible.builtin.unarchive:
     src: "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
     dest: /tmp
@@ -53,7 +55,9 @@
     creates: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
 
 - name: Node Exporter | Install binary
-  when: (node_exporter_installed_version.stdout | trim) != node_exporter_version
+  when:
+    - (node_exporter_installed_version.stdout | trim) != node_exporter_version
+    - not ansible_check_mode   # --check downloads nothing, so there is nothing to unpack
   ansible.builtin.copy:
     src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
     dest: /usr/local/bin/node_exporter

@@ -57,7 +57,9 @@
     mode: "0644"
 
 - name: Prometheus | Extract archive
-  when: (prometheus_installed_version.stdout | trim) != prometheus_version
+  when:
+    - (prometheus_installed_version.stdout | trim) != prometheus_version
+    - not ansible_check_mode   # --check downloads nothing, so there is nothing to unpack
   ansible.builtin.unarchive:
     src: "/tmp/prometheus-{{ prometheus_version }}.tar.gz"
     dest: /tmp
@@ -65,7 +67,9 @@
     creates: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64/prometheus"
 
 - name: Prometheus | Install binaries
-  when: (prometheus_installed_version.stdout | trim) != prometheus_version
+  when:
+    - (prometheus_installed_version.stdout | trim) != prometheus_version
+    - not ansible_check_mode   # --check downloads nothing, so there is nothing to unpack
   ansible.builtin.copy:
     src: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64/{{ item }}"
     dest: "/usr/local/bin/{{ item }}"

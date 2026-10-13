@@ -410,7 +410,7 @@ at every playbook run. Before rolling a bump out: `scripts/check-drift.sh <playb
 
 ```yaml
 # Helm charts
-ingress_nginx_chart_version: "2.6.4"
+ingress_nginx_chart_version: "2.7.3"
 cert_manager_chart_version:  "1.21.2"
 
 # Container images

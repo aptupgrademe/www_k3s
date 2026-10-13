@@ -40,7 +40,9 @@
     src: /tmp/helm.tar.gz
     dest: /tmp
     remote_src: true
-  when: helm_download.changed | default(false)
+  when:
+    - helm_download.changed | default(false)
+    - not ansible_check_mode   # --check downloads nothing, so there is nothing to unpack
 
 - name: Helm | Install/upgrade binary to /usr/local/bin
   ansible.builtin.copy:
@@ -50,7 +52,9 @@
     owner: root
     group: root
     remote_src: true
-  when: helm_download.changed | default(false)
+  when:
+    - helm_download.changed | default(false)
+    - not ansible_check_mode   # --check downloads nothing, so there is nothing to unpack
 
 - name: Helm | Clean up download/extraction artifacts
   ansible.builtin.file:
