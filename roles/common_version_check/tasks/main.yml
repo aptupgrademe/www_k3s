@@ -179,10 +179,13 @@
 
 - name: Versions | Compute status flags
   ansible.builtin.set_fact:
-    # K3s: strip +k3s suffix for comparison with GitHub tag
+    # K3s: both sides use the same format (k3s --version and the GitHub tag
+    # are both "v1.36.5+k3s1"), so a plain string compare is exact. The +k3sN
+    # suffix is kept on purpose: +k3s2 is a different release than +k3s1.
     _f_k3s_ok:    "{{ _r_k3s_new == '?' or _r_k3s_inst == _r_k3s_new }}"
     _f_k3s_na:    "{{ _r_k3s_inst in ['?', 'not installed'] }}"
-    # Helm: GitHub tag has no build suffix, installed version does → compare base
+    # Helm: "helm version --short" prints "v4.3.0+gbec5b06"; the grep in the
+    # installed-version task already cuts it to "v4.3.0", the GitHub tag format.
     _f_helm_ok:   "{{ _r_helm_new == '?' or _r_helm_inst == _r_helm_new }}"
     _f_helm_na:   "{{ _r_helm_inst in ['?', 'not installed'] }}"
     # nginx-ingress chart: configured vs. latest repo version
