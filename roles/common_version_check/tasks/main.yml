@@ -6,9 +6,45 @@
 #          and show configured container image tags.
 #          Runs at the start of the playbook as an informational pre-flight
 #          check. All tasks use failed_when: false – never blocks the run.
+#
+# How it works, in four steps (one section each below):
+#   1. INSTALLED   ask the server what is installed/deployed right now
+#                  (k3s and helm binaries, "helm list" per release)
+#   2. HELM REPOS  ask the Helm repos on the server which chart is newest
+#   3. GITHUB      ask the GitHub API (from the controller) for the newest
+#                  K3s and Helm release
+#   4. COMPUTE +   turn the raw outputs into version strings and true/false
+#      REPORT      flags, then print one colored summary
+#
+# Three version sources are compared, and they mean different things:
+#   configured  the pin in inventory/group_vars/all/versions.yml - what the
+#               playbook WILL install/deploy
+#   deployed    what is running on the server right now
+#   latest      the newest upstream release
+# "deployed != configured" means: the pin was changed but the playbook has
+# not rolled it out yet (shown as NOT YET DEPLOYED). "configured != latest"
+# means: upstream has something newer than the pin (UPDATE AVAILABLE). The
+# report only informs - deciding on a bump stays manual (versions.yml notes,
+# Renovate PRs).
+#
+# Every task only reads, so all of them carry changed_when: false and
+# check_mode: false: the report looks the same in a normal run and in
+# --check. If a source cannot be reached (no network, GitHub rate limit,
+# helm not installed yet on a first run), the value falls back to "?" or
+# "not installed"/"not deployed" instead of failing.
+#
+# Parsing is done in Jinja ("Compute comparison values"), not in the shell:
+# the tasks only collect raw stdout. That keeps every command free of pipes,
+# python3 one-liners or jq, and puts all the logic in one place.
+#
+# Variable naming: _vc_* = raw registered task results, _j_* = parsed JSON,
+# _r_* = final version strings ("result"), _f_* = true/false flags. The
+# leading underscore marks them as internal to this role.
 # =============================================================================
 
-# ANSI color codes
+# ANSI color codes for the report. Ansible's debug output passes them through
+# unchanged, so the terminal renders them. _ok/_warn/_info/_na/_upd are the
+# status symbols in front of each line of the report.
 - name: Versions | Set color codes
   ansible.builtin.set_fact:
     _g: "\x1b[32m"
@@ -27,7 +63,7 @@
 
 
 # =============================================================================
-# INSTALLED VERSIONS (remote: runs on server)
+# 1. INSTALLED VERSIONS (remote: runs on server)
 # =============================================================================
 
 # Both binaries are called directly (no shell) and their output is parsed in
@@ -48,6 +84,11 @@
   check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
+# "helm list -n <namespace> -o json" returns the releases in that namespace
+# as a JSON list, e.g. [{"name": "ingress-nginx", "chart":
+# "nginx-ingress-2.7.3", "revision": "73", ...}]. Each namespace holds exactly
+# one release here, so [0] is the one we want. The deployed chart version is
+# only available inside the "chart" field (name + version glued together).
 # helm prints JSON; it is parsed with from_json in "Compute comparison
 # values" below, so no shell, jq or python3 one-liner is needed here. If helm
 # is missing or fails, stdout stays empty and the parse falls back to "[]".
@@ -67,10 +108,18 @@
 
 
 # =============================================================================
-# LATEST VERSIONS FROM HELM REPOS (remote)
+# 2. LATEST VERSIONS FROM HELM REPOS (remote)
 # Only meaningful if Helm is already installed (skipped gracefully on first run).
 # =============================================================================
 
+# "helm search repo" only searches the local repo cache on the server, so the
+# cache is refreshed first - otherwise "latest" would be whatever the cache
+# knew at the last update. The repos (nginx-stable, jetstack) were added by
+# common_k3s. This is a shell task because of the pipe: helm repo update
+# prints one line per repo, tail keeps the output short. "|| true" plus
+# failed_when: false: a repo that cannot be reached must not stop the run,
+# the search below then simply works with the old cache.
+# Not a "change" in Ansible terms: it only rewrites helm's own cache files.
 - name: Versions | Helm repo – update cache
   ansible.builtin.shell: |
     set -o pipefail
@@ -80,6 +129,10 @@
   check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
+# Without --versions, "helm search repo <repo>/<chart>" returns only the
+# newest stable chart (pre-releases are excluded unless --devel is given), as
+# a one-element JSON list: [{"name": "nginx-stable/nginx-ingress",
+# "version": "2.7.3", "app_version": "5.6.3", ...}].
 - name: Versions | nginx-ingress – latest chart version in repo
   ansible.builtin.command: helm search repo nginx-stable/nginx-ingress -o json
   register: _vc_ingress_latest
@@ -96,9 +149,28 @@
 
 
 # =============================================================================
-# LATEST VERSIONS FROM GITHUB API (local: delegate_to localhost)
+# 3. LATEST VERSIONS FROM GITHUB API (local: delegate_to localhost)
 # =============================================================================
 
+# K3s and Helm are binaries, not charts, so there is no Helm repo to ask.
+# Their newest release comes from the GitHub REST API instead.
+#   delegate_to: localhost  the request is made from the Ansible controller,
+#                           not from the server: the servers need no access to
+#                           the GitHub API for this, and the controller is
+#                           where the report is read anyway.
+#   become: false           a plain HTTPS GET needs no root, and on the
+#                           controller there is no reason to ask for sudo.
+#   /releases/latest        GitHub's newest release that is not a pre-release
+#                           or draft - across ALL release lines. For K3s that
+#                           can be a new minor (e.g. v1.37.x while the pin is
+#                           on v1.36.x), so "UPDATE AVAILABLE" may also mean
+#                           "a new minor exists", which is a deliberate step
+#                           (see the k3s_version notes in versions.yml).
+#   User-Agent              GitHub rejects API requests without one.
+#   timeout: 10             a slow API must not hold up the whole playbook.
+# Without a token the API allows 60 requests per hour per IP - plenty for two
+# calls per run. If the limit is hit (HTTP 403) or the network is down, the
+# status is not 200 and the value becomes "?" (see below).
 - name: Versions | K3s – latest release (GitHub API)
   ansible.builtin.uri:
     url: https://api.github.com/repos/k3s-io/k3s/releases/latest
@@ -127,15 +199,34 @@
 
 
 # =============================================================================
-# COMPUTE RESULTS
+# 4. COMPUTE RESULTS
 # =============================================================================
 
+# Turns the raw task outputs into plain version strings (_r_*). Every value
+# has a fallback, so the report never fails on a missing source:
+#   "not installed" / "not deployed"  the binary or Helm release is missing
+#   "?"                               the upstream source could not be asked
+#
+# The four helm outputs are parsed once in "vars:" (_j_*, task-local, so they
+# do not end up as host facts). "stdout | trim or '[]'": if helm printed
+# nothing (not installed, error), an empty JSON list is parsed instead, and
+# "if _j_... else ..." below then picks the fallback text. Within a single
+# set_fact the new facts cannot reference each other yet - that is why the
+# flags are computed in a second task.
+#
+# The regexes deliberately contain no backslashes ([0-9] instead of \d, [.]
+# instead of \.): a backslash would have to survive YAML, Jinja and the regex
+# engine in turn, which is easy to get wrong.
 - name: Versions | Compute comparison values
   ansible.builtin.set_fact:
-    # K3s
+    # K3s: regex_search picks "v1.36.5+k3s1" out of the first line of
+    # "k3s --version" (the second line, "go version go1.26.8", cannot match).
+    # GitHub returns the same format in tag_name. default(..., true) also
+    # replaces None, which regex_search returns when nothing matches.
     _r_k3s_inst:  "{{ _vc_k3s_inst.stdout | default('') | regex_search('v[0-9]+[.][0-9]+[.][0-9]+[+]k3s[0-9]+') | default('not installed', true) }}"
     _r_k3s_new:   "{{ (_vc_k3s_api.json.tag_name | default('?')) if (_vc_k3s_api.status | default(0) | int) == 200 else '?' }}"
-    # Helm
+    # Helm: regex_search keeps "v4.3.0" from "v4.3.0+gbec5b06" (build suffix
+    # dropped), which is the format of the GitHub tag ("v4.3.0").
     _r_helm_inst: "{{ _vc_helm_inst.stdout | default('') | regex_search('v[0-9]+[.][0-9]+[.][0-9]+') | default('not installed', true) }}"
     _r_helm_new:  "{{ (_vc_helm_api.json.tag_name | default('?')) if (_vc_helm_api.status | default(0) | int) == 200 else '?' }}"
     # nginx-ingress chart ("chart" is "nginx-ingress-2.7.3")
@@ -153,6 +244,19 @@
     _j_certmgr_dep:    "{{ (_vc_certmgr_dep.stdout | default('') | trim or '[]') | from_json }}"
     _j_certmgr_latest: "{{ (_vc_certmgr_latest.stdout | default('') | trim or '[]') | from_json }}"
 
+# True/false flags for the report (_f_*). Two rules apply to all of them:
+#   - An unknown upstream ("?") counts as OK: no data is not an update, and a
+#     GitHub hiccup must not paint the report red.
+#   - The report reads them with "| bool", so it works whether a flag ends up
+#     stored as a real boolean or as the string "True"/"False" (that depends
+#     on the Ansible version's templating).
+# Meaning of the flags:
+#   _f_*_ok   nothing newer upstream than what we have
+#   _f_*_na   K3s/Helm not installed (first run) - shown as "–", not as a warning
+#   _f_*_dep  the chart running on the server matches the pin in versions.yml
+# K3s/Helm compare the INSTALLED version with upstream; the charts compare
+# the CONFIGURED pin with upstream, because for charts the pin is what you
+# would change.
 - name: Versions | Compute status flags
   ansible.builtin.set_fact:
     # K3s: both sides use the same format (k3s --version and the GitHub tag
@@ -160,14 +264,14 @@
     # suffix is kept on purpose: +k3s2 is a different release than +k3s1.
     _f_k3s_ok:    "{{ _r_k3s_new == '?' or _r_k3s_inst == _r_k3s_new }}"
     _f_k3s_na:    "{{ _r_k3s_inst in ['?', 'not installed'] }}"
-    # Helm: "helm version --short" prints "v4.3.0+gbec5b06"; the grep in the
-    # installed-version task already cuts it to "v4.3.0", the GitHub tag format.
+    # Helm: "helm version --short" prints "v4.3.0+gbec5b06"; regex_search in
+    # "Compute comparison values" already cut it to "v4.3.0", the GitHub tag format.
     _f_helm_ok:   "{{ _r_helm_new == '?' or _r_helm_inst == _r_helm_new }}"
     _f_helm_na:   "{{ _r_helm_inst in ['?', 'not installed'] }}"
-    # nginx-ingress chart: configured vs. latest repo version
+    # nginx-ingress chart: configured vs. deployed, and configured vs. latest repo version
     _f_nginx_dep: "{{ _r_nginx_cfg == _r_nginx_dep }}"
     _f_nginx_ok:  "{{ _r_nginx_new == '?' or _r_nginx_cfg == _r_nginx_new }}"
-    # cert-manager chart: configured vs. latest repo version
+    # cert-manager chart: configured vs. deployed, and configured vs. latest repo version
     _f_cm_dep:    "{{ _r_cm_cfg == _r_cm_dep }}"
     _f_cm_ok:     "{{ _r_cm_new == '?' or _r_cm_cfg == _r_cm_new }}"
 
@@ -176,6 +280,16 @@
 # REPORT
 # =============================================================================
 
+# One debug task prints the whole report, so it stays a single readable block
+# in the output (instead of one task header per line).
+# Symbol per component: ✓ up to date, ⚠ (red) update available or not yet
+# deployed, – not installed. The extra red text on the "latest"/"deployed"
+# line says which of the two it is.
+# The container image section is information only: image tags have no
+# "latest" lookup here (Renovate tracks them, see renovate.json5), so it just
+# shows the pins this host will use. group_names decides which stack's images
+# are listed: blog hosts get the WordPress images, nextcloud hosts the
+# Nextcloud ones; node-exporter and Prometheus run on both.
 - name: Versions | Print version report
   ansible.builtin.debug:
     msg: |
