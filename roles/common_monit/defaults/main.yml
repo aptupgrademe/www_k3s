@@ -4,6 +4,9 @@
 # Monit watchdog: e-mails on service/resource state changes and auto-restarts
 # fail2ban. Motivated by fail2ban sitting dead for two days unnoticed.
 # =============================================================================
+#
+# defaults/ = lowest-priority role variables: every threshold below can be
+# overridden per host in its host_vars without touching the role.
 
 # Where alerts go (same address as rkhunter/ClamAV). From the host vault.
 monit_mail: "{{ email }}"
@@ -48,9 +51,9 @@ monit_candidate_services:
 # etc.). NOTE the port is 465, NOT mail_smtpport (587): Monit's `using ssl` does
 # IMPLICIT SSL, whose standard port is 465. msmtp uses STARTTLS on 587; Monit 6
 # has no STARTTLS keyword, so we use implicit SSL on 465 (verified working with
-# Strato: server offers AUTH PLAIN LOGIN over the SSL channel). Override
+# the relay in use: it offers AUTH PLAIN LOGIN over the SSL channel). Override
 # monit_smtp_port if your relay only offers STARTTLS and no 465.
-# Strato requires the envelope sender to be the authenticated user, so the
+# The relay requires the envelope sender to be the authenticated user, so the
 # alert "from" is mail_smtpname.
 monit_smtp_host: "{{ mail_smtphost }}"
 monit_smtp_port: 465

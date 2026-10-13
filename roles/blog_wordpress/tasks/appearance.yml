@@ -5,6 +5,13 @@
 # post_name must match the active theme slug (morenews).
 # Idempotent: creates the post on first run, updates on subsequent runs.
 # -----------------------------------------------------------------------------
+#
+# Both tasks run a small PHP snippet through "wp eval" (PHP code executed
+# inside WordPress). The CSS task writes the CSS on EVERY run and prints
+# "updated" (or "created" the first time); the menu task creates the menu
+# once and prints "exists" afterwards. changed_when only counts "created" -
+# so an edited CSS block below is written, but the recap shows it as "ok".
+
 - name: WordPress | Set custom CSS (logo layout + size)
   ansible.builtin.command:
     argv:

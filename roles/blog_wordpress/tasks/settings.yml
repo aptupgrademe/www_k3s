@@ -6,6 +6,13 @@
 # farmed by spam-registration bots (found and cleaned up 18 fake accounts,
 # GSA-Search-Engine-Ranker-style throwaway addresses, on 2026-08-21).
 # -----------------------------------------------------------------------------
+#
+# Two settings, two ways of staying idempotent:
+#   users_can_register  "wp option update" says "Value updated" only when the
+#                       value really changed -> changed_when reads that
+#   DISABLE_WP_CRON     read first ("config get"), write only "when" the value
+#                       is not already true
+
 - name: WordPress | Disable public user self-registration
   ansible.builtin.command: >
     k3s kubectl exec deployment/wordpress

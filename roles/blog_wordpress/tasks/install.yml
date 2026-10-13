@@ -4,6 +4,12 @@
 # wp-config.php is created automatically by the container via WORDPRESS_DB_*
 # env vars. We only need to run wp core install to set up the DB tables.
 # -----------------------------------------------------------------------------
+#
+# "wp core is-installed" exits 0 when the WordPress tables exist, 1 when
+# not - registered with failed_when: false, so rc decides whether the
+# install task runs (when: wp_installed.rc != 0). On every run after the
+# first one, the install task is skipped.
+
 - name: WordPress | Check if WordPress is already installed
   ansible.builtin.command: >
     k3s kubectl exec deployment/wordpress
@@ -17,6 +23,9 @@
   changed_when: false
   check_mode: false   # read-only query, also runs in --check
 
+# The ">" folded block joins all lines into one command line. blog_title
+# goes through the "quote" filter because it may contain spaces; the
+# other values are single words. --skip-email: no "new site" mail.
 - name: WordPress | Run initial installation
   ansible.builtin.command: >
     k3s kubectl exec deployment/wordpress

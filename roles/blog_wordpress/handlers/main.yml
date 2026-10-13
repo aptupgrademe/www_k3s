@@ -6,6 +6,11 @@
 # changed PHP file take effect immediately and in one go, instead of
 # file by file within the next minute, so tasks that write PHP files still
 # notify this handler.
+#
+# The only handler of blog_wordpress. Several tasks notify it by its full
+# name; it runs at most once, at the end of the play. changed_when: true
+# because a rollout restart always changes the running pod.
+
 - name: Restart wordpress deployment (OPcache picks up changed PHP files)
   ansible.builtin.command: k3s kubectl rollout restart deployment/wordpress -n wordpress
   changed_when: true

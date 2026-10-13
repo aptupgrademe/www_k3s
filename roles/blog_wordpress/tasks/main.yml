@@ -13,13 +13,45 @@
 #   - wp-config.php was auto-created by the wordpress:fpm entrypoint
 #     (WORDPRESS_DB_* env vars trigger auto-configuration on first start)
 # =============================================================================
+#
+# How it works: WordPress itself runs in K3s (blog_k3s_deploy). This role
+# configures the RUNNING site from the outside, by calling WP-CLI inside
+# the pod with "k3s kubectl exec deployment/wordpress ... --". Order:
+#   install.yml            wp core install - only on a fresh database
+#   security_muplugin.yml  hardening mu-plugin (PHP file in mu-plugins/)
+#   plugins.yml            install missing plugins, activate inactive ones
+#   appearance.yml         custom CSS + navigation menu (stored in the DB)
+#   ai_disclosure.yml      AI notice page + three small mu-plugins
+#   settings.yml           self-registration off, WP-Cron via K8s CronJob
+#   updates.yml            core/plugin/theme/translation updates, cleanup,
+#                          restart only if versions really changed
+#
+# The pattern used for almost every task ("ask, then act"):
+#   1. a read-only command registers the current state
+#      (changed_when: false, check_mode: false)
+#   2. the writing command runs only "when" the state differs, or decides
+#      "changed" from WP-CLI's own output (changed_when: "'Success: ...'
+#      in result.stdout")
+# WP-CLI has no Ansible module, so this is how the role stays idempotent:
+# a second run reports changed=0 unless something was really done.
+#
+# Writing PHP files (mu-plugins): a file is written as <name>.new first and
+# only moved into place when its md5 differs - then the task prints
+# CHANGED, which changed_when looks for, and notifies the restart handler.
+#
+# Note: command tasks are SKIPPED in --check, so a check run cannot show
+# what WP-CLI would change here; only the read-only queries run.
 
 
 # -----------------------------------------------------------------------------
 # Shorthand for repeated kubectl exec prefix
 # -----------------------------------------------------------------------------
-# All WP-CLI commands run as root inside the container.
-# --allow-root bypasses WP-CLI's user check (container may run as root).
+# kubectl exec runs as root inside the container (the image's default user).
+# Commands that INSTALL or UPDATE code use WP-CLI as root with --allow-root
+# (WP-CLI refuses root otherwise) and are followed by a chown back to
+# www-data. Read-only queries and anything that writes into the web root
+# without a later chown run as www-data instead ("su -s /bin/sh www-data -c"),
+# so no root-owned files are left behind that PHP-FPM could not write to.
 # --path=/var/www/html is explicit to avoid working-directory ambiguity.
 
 # Wait for the pod to be fully ready before running WP-CLI

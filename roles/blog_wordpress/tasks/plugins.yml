@@ -19,6 +19,15 @@
 # saying so, so before 2026-10-05 newer plugin code sat on disk while OPcache
 # kept running the old one. Install now only fetches plugins that are missing;
 # new releases come exclusively from "Update all plugins" (updates.yml).
+#
+# Ansible concepts used here:
+#   block + always  the tasks in "always:" run even when a task in the
+#                   block fails - here the chown that must never be skipped
+#   until/retries   retry a single loop item (a flaky download), see the
+#                   comment at the install task
+#   difference      list minus list: wanted plugins minus installed ones
+#   selectattr('name', 'in', list)  keep the entries whose name is in a list
+
 - name: WordPress | Snapshot core/plugin/theme versions (before)
   ansible.builtin.shell: |
     set -e

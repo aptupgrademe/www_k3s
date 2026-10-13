@@ -11,12 +11,12 @@ set statefile /var/lib/monit/state
 
 # --- Mail relay (same relay/credentials as msmtp; implicit SSL on 465) ---
 # Monit 6 has no STARTTLS keyword; `using ssl` = implicit SSL, standard port
-# 465. Verified with Strato (AUTH PLAIN LOGIN over the SSL channel).
+# 465. Verified with the relay in use (AUTH PLAIN LOGIN over the SSL channel).
 set mailserver {{ monit_smtp_host }} port {{ monit_smtp_port }}
     username "{{ monit_smtp_user }}" password "{{ monit_smtp_password }}"
     using ssl
 
-# Strato requires the envelope sender to be the authenticated user.
+# The relay requires the envelope sender to be the authenticated user.
 set mail-format {
   from:    {{ monit_smtp_user }}
   reply-to: {{ monit_smtp_user }}

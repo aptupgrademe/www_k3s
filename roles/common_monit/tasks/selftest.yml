@@ -8,6 +8,14 @@
 #
 # Included from the *_verify roles, gated on monit_selftest.
 # =============================================================================
+#
+# Ansible concepts used here:
+#   until/retries/delay  poll until Monit answers (see common_grafana)
+#   pause            simply waits; here to give Monit time to notice and mail
+#   ordering instead of block/always  the restore task comes BEFORE the
+#                    assert, so node_exporter is restarted even when the
+#                    assert fails. (A block with "always:" would be the
+#                    other way to guarantee that.)
 
 # Monit delays its first cycle for monit_start_delay seconds after (re)start,
 # during which `monit validate` is a no-op. Wait until the daemon actually

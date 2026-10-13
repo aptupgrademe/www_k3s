@@ -6,6 +6,30 @@
 #          mail actually means something. Motivated by fail2ban sitting dead
 #          for two days unnoticed.
 # =============================================================================
+#
+# How it works:
+#   1. assert that the mail relay settings exist (Monit is useless if it
+#      cannot send mail)
+#   2. install Monit, find out which of the candidate services exist here
+#   3. deploy small check scripts + the config (/etc/monitrc and
+#      /etc/monit.d/checks.conf, both Jinja templates)
+#   4. let Monit validate its own config (monit -t), start it, confirm
+# Monit then runs on its own: every monit_check_interval seconds it runs
+# each check and mails only on a STATE CHANGE (ok -> failed, failed -> ok),
+# so a healthy server sends nothing.
+#
+# Ansible concepts used here:
+#   assert          stop early with a clear message instead of failing
+#                   later with a confusing one
+#   loop + register a looped task registers ONE variable whose ".results"
+#                   is a list - one entry per item, each with its own rc,
+#                   stdout ... and the original "item"
+#   zip + selectattr pairs every candidate with its result and keeps only
+#                   the services whose "systemctl cat" returned rc 0
+#   copy with src:  copies a file from the role's files/ directory (copy
+#                   looks there automatically)
+#   failed_when with a condition  turns a "succeeded" command into a
+#                   failure based on its OUTPUT (the last task)
 
 - name: Monit | Fail fast if the mail relay vars are missing from the vault
   ansible.builtin.assert:
@@ -30,6 +54,8 @@
     group: root
     mode: "0700"
 
+# "systemctl cat <unit>" prints the unit file and exits non-zero if the
+# unit does not exist - a read-only way to ask "is this installed?".
 - name: Monit | Detect which candidate services exist on this host
   ansible.builtin.command: "systemctl cat {{ item }}.service"
   register: monit_unit_check
@@ -49,6 +75,8 @@
          | map(attribute='0') | list }}
     monit_hostname: "{{ ansible_facts['fqdn'] | default(inventory_hostname) }}"
 
+# Monit's "check program" runs a script and alerts on a non-zero exit;
+# each script prints WHY it failed, which ends up in the alert mail.
 - name: Monit | Deploy check-program helper scripts
   ansible.builtin.copy:
     src: "{{ item }}"
@@ -63,6 +91,8 @@
     - monit-check-certs.sh
     - monit-check-f2b-jails.sh
 
+# Monit refuses to start if its control file is readable by anyone but
+# its owner - hence 0600, which also protects the SMTP password inside.
 - name: Monit | Deploy main config (/etc/monitrc, mode 0600 required)
   ansible.builtin.template:
     src: monitrc.j2
@@ -90,6 +120,9 @@
     mode: "0644"
   notify: restart monit
 
+# No failed_when here on purpose: a config error must stop the play
+# before the (notified) restart would take Monit down with a broken
+# config.
 - name: Monit | Validate configuration syntax
   ansible.builtin.command: monit -t
   register: monit_validate

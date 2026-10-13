@@ -4,6 +4,13 @@
 # Discreet, site-wide transparency notice (footer link + dedicated page),
 # per Art. 50 EU AI Act. Deliberately kept out of the primary nav menu.
 # -----------------------------------------------------------------------------
+#
+# Despite the file name, this file holds four things: the AI notice page
+# (+ its link on the About page) and three mu-plugins - the AI footer
+# notice, performance hints (font preload, eager first image) and the
+# "Also available in" language links. All mu-plugins use the same
+# write-.new-compare-md5-move pattern as security_muplugin.yml.
+
 - name: WordPress | Create or update AI Usage Notice page
   ansible.builtin.command:
     argv:

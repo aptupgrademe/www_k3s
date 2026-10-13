@@ -5,6 +5,17 @@
 # is at the latest version" when nothing needs updating, so these tasks are
 # effectively idempotent from an application perspective.
 # -----------------------------------------------------------------------------
+#
+# Ansible concepts used here:
+#   block + always   the chown in "always:" runs even if an update fails
+#   failed_when with output  wp-cli exits 1 for "nothing to update" - the
+#                    condition separates that from a real error
+#   loop over a computed list  the themes to delete are "inactive themes
+#                    minus blog_wordpress_keep_themes", computed with Jinja
+#   comparing two snapshots  wp_versions_before (plugins.yml) vs
+#                    wp_versions_after decides the restart, so a run without
+#                    updates causes no downtime
+
 - name: WordPress | Update core, plugins and themes
   block:
     - name: WordPress | Update core
@@ -93,8 +104,7 @@
       changed_when: "'Updated' in wp_plugin_update.stdout"
       # wp-cli's `plugin update --all` exits 1 with "No plugins updated" when
       # every plugin is already at the latest version -- not a real failure,
-      # just nothing to do (routinely the case now that the install task above
-      # uses --force and already fetches the latest version).
+      # just nothing to do (the usual case: most runs find nothing to update).
       failed_when: >-
         wp_plugin_update.rc != 0 and
         'No plugins updated' not in wp_plugin_update.stderr

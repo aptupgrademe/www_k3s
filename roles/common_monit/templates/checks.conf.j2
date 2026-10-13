@@ -60,11 +60,10 @@ check program certs with path "/usr/local/sbin/monit-check-certs.sh {{ monit_cer
 {% if 'nextcloud' in group_names %}
 
 # --- Nextcloud backup freshness ---
-# The backup is PULLED by a machine that is not always on (cron @reboot + daily
-# on the backup PC, /data/backup/nextcloud/<instance>_backup.sh), which touches
-# this file after every successful run. If that PC stays off, or the backup
-# keeps failing, nobody would notice without this check. A missing file (no
-# backup yet) alerts too.
+# The backup is PULLED nightly by a backup machine in the homelab (systemd
+# timer there), which touches this file after every successful run. If that
+# machine is off, or the backup keeps failing, nobody would notice without
+# this check. A missing file (no backup yet) alerts too.
 # Two-minute window (17-18) for the same reason as the certs check above: a
 # single minute is hit only if a {{ monit_check_interval }}s cycle happens to start in it, which
 # depends on when Monit was started - after an unlucky restart the check would

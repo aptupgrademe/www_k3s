@@ -5,6 +5,16 @@
 # Handles: hide WP/Yoast version, block REST API user enumeration,
 #          remove Link header, block ?author= enumeration.
 # -----------------------------------------------------------------------------
+#
+# mu-plugins ("must use"): every PHP file in wp-content/mu-plugins/ is loaded
+# on every request, before normal plugins, and cannot be deactivated in the
+# admin UI - the right place for settings that must always apply.
+#
+# command with argv: each list item is ONE argument, passed without a shell
+# in between - so quotes, $ and newlines in the script below reach "sh -c"
+# exactly as written, with nothing to escape for Ansible or the shell.
+# The heredoc (<< 'PHPEOF', quoted) keeps the PHP code literal as well.
+
 - name: WordPress | Ensure mu-plugins directory exists
   ansible.builtin.command: >
     k3s kubectl exec deployment/wordpress

@@ -1,4 +1,8 @@
 ---
+# Handler of common_monit: one restart at the end of the play when the
+# config changed. enabled + daemon_reload are repeated here so the handler
+# also works on its own (e.g. when only the handler is triggered).
+
 - name: restart monit
   ansible.builtin.systemd:
     name: monit
