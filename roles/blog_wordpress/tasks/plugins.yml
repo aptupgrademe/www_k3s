@@ -14,10 +14,11 @@
 # storage/ directory until the chown was run by hand.
 # Version snapshot before anything installs or updates code. Compared with
 # the one after the update block, it decides the PHP-FPM restart at the end:
-# "plugin install --force" below re-downloads every plugin on each run and may
-# pull a NEWER release; its output does not say so, and before 2026-10-05 the
-# restart only looked at the update tasks - newer plugin code then sat on disk
-# while OPcache kept running the old one (found after the 2026-10-04 run).
+# Until 2026-10-13 "plugin install --force" re-downloaded every plugin on each
+# run (and reported each one as changed); it could pull a NEWER release without
+# saying so, so before 2026-10-05 newer plugin code sat on disk while OPcache
+# kept running the old one. Install now only fetches plugins that are missing;
+# new releases come exclusively from "Update all plugins" (updates.yml).
 - name: WordPress | Snapshot core/plugin/theme versions (before)
   ansible.builtin.shell: |
     set -e
@@ -31,25 +32,57 @@
 
 - name: WordPress | Install plugins and fix ownership
   block:
-    # `until` retries per loop item, so one flaky download no longer takes the
-    # whole run with it. wp-cli's HTTP timeout is a hard-coded 10 s and cannot
-    # be raised from the command line, so retrying is the only lever here.
-    - name: WordPress | Install and activate plugins
+    # One read decides what to do: install only plugins that are missing,
+    # activate only those that are installed but inactive. The old
+    # "plugin install --activate --force" for every plugin re-downloaded and
+    # rewrote all of them on each run and reported every one as "changed".
+    - name: WordPress | Read installed plugins and their status
       ansible.builtin.command: >
         k3s kubectl exec deployment/wordpress
         --namespace wordpress
         --container wordpress-fpm --
-        php /usr/local/lib/wp-cli/wp-cli.phar plugin install {{ item }} --activate --force
+        su -s /bin/sh www-data -c
+        "php /usr/local/lib/wp-cli/wp-cli.phar --path=/var/www/html plugin list --fields=name,status --format=json"
+      register: wp_plugin_state
+      changed_when: false
+      check_mode: false   # read-only query, also runs in --check
+
+    # `until` retries per loop item, so one flaky download no longer takes the
+    # whole run with it. wp-cli's HTTP timeout is a hard-coded 10 s and cannot
+    # be raised from the command line, so retrying is the only lever here.
+    - name: WordPress | Install and activate missing plugins
+      ansible.builtin.command: >
+        k3s kubectl exec deployment/wordpress
+        --namespace wordpress
+        --container wordpress-fpm --
+        php /usr/local/lib/wp-cli/wp-cli.phar plugin install {{ item }} --activate
         --path=/var/www/html
         --allow-root
-      loop: "{{ blog_wordpress_plugins | default([]) }}"
+      loop: "{{ blog_wordpress_plugins | default([]) | difference(_wp_plugins_installed) }}"
       register: wp_plugin_result
       until: wp_plugin_result.rc == 0
       retries: 3
       delay: 10
-      changed_when: >
-        'Installing' in wp_plugin_result.stdout or
-        'Activating' in wp_plugin_result.stdout
+      changed_when: true   # only runs for plugins that were not installed
+      vars:
+        _wp_plugins_installed: "{{ wp_plugin_state.stdout | from_json | map(attribute='name') | list }}"
+
+    - name: WordPress | Activate installed but inactive plugins
+      ansible.builtin.command: >
+        k3s kubectl exec deployment/wordpress
+        --namespace wordpress
+        --container wordpress-fpm --
+        php /usr/local/lib/wp-cli/wp-cli.phar plugin activate {{ _wp_plugins_inactive | join(' ') }}
+        --path=/var/www/html
+        --allow-root
+      when: _wp_plugins_inactive | length > 0
+      changed_when: true   # only runs when something was inactive
+      vars:
+        _wp_plugins_inactive: >-
+          {{ wp_plugin_state.stdout | from_json
+             | selectattr('name', 'in', blog_wordpress_plugins | default([]))
+             | selectattr('status', 'equalto', 'inactive')
+             | map(attribute='name') | list }}
 
     # Redis Object Cache plugin – installed and enabled separately because
     # wp redis enable places the object-cache.php drop-in (separate WP-CLI command).
