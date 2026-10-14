@@ -245,3 +245,63 @@
     - Reload sshd
     - Reset connection after sshd restart
     - Confirm sshd is accepting connections again
+
+
+# -----------------------------------------------------------------------------
+# STEP 8: SSH login alert (tripwire)
+# -----------------------------------------------------------------------------
+# A mail for every new interactive login, at most one mail per 2 minutes
+# (templates/ssh-login-alert.sh.j2 explains what counts and what does not).
+# A timer instead of a PAM hook on purpose: a broken PAM line can lock out
+# SSH, and SELinux would block sending mail from inside sshd. The timer runs
+# outside sshd, so the alert can never get in the way of a login.
+- name: SSH | Deploy the login alert script
+  ansible.builtin.template:
+    src: ssh-login-alert.sh.j2
+    dest: /usr/local/sbin/ssh-login-alert
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: SSH | Deploy the login alert service + timer
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}"
+    owner: root
+    group: root
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: ssh-login-alert.service
+      content: |
+        # Managed by Ansible (role common_ssh) - do not edit
+        [Unit]
+        Description=Mail new interactive SSH logins
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/local/sbin/ssh-login-alert
+    - name: ssh-login-alert.timer
+      content: |
+        # Managed by Ansible (role common_ssh) - do not edit
+        [Unit]
+        Description=Check for new interactive SSH logins every 2 minutes
+
+        [Timer]
+        OnBootSec=2min
+        OnUnitActiveSec=2min
+
+        [Install]
+        WantedBy=timers.target
+  loop_control:
+    label: "{{ item.name }}"
+  register: _ssh_alert_units
+
+# Skipped in --check when the units are new: they were not written then, and
+# systemd would fail with "unit not found" (the change is already reported).
+- name: SSH | Enable the login alert timer
+  ansible.builtin.systemd:
+    name: ssh-login-alert.timer
+    enabled: true
+    state: started
+    daemon_reload: "{{ _ssh_alert_units.changed }}"
+  when: not (ansible_check_mode and _ssh_alert_units.changed)

@@ -1,0 +1,48 @@
+#!/bin/bash
+# Managed by Ansible (role common_ssh) - do not edit.
+#
+# Tripwire: mails every new interactive login since the previous run. Started
+# every 2 minutes by ssh-login-alert.timer; all new logins of one window go
+# out as ONE mail.
+#
+# Source is wtmp (read with "last"): only sessions that got a terminal are
+# recorded there. The nightly backup pulls run plain commands without a
+# terminal and never appear. Ansible requests a terminal for some steps, so a
+# playbook run does show up (as short sessions) - you know when that was you.
+set -u
+
+MAILTO="{{ email }}"
+STATE_DIR=/var/lib/ssh-login-alert
+STATE="$STATE_DIR/last-seen"
+mkdir -p "$STATE_DIR"
+
+# One line per login: start-time (ISO, UTC) TAB user TAB tty TAB source IP.
+# Sorted by time, so string comparison of the first field works.
+logins=$(last -w -i --time-format iso 2>/dev/null \
+    | awk '$1 != "reboot" && $1 != "wtmp" && NF >= 4 { print $4 "\t" $1 "\t" $2 "\t" $3 }' \
+    | sort)
+
+newest=$(printf '%s\n' "$logins" | tail -n 1 | cut -f 1)
+
+# First run on this host: only remember the current position, so the alert
+# does not mail the whole history at once.
+if [ ! -s "$STATE" ]; then
+    printf '%s\n' "${newest:-1970-01-01T00:00:00+00:00}" > "$STATE"
+    exit 0
+fi
+
+seen=$(cat "$STATE")
+new=$(printf '%s\n' "$logins" | awk -F '\t' -v seen="$seen" '$1 > seen')
+[ -n "$new" ] || exit 0
+
+count=$(printf '%s\n' "$new" | wc -l)
+{
+    echo "New interactive login(s) on $(hostname -f):"
+    echo
+    printf '%s\n' "$new" | awk -F '\t' '{ printf "  %s  %-8s %-7s from %s\n", $1, $2, $3, $4 }'
+    echo
+    echo "Times are UTC. If none of these were you, check: last -i | head"
+} | /usr/bin/mail -s "[$(hostname -f)] SSH login: $count new" "$MAILTO" || exit 1
+
+# Only after the mail went out: a failed send is retried on the next run.
+printf '%s\n' "$newest" > "$STATE"

@@ -15,6 +15,11 @@ argument_specs:
       - right there instead of halfway through the play. Values with no_log never show up in output.
       - Role defaults (defaults/main.yml) and group_vars/all/ are not repeated here.
     options:
+      email:
+        description: Admin e-mail address for alerts, reports and Let's Encrypt
+        type: str
+        required: true
+        no_log: true
       server_ipv4:
         description: Public IPv4 of the server (e.g. 1.2.3.4)
         type: str
