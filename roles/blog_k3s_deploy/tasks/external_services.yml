@@ -1,7 +1,8 @@
 ---
-# Deploy headless K8s Services + manually-managed Endpoints that point
-# to MariaDB and Grafana running on the host.
-# Pods can then reach them via DNS: mariadb.wordpress.svc.cluster.local
+# Deploy a K8s Service without selector + a manually managed Endpoints
+# object that point to Grafana running on the host (MariaDB runs inside
+# K3s on the blog, see mariadb.yml). The Ingress reaches it via DNS:
+# grafana.wordpress.svc.cluster.local
 #
 # Uses THE K8S APPLY PATTERN (explained in common_calico/tasks/main.yml): the
 # template is rendered on the controller, parsed into objects and applied via
