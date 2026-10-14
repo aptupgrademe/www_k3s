@@ -7,8 +7,8 @@
 #
 # Source is wtmp (read with "last"): only sessions that got a terminal are
 # recorded there. The nightly backup pulls run plain commands without a
-# terminal and never appear. Ansible requests a terminal for some steps, so a
-# playbook run does show up (as short sessions) - you know when that was you.
+# terminal and never appear, and neither do playbook runs (ansible.cfg sets
+# usetty = False). So every mail is a real interactive session.
 set -u
 
 MAILTO="{{ email }}"
