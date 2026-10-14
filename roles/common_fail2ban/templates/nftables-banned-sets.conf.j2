@@ -6,8 +6,20 @@
 # The sets use native nftables timeout – the IP auto-expires after <bantime>
 # seconds without any fail2ban unban action needed.  The explicit actionunban
 # is kept as a best-effort cleanup in case fail2ban restarts before expiry.
+#
+# <nftset> depends on the address family of the banned IP: fail2ban reads the
+# [Init?family=inet6] section for IPv6 addresses. Until 2026-10-14 the jails
+# passed nftset=banned4 for everything, so every IPv6 ban failed with
+# "Address family for hostname not supported" (on all three hosts): fail2ban
+# logged "Ban", but the firewall never blocked the address.
 # =============================================================================
 
 [Definition]
 actionban   = nft add element inet filter <nftset> { <ip> timeout <bantime>s }
 actionunban = nft delete element inet filter <nftset> { <ip> } 2>/dev/null; true
+
+[Init]
+nftset = banned4
+
+[Init?family=inet6]
+nftset = banned6

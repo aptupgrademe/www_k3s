@@ -111,7 +111,7 @@
 # Redis, SMTP, WordPress HTTP calls) work without any boolean: checked
 # 2026-10-13, container_connect_any is off and all of them work. Whether
 # anything here still needs this boolean is open; it is left on as before.
-- name: SELinux | Allow container processes to make outbound network connections
+- name: SELinux | Allow container processes to manage cgroups (container_manage_cgroup)
   ansible.posix.seboolean:
     name: container_manage_cgroup
     state: true

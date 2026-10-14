@@ -7,7 +7,7 @@
 # =============================================================================
 #
 # How to read this role: it is already explained step by step below
-# (STEP 0-7). The Ansible concepts it adds to what other roles use:
+# (STEP 0-8). The Ansible concepts it adds to what other roles use:
 #   copy backup: true  keeps a timestamped copy of the replaced file
 #   a chain of handlers  one notify list (validate -> reload systemd ->
 #                  restart sshd -> reset connection -> wait) - handlers run in
