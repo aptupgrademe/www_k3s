@@ -15,6 +15,11 @@ argument_specs:
       - right there instead of halfway through the play. Values with no_log never show up in output.
       - Role defaults (defaults/main.yml) and group_vars/all/ are not repeated here.
     options:
+      stack:
+        description: Which stack the play installs (set as a play variable in blog.yml / nextcloud-k3s.yml)
+        type: str
+        required: true
+        choices: [wordpress, nextcloud]
       email:
         description: Admin e-mail address for alerts, reports and Let's Encrypt
         type: str

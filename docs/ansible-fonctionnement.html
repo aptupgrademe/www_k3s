@@ -352,7 +352,7 @@ plus haute l'emporte. Dans ce dépôt, ces niveaux comptent (du plus bas au plus
   <tr><td>1</td><td><code>roles/&lt;rôle&gt;/defaults/main.yml</code></td><td>valeurs par défaut d'un rôle, p. ex. <code>clamav_profiles</code></td></tr>
   <tr><td>2</td><td><code>inventory/group_vars/all/*.yml</code></td><td>identique pour tous les serveurs : versions, chemins, ressources par défaut</td></tr>
   <tr><td>3</td><td><code>inventory/host_vars/&lt;hôte&gt;/*.yml</code></td><td>par serveur : noms d'hôte, IP, mots de passe, dimensionnement propre</td></tr>
-  <tr><td>4</td><td>paramètres du rôle dans le playbook</td><td><code>{ role: common_clamav, clamav_target: wordpress }</code></td></tr>
+  <tr><td>4</td><td>variables du play (<code>vars:</code> dans le playbook)</td><td><code>stack: wordpress</code> ou <code>stack: nextcloud</code> – la stack installée</td></tr>
   <tr><td>5</td><td><code>register</code> / <code>set_fact</code></td><td>résultats de tâches pendant l'exécution</td></tr>
   <tr><td>6</td><td><code>-e</code> en ligne de commande</td><td>l'emporte sur tout – pour les tests et les cas ponctuels</td></tr>
 </table>
@@ -428,8 +428,8 @@ l'historique de chaque entrée en dessous.</p>
     nocturne ne signale pas comme alarme les changements voulus de l'exécution.</li>
 </ol>
 <p>Chaque rôle a un tag à son nom. <code>--tags common_k3s,blog_k3s_deploy</code> n'exécute que ces rôles. Les rôles
-fusionnés gardent les anciens tags (<code>blog_clamav</code>, <code>next_selinux</code> …) pour que les commandes
-habituelles continuent de fonctionner.</p>
+autrefois séparés portent eux aussi leur nom comme tag : <code>common_clamav</code> et <code>common_selinux</code> (jusqu'en
+octobre 2026 <code>blog_clamav</code>, <code>next_selinux</code> …).</p>
 
 <h3>Les playbooks de mise à jour</h3>
 <p><code>blog-update.yml</code> et <code>nextcloud-update.yml</code> servent aux mises à jour en production et ne touchent
@@ -457,12 +457,16 @@ un ordre fixe (p. ex. <code>blog_wordpress</code> : install, security_muplugin, 
 settings, updates).</p>
 
 <h3>Rôles communs avec profil</h3>
-<p>Quand le blog et Nextcloud ont besoin de la même chose avec des valeurs différentes, un seul rôle prend une variable
-de sélection :</p>
+<p>Chaque playbook complet définit une variable de play <code>stack</code> (<code>blog.yml</code> : <code>wordpress</code>,
+<code>nextcloud-k3s.yml</code> : <code>nextcloud</code>). C'est <strong>le seul</strong> endroit qui dit quelle stack est en
+cours d'installation. Les rôles communs n'interrogent que cette variable – pas le groupe de l'inventaire, car le
+serveur de test appartient aux deux groupes. Les templates décident avec <code>{% if stack == 'nextcloud' %}</code>
+(pare-feu, Prometheus, Monit, vérification des versions) ; quand le blog et Nextcloud ont besoin de la même chose avec
+des valeurs différentes, <code>stack</code> sélectionne un profil :</p>
 <table>
   <tr><th>Rôle</th><th>Sélection</th><th>Ce que définit le profil</th></tr>
-  <tr><td><code>common_clamav</code></td><td><code>clamav_target: wordpress | nextcloud</code></td><td>répertoire analysé, exclusions, médias ignorés, horaire</td></tr>
-  <tr><td><code>common_selinux</code></td><td><code>selinux_target: wordpress | nextcloud</code></td><td>répertoires HostPath avec propriétaire et droits</td></tr>
+  <tr><td><code>common_clamav</code></td><td><code>clamav_profiles[stack]</code></td><td>répertoire analysé, exclusions, médias ignorés, horaire</td></tr>
+  <tr><td><code>common_selinux</code></td><td><code>selinux_profiles[stack]</code></td><td>répertoires HostPath avec propriétaire et droits</td></tr>
   <tr><td><code>common_verify</code></td><td>inclus via <code>import_role … tasks_from</code></td><td>16 vérifications communes ; les spécifiques restent dans <code>blog_verify</code> / <code>nextcloud_verify</code></td></tr>
   <tr><td><code>common_image_refresh</code></td><td><code>image_refresh_namespace</code></td><td>quels Deployments ont une image reconstruite (pour les playbooks de mise à jour)</td></tr>
 </table>
@@ -546,10 +550,10 @@ La version détaillée, tâche par tâche, se trouve en commentaire en tête de 
 </div>
 
 <div class="rolle">
-<p><strong><code>common_selinux</code></strong> (les deux, profil <code>selinux_target</code>)</p>
+<p><strong><code>common_selinux</code></strong> (les deux, profil via <code>stack</code>)</p>
 <p><strong>Quoi :</strong> SELinux en mode « enforcing » et les répertoires de l'hôte montés comme stockage dans les pods.
 <strong>Pourquoi :</strong> Les conteneurs ne peuvent écrire que dans des fichiers de type <code>container_file_t</code>.</p>
-<p class="wie"><strong>Comment :</strong> choisir le profil (<code>selinux_profiles[selinux_target]</code>) → créer les répertoires avec propriétaire et droits (<code>file</code>, <code>loop</code>) → enregistrer la règle de façon permanente (<code>semanage fcontext</code> ; « already defined » ne compte ni comme erreur ni comme modification) → l'appliquer aux fichiers existants (<code>restorecon</code>).</p>
+<p class="wie"><strong>Comment :</strong> choisir le profil (<code>selinux_profiles[stack]</code>) → créer les répertoires avec propriétaire et droits (<code>file</code>, <code>loop</code>) → enregistrer la règle de façon permanente (<code>semanage fcontext</code> ; « already defined » ne compte ni comme erreur ni comme modification) → l'appliquer aux fichiers existants (<code>restorecon</code>).</p>
 </div>
 
 <h3>Nextcloud uniquement : base de données et cache sur l'hôte</h3>
@@ -646,10 +650,10 @@ Les composants fournis avec K3s dont personne n'a besoin ici (Traefik, ServiceLB
 </div>
 
 <div class="rolle">
-<p><strong><code>common_clamav</code></strong> (les deux, profil <code>clamav_target</code>)</p>
+<p><strong><code>common_clamav</code></strong> (les deux, profil via <code>stack</code>)</p>
 <p><strong>Quoi :</strong> Analyse antivirus nocturne des fichiers envoyés (blog : uploads, Nextcloud : données des utilisateurs), mail seulement en cas de découverte.
 <strong>Pourquoi :</strong> Un logiciel malveillant dans des fichiers envoyés par d'autres est repéré au plus tard le lendemain matin.</p>
-<p class="wie"><strong>Comment :</strong> choisir le profil (<code>set_fact clamav: profiles[target]</code>) → télécharger une fois les signatures (<code>creates:</code>), ensuite le service freshclam les tient à jour → générer avec Jinja les motifs d'exclusion pour les fichiers multimédias → écrire le script d'analyse (<code>copy</code> avec un <code>{% if %}</code> Jinja) → entrée <code>cron</code>.</p>
+<p class="wie"><strong>Comment :</strong> choisir le profil (<code>set_fact clamav: clamav_profiles[stack]</code>) → télécharger une fois les signatures (<code>creates:</code>), ensuite le service freshclam les tient à jour → générer avec Jinja les motifs d'exclusion pour les fichiers multimédias → écrire le script d'analyse (<code>copy</code> avec un <code>{% if %}</code> Jinja) → entrée <code>cron</code>.</p>
 </div>
 
 <div class="rolle">

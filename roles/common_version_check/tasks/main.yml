@@ -287,9 +287,9 @@
 # line says which of the two it is.
 # The container image section is information only: image tags have no
 # "latest" lookup here (Renovate tracks them, see renovate.json5), so it just
-# shows the pins this host will use. group_names decides which stack's images
-# are listed: blog hosts get the WordPress images, nextcloud hosts the
-# Nextcloud ones; node-exporter and Prometheus run on both.
+# shows the pins this host will use. The play's "stack" variable decides which
+# images are listed: the blog play gets the WordPress images, the Nextcloud
+# play the Nextcloud ones; node-exporter and Prometheus run on both.
 - name: Versions | Print version report
   ansible.builtin.debug:
     msg: |
@@ -319,7 +319,7 @@
               latest    : {{ (_br + _r_cm_new + '  ⚠ UPDATE AVAILABLE IN group_vars' + _z) if (not _f_cm_ok | bool and _r_cm_new != '?') else _r_cm_new }}
 
       {{ _h }}── Container Images (configured in group_vars/all/versions.yml) ────────{{ _z }}
-      {% if 'blog' in group_names %}
+      {% if stack == 'wordpress' %}
         {{ _info }}  WordPress FPM    : {{ blog_image_wordpress }}
         {{ _info }}  MariaDB          : {{ blog_image_mariadb }}
         {{ _info }}  Redis            : {{ blog_image_redis }}
@@ -327,7 +327,7 @@
         {{ _info }}  mysqld-exporter  : {{ blog_image_mysqld_exporter }}
         {{ _info }}  fpm-exporter     : {{ blog_image_fpm_exporter }}
       {% endif %}
-      {% if 'nextcloud' in group_names %}
+      {% if stack == 'nextcloud' %}
         {{ _info }}  Nextcloud FPM    : {{ nextcloud_image_fpm }}
         {{ _info }}  nginx sidecar    : {{ nextcloud_image_nginx }}
         {{ _info }}  Collabora        : {{ nextcloud_image_collabora }}

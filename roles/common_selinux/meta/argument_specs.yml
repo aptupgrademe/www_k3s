@@ -9,20 +9,20 @@ argument_specs:
   main:
     short_description: SELinux enforcing + container_file_t contexts for the K3s HostPath volumes of one stack
     description:
-      - selinux_target (set in blog.yml / nextcloud-k3s.yml) selects the directory list in defaults/main.yml.
+      - stack (a play variable in blog.yml / nextcloud-k3s.yml) selects the directory list in defaults/main.yml.
       - Ansible validates these inputs when the role starts.
     options:
-      selinux_target:
-        description: Which stack's HostPath directories to prepare
+      stack:
+        description: Which stack the play installs (set as a play variable in blog.yml / nextcloud-k3s.yml)
         type: str
         required: true
         choices: [wordpress, nextcloud]
       blog_k3s_www_dir:
-        description: HostPath of the WordPress files (selinux_target wordpress)
+        description: HostPath of the WordPress files (stack wordpress)
         type: str
       blog_k3s_db_dir:
-        description: HostPath of the MariaDB data (selinux_target wordpress)
+        description: HostPath of the MariaDB data (stack wordpress)
         type: str
       nextcloud_data_dir:
-        description: Nextcloud data directory on the host (selinux_target nextcloud)
+        description: Nextcloud data directory on the host (stack nextcloud)
         type: str

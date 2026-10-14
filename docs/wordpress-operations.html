@@ -702,7 +702,7 @@ real_ip_recursive on;</code></pre>
 <table>
   <tr><th>Role</th><th>Task</th></tr>
   <tr><td><code>blog_packages</code></td><td>Install packages (e.g. SELinux tools)</td></tr>
-  <tr><td><code>common_selinux</code> (<code>selinux_target: wordpress</code>)</td><td>SELinux enforcing, <code>container_file_t</code> for HostPath directories (shared with Nextcloud)</td></tr>
+  <tr><td><code>common_selinux</code> (<code>stack: wordpress</code>)</td><td>SELinux enforcing, <code>container_file_t</code> for HostPath directories (shared with Nextcloud)</td></tr>
   <tr><td><code>common_k3s</code></td><td>K3s, Helm, cert-manager, nginx-ingress (F5), Calico (policy-only, for NetworkPolicy enforcement), audit logging, EventRateLimit/NodeRestriction admission plugins, pod PID limit, PKI file permissions, default-ServiceAccount hardening cluster-wide – common base, shared with Nextcloud</td></tr>
   <tr><td><code>blog_k3s_deploy</code></td><td>K8s manifests: namespace (+ Pod Security Standards labels, default-SA hardening), secrets, ConfigMaps, deployments, ingress, CronJob, NetworkPolicy, image allowlist</td></tr>
   <tr><td><code>blog_wordpress</code></td><td>Post-deploy: WP-CLI commands (admin, plugins, settings)</td></tr>

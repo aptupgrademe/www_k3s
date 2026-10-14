@@ -57,7 +57,7 @@ check program certs with path "/usr/local/sbin/monit-check-certs.sh {{ monit_cer
     every "0-1 * * * *"
     if status != 0 then alert
 {% endif %}
-{% if 'nextcloud' in group_names %}
+{% if stack == 'nextcloud' %}
 
 # --- Nextcloud backup freshness ---
 # The backup is PULLED nightly by a backup machine in the homelab (systemd
@@ -72,7 +72,7 @@ check file nc_backup with path /var/lib/nextcloud-backup/last-success
     every "17-18 * * * *"
     if timestamp > {{ monit_backup_max_days }} days then alert
 {% endif %}
-{% if 'blog' in group_names %}
+{% if stack == 'wordpress' %}
 
 # --- WordPress backup freshness ---
 # Same idea as nc_backup: the backup PC pulls the blog (scripts/wordpress-backup,

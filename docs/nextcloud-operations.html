@@ -748,7 +748,7 @@ kubectl exec -n nextcloud deployment/collabora -- nc -z -w4 &lt;mariadb-host-ip&
   <tr><td><code>next_packages</code></td><td>Repositories (MariaDB 10.11), packages (MariaDB, Redis, SELinux tools)</td></tr>
   <tr><td><code>next_mariadb</code></td><td>MariaDB setup, create database and user, bind-address to 0.0.0.0</td></tr>
   <tr><td><code>next_redis</code></td><td>Redis bind configuration (localhost + host IP)</td></tr>
-  <tr><td><code>common_selinux</code> (<code>selinux_target: nextcloud</code>)</td><td>SELinux enforcing, <code>container_file_t</code> for HostPath directories (shared with the blog)</td></tr>
+  <tr><td><code>common_selinux</code> (<code>stack: nextcloud</code>)</td><td>SELinux enforcing, <code>container_file_t</code> for HostPath directories (shared with the blog)</td></tr>
   <tr><td><code>next_k3s_deploy</code></td><td>K8s manifests: namespace, secrets, ConfigMaps, deployments, ingress, CronJob, NetworkPolicy</td></tr>
   <tr><td><code>next_config</code></td><td>Post-deploy via <code>kubectl exec occ</code>: trusted_domains, apps, WOPI config</td></tr>
   <tr><td><code>common_calico</code></td><td>Calico policy-only mode (Felix + kube-controllers) – required for NetworkPolicy to actually be enforced</td></tr>

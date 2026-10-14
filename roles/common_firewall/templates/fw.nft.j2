@@ -137,7 +137,7 @@ table inet filter {
     # Without these rules the RFC-1918 drop below silently blocks pod→host traffic.
     ip saddr {{ k3s_pod_cidr }} tcp dport { 6443, 10250 } accept
 
-{% if 'nextcloud' in group_names %}
+{% if stack == 'nextcloud' %}
     # Allow K3s pods to reach MariaDB on the host (Nextcloud: next_mariadb runs on host)
     ip saddr {{ k3s_pod_cidr }} tcp dport 3306 accept
 

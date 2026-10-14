@@ -9,11 +9,11 @@ argument_specs:
   main:
     short_description: Nightly antivirus scan of WordPress uploads or Nextcloud user data
     description:
-      - clamav_target (set in blog.yml / nextcloud-k3s.yml) selects the profile in defaults/main.yml.
+      - stack (a play variable in blog.yml / nextcloud-k3s.yml) selects the profile in defaults/main.yml.
       - Ansible validates these inputs when the role starts. Values with no_log never show up in output.
     options:
-      clamav_target:
-        description: Which stack to scan
+      stack:
+        description: Which stack the play installs (set as a play variable in blog.yml / nextcloud-k3s.yml)
         type: str
         required: true
         choices: [wordpress, nextcloud]
@@ -23,8 +23,8 @@ argument_specs:
         required: true
         no_log: true
       blog_k3s_www_dir:
-        description: HostPath of the WordPress files (clamav_target wordpress)
+        description: HostPath of the WordPress files (stack wordpress)
         type: str
       nextcloud_data_dir:
-        description: Nextcloud data directory on the host (clamav_target nextcloud)
+        description: Nextcloud data directory on the host (stack nextcloud)
         type: str

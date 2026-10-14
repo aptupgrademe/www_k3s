@@ -352,7 +352,7 @@ matter in this repo (low to high):</p>
   <tr><td>1</td><td><code>roles/&lt;role&gt;/defaults/main.yml</code></td><td>a role's defaults, e.g. <code>clamav_profiles</code></td></tr>
   <tr><td>2</td><td><code>inventory/group_vars/all/*.yml</code></td><td>same for all servers: versions, paths, resource defaults</td></tr>
   <tr><td>3</td><td><code>inventory/host_vars/&lt;host&gt;/*.yml</code></td><td>per server: host names, IPs, passwords, own sizing</td></tr>
-  <tr><td>4</td><td>parameters on the role in the playbook</td><td><code>{ role: common_clamav, clamav_target: wordpress }</code></td></tr>
+  <tr><td>4</td><td>play variables (<code>vars:</code> in the playbook)</td><td><code>stack: wordpress</code> or <code>stack: nextcloud</code> – which stack is installed</td></tr>
   <tr><td>5</td><td><code>register</code> / <code>set_fact</code></td><td>task results during the run</td></tr>
   <tr><td>6</td><td><code>-e</code> on the command line</td><td>beats everything – for tests and one-offs</td></tr>
 </table>
@@ -424,8 +424,9 @@ entry below.</p>
   <li><code>common_aide_refresh</code> <em>always last</em> – refreshes the AIDE baseline so the nightly check does not
     report the run's own, intended changes as an alarm.</li>
 </ol>
-<p>Every role has a tag with its name. <code>--tags common_k3s,blog_k3s_deploy</code> runs just those roles. The merged
-roles keep the old tags (<code>blog_clamav</code>, <code>next_selinux</code> …) so familiar calls keep working.</p>
+<p>Every role has a tag with its name. <code>--tags common_k3s,blog_k3s_deploy</code> runs just those roles. The formerly
+separate roles carry their own name as tag too: <code>common_clamav</code> and <code>common_selinux</code> (until October
+2026 <code>blog_clamav</code>, <code>next_selinux</code> …).</p>
 
 <h3>The update playbooks</h3>
 <p><code>blog-update.yml</code> and <code>nextcloud-update.yml</code> are for updates while running and do not touch the
@@ -452,11 +453,15 @@ into thematic files that <code>tasks/main.yml</code> pulls in with <code>import_
 <code>blog_wordpress</code>: install, security_muplugin, plugins, appearance, ai_disclosure, settings, updates).</p>
 
 <h3>Shared roles with a profile</h3>
-<p>Where blog and Nextcloud need the same thing with different values, there is one role with a selector variable:</p>
+<p>Every full playbook sets a play variable <code>stack</code> (<code>blog.yml</code>: <code>wordpress</code>,
+<code>nextcloud-k3s.yml</code>: <code>nextcloud</code>). It is the <strong>one</strong> place that says which stack is being
+installed. Shared roles ask only this variable – not the inventory group, because the test host is in both groups.
+Templates decide with <code>{% if stack == 'nextcloud' %}</code> (firewall, Prometheus, Monit, version check); where blog
+and Nextcloud need the same thing with different values, <code>stack</code> selects a profile:</p>
 <table>
   <tr><th>Role</th><th>Selector</th><th>What the profile defines</th></tr>
-  <tr><td><code>common_clamav</code></td><td><code>clamav_target: wordpress | nextcloud</code></td><td>scan directory, excludes, skip media, time</td></tr>
-  <tr><td><code>common_selinux</code></td><td><code>selinux_target: wordpress | nextcloud</code></td><td>HostPath directories with owner and mode</td></tr>
+  <tr><td><code>common_clamav</code></td><td><code>clamav_profiles[stack]</code></td><td>scan directory, excludes, skip media, time</td></tr>
+  <tr><td><code>common_selinux</code></td><td><code>selinux_profiles[stack]</code></td><td>HostPath directories with owner and mode</td></tr>
   <tr><td><code>common_verify</code></td><td>imported via <code>import_role … tasks_from</code></td><td>16 shared checks; the application-specific ones stay in <code>blog_verify</code> / <code>nextcloud_verify</code></td></tr>
   <tr><td><code>common_image_refresh</code></td><td><code>image_refresh_namespace</code></td><td>which Deployments have a rebuilt image (for the update playbooks)</td></tr>
 </table>
@@ -540,10 +545,10 @@ The task-by-task version is the comment at the top of each file under <code>role
 </div>
 
 <div class="rolle">
-<p><strong><code>common_selinux</code></strong> (both, profile <code>selinux_target</code>)</p>
+<p><strong><code>common_selinux</code></strong> (both, profile via <code>stack</code>)</p>
 <p><strong>What:</strong> SELinux in enforcing mode and the host directories that are mounted into the pods as storage.
 <strong>Why:</strong> Containers may only write to files of type <code>container_file_t</code>.</p>
-<p class="wie"><strong>How:</strong> pick the profile (<code>selinux_profiles[selinux_target]</code>) → create directories with owner and mode (<code>file</code>, <code>loop</code>) → register the rule persistently (<code>semanage fcontext</code>; "already defined" counts neither as an error nor as a change) → apply it to existing files (<code>restorecon</code>).</p>
+<p class="wie"><strong>How:</strong> pick the profile (<code>selinux_profiles[stack]</code>) → create directories with owner and mode (<code>file</code>, <code>loop</code>) → register the rule persistently (<code>semanage fcontext</code>; "already defined" counts neither as an error nor as a change) → apply it to existing files (<code>restorecon</code>).</p>
 </div>
 
 <h3>Nextcloud only: database and cache on the host</h3>
@@ -640,10 +645,10 @@ The bundled K3s components nobody needs here (Traefik, ServiceLB, local-storage)
 </div>
 
 <div class="rolle">
-<p><strong><code>common_clamav</code></strong> (both, profile <code>clamav_target</code>)</p>
+<p><strong><code>common_clamav</code></strong> (both, profile via <code>stack</code>)</p>
 <p><strong>What:</strong> Nightly virus scan of uploaded files (blog: uploads, Nextcloud: user data), mail only on findings.
 <strong>Why:</strong> Malware in someone else's uploads is noticed by the next morning at the latest.</p>
-<p class="wie"><strong>How:</strong> pick the profile (<code>set_fact clamav: profiles[target]</code>) → download signatures once (<code>creates:</code>), after that the freshclam service keeps them current → generate exclude patterns for media files with Jinja → write the scan script (<code>copy</code> with a Jinja <code>{% if %}</code>) → <code>cron</code> entry.</p>
+<p class="wie"><strong>How:</strong> pick the profile (<code>set_fact clamav: clamav_profiles[stack]</code>) → download signatures once (<code>creates:</code>), after that the freshclam service keeps them current → generate exclude patterns for media files with Jinja → write the scan script (<code>copy</code> with a Jinja <code>{% if %}</code>) → <code>cron</code> entry.</p>
 </div>
 
 <div class="rolle">
