@@ -3,7 +3,7 @@
 # Nextcloud Deployment + Service
 # =============================================================================
 # Single Pod with two containers:
-#   1. nextcloud-fpm  – official nextcloud:fpm image (PHP 8.3 + FPM on :9000)
+#   1. nextcloud-fpm  – official nextcloud:fpm image (PHP-FPM on :9000; PHP version comes with the image)
 #   2. nginx          – nginx:alpine sidecar (serves static files, proxies PHP)
 #
 # Both containers share two HostPath volumes:

@@ -102,10 +102,11 @@ spec:
         # CIS 5.4.1: files, not plain env vars — env vars are visible via
         # /proc/<pid>/environ, `kubectl describe`, crash dumps, and error
         # handlers that dump the environment. The official nextcloud image
-        # shares docker-library's file_env() convention with mariadb/mysql
-        # (same upstream pattern, verified live for those two on the blog
-        # host — not independently re-verified against this exact image
-        # since no Nextcloud host is live yet; check on first real deploy).
+        # supports the _FILE variants via file_env() in /entrypoint.sh
+        # (checked in the running image 2026-10-14; SMTP_PASSWORD_FILE via
+        # config/smtp.config.php). Note: MYSQL_* and NEXTCLOUD_ADMIN_* are
+        # only read during the very first installation - afterwards the
+        # credentials live in config.php.
         - name: MYSQL_PASSWORD_FILE
           value: /etc/secrets/mysql-password
         # Nextcloud admin (only used during initial install)

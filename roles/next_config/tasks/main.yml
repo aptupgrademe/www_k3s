@@ -11,8 +11,10 @@
 # the pod:
 #     k3s kubectl exec deployment/nextcloud -n nextcloud -c nextcloud-fpm \
 #       -- runuser -u www-data -- php /var/www/html/occ <command>
-# runuser -u www-data: occ must run as the user that owns config.php,
-# otherwise it refuses (and files it creates would belong to root).
+# runuser -u www-data: occ must run as the user that owns config.php -
+# console.php refuses any other user. Since Nextcloud 34 the occ script
+# drops root to that owner by itself; runuser keeps it explicit and also
+# works on older versions (files created by occ then never belong to root).
 # Order: system config (nc_config.yml) -> database maintenance -> apps ->
 # Collabora/WOPI settings -> password policy.
 #

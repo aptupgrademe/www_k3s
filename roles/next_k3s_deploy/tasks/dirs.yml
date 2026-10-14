@@ -15,8 +15,8 @@
 # live on the blog's equivalent WordPress www dir 2026-08-26 (TranslatePress
 # failing to CREATE TABLE with a misleading "Permission denied", actually
 # caused by this exact pattern re-asserting root ownership on every
-# playbook run) - this k3s Nextcloud path isn't live yet, fixing it here so
-# it doesn't repeat the same bug once it is.
+# playbook run) - fixed here before the Nextcloud hosts went live on K3s,
+# so the same bug never reached them.
 - name: Dirs | Create Nextcloud www directory (HostPath for app files)
   ansible.builtin.file:
     path: "{{ nextcloud_k3s_www_dir }}"
