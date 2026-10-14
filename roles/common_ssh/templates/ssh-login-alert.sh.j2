@@ -16,8 +16,9 @@ STATE_DIR=/var/lib/ssh-login-alert
 STATE="$STATE_DIR/last-seen"
 mkdir -p "$STATE_DIR"
 
-# One line per login: start-time (ISO, UTC) TAB user TAB tty TAB source IP.
-# Sorted by time, so string comparison of the first field works.
+# One line per login: start-time (ISO 8601 with the host's UTC offset) TAB
+# user TAB tty TAB source IP. Sorted by time; the offset is the same for all
+# entries of one host, so string comparison of the first field works.
 logins=$(last -w -i --time-format iso 2>/dev/null \
     | awk '$1 != "reboot" && $1 != "wtmp" && NF >= 4 { print $4 "\t" $1 "\t" $2 "\t" $3 }' \
     | sort)
@@ -41,7 +42,7 @@ count=$(printf '%s\n' "$new" | wc -l)
     echo
     printf '%s\n' "$new" | awk -F '\t' '{ printf "  %s  %-8s %-7s from %s\n", $1, $2, $3, $4 }'
     echo
-    echo "Times are UTC. If none of these were you, check: last -i | head"
+    echo "Times carry the host's UTC offset. If none of these were you, check: last -i | head"
 } | /usr/bin/mail -s "[$(hostname -f)] SSH login: $count new" "$MAILTO" || exit 1
 
 # Only after the mail went out: a failed send is retried on the next run.
