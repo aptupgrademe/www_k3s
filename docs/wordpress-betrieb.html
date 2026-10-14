@@ -912,7 +912,19 @@ define('WP_SITEURL', 'https://www.apt-upgrade.me');</code></pre>
 <pre><code>blog_wordpress_plugins:
   - all-in-one-wp-migration       # Import/Export für Backups
   - classic-editor                # Klassischer Editor statt Gutenberg
-  - limit-login-attempts-reloaded # Zusätzlicher Brute-Force-Schutz</code></pre>
+  - limit-login-attempts-reloaded # Zusätzlicher Brute-Force-Schutz
+  - compressx                     # Bildkomprimierung / WebP, AVIF
+  - wp-super-cache                # Seiten-Cache (nginx liefert HTML direkt aus)
+  - wordpress-seo                 # Yoast: SEO, Meta-Tags, Sitemap
+  - autoptimize                   # CSS/JS zusammenfassen &amp; minifizieren
+  - polylang                      # Mehrsprachigkeit en/de/fr/es (siehe unten)
+  - two-factor                    # 2FA (TOTP + Backup-Codes) für den Admin-Login</code></pre>
+<p>
+  Die Rolle installiert nur Plugins, die <strong>fehlen</strong>, und aktiviert nur
+  <strong>inaktive</strong> – sie liest dazu einmal die Plugin-Liste aus. Neue Versionen
+  kommen über <code>wp plugin update --all</code> (Playbook-Lauf und nächtlicher
+  Auto-Update-CronJob).
+</p>
 <p>
   Zusätzlich installiert und aktiviert die <code>blog_wordpress</code>-Rolle das
   <strong>Redis Object Cache</strong>-Plugin (<code>redis-cache</code>) über einen
@@ -930,13 +942,8 @@ define('WP_SITEURL', 'https://www.apt-upgrade.me');</code></pre>
 </p>
 <table>
   <tr><th>Plugin</th><th>Zweck</th></tr>
-  <tr><td><code>compressx</code></td><td>Bildkomprimierung / Next-Gen-Formate (WebP/AVIF)</td></tr>
-  <tr><td><code>autoptimize</code></td><td>CSS/JS zusammenfassen &amp; minifizieren</td></tr>
-  <tr><td><code>wp-super-cache</code></td><td>Seiten-Cache – nginx liefert die vorgerenderte HTML direkt aus und überspringt PHP-FPM bei Cache-Hits</td></tr>
-  <tr><td><code>wordpress-seo</code> (Yoast)</td><td>SEO, Meta-Tags, XML-Sitemap, robots.txt</td></tr>
   <tr><td><code>easy-table-of-contents</code></td><td>Automatisches Inhaltsverzeichnis in Beiträgen</td></tr>
-  <tr><td><code>polylang</code></td><td>Mehrsprachiger Blog (en/de/fr/es), siehe unten</td></tr>
-  <tr><td><code>akismet</code>, <code>hello</code></td><td>mit WordPress ausgeliefert, inaktiv</td></tr>
+  <tr><td><code>akismet</code>, <code>hello</code></td><td>mit WordPress ausgeliefert, werden von der Rolle gelöscht (<code>blog_wordpress_remove_plugins</code>)</td></tr>
 </table>
 <div class="callout callout-info">
   <strong>Merke</strong>
@@ -2519,8 +2526,13 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   </tr>
   <tr>
     <td>Redis</td>
-    <td><code>SETGID</code>, <code>SETUID</code></td>
-    <td>Der Entrypoint startet als root und wechselt per Re-Exec zum <code>redis</code>-User – der Server selbst bindet nie einen privilegierten Port, daher kein <code>NET_BIND_SERVICE</code>.</td>
+    <td><em>keine</em></td>
+    <td>Läuft seit 14.10.2026 direkt als <code>redis</code>-User (UID 999, <code>runAsNonRoot</code>). Vorher lief er als root: Das <code>command:</code> im Deployment ersetzt den Entrypoint, der sonst von root zu <code>redis</code> wechselt – die zurückgegebenen <code>SETGID</code>/<code>SETUID</code> wurden nie genutzt.</td>
+  </tr>
+  <tr>
+    <td>php-fpm-exporter, mysqld-exporter</td>
+    <td><em>keine</em></td>
+    <td>Laufen als <code>nobody</code> (UID 65534); der php-fpm-exporter seit 14.10.2026, vorher als root.</td>
   </tr>
 </table>
 <table>
@@ -2551,6 +2563,41 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
     <td><code>blog_k3s_deploy</code></td>
   </tr>
 </table>
+
+<h3>Anmeldeschutz: SSH-Login-Alarm und Zwei-Faktor-Anmeldung</h3>
+<p>
+  Seit 14.10.2026 meldet jeder Server <strong>jede interaktive SSH-Anmeldung per Mail</strong>
+  (Rolle <code>common_ssh</code>, Schritt 8). Der Timer <code>ssh-login-alert.timer</code> liest alle
+  2&nbsp;Minuten das Login-Protokoll <code>wtmp</code> und schickt alle neuen Anmeldungen eines Durchgangs
+  in <strong>einer</strong> Mail („[host] SSH login: N new“). Beim allerersten Lauf merkt er sich nur den
+  Stand und schickt keine Mail für ältere Anmeldungen.
+</p>
+<ul>
+  <li><strong>Gemeldet:</strong> Sitzungen mit Terminal – also jedes <code>ssh host</code> mit Shell.</li>
+  <li><strong>Nicht gemeldet:</strong> Befehle ohne Terminal – die nächtlichen Backup-Abholungen und
+      Ansible (<code>usetty = False</code> in <code>ansible.cfg</code>).</li>
+  <li><strong>Bewusste Grenze:</strong> Wer mit einem gestohlenen Schlüssel nur Befehle ohne Terminal
+      schickt (<code>ssh host 'befehl'</code>), löst keinen Alarm aus. Dafür greifen auditd
+      (Benutzerdateien, sudo, Laden von Kernel-Modulen, K3s-Schlüssel) und AIDE.</li>
+  <li>Kein PAM-Hook: Ein Fehler darin könnte SSH aussperren, und SELinux würde den Mailversand aus sshd
+      heraus blockieren. Der Timer läuft getrennt von sshd und kann eine Anmeldung nie behindern.</li>
+</ul>
+<pre><code># Stand prüfen
+systemctl list-timers ssh-login-alert.timer
+cat /var/lib/ssh-login-alert/last-seen     # zuletzt gemeldete Anmeldung
+last -i | head                             # die Anmeldungen selbst
+# vorübergehend aussetzen / wieder an
+systemctl stop ssh-login-alert.timer ; systemctl start ssh-login-alert.timer</code></pre>
+<p>
+  <strong>Zwei-Faktor-Anmeldung für das WordPress-Admin-Konto:</strong> Plugin <code>two-factor</code>
+  (in <code>blog_wordpress_plugins</code>), eingerichtet mit TOTP (Authenticator-App) und Backup-Codes unter
+  <em>Benutzer → Profil → Two-Factor Options</em>. Notausgang, wenn App und Backup-Codes fehlen: Plugin kurz
+  abschalten, die Anmeldung geht dann nur mit Passwort, danach 2FA neu einrichten. Der nächste
+  <code>blog_wordpress</code>-Lauf aktiviert das Plugin wieder.
+</p>
+<pre><code>k3s kubectl exec deployment/wordpress -n wordpress -c wordpress-fpm -- \
+  su -s /bin/sh www-data -c "php /usr/local/lib/wp-cli/wp-cli.phar --path=/var/www/html plugin deactivate two-factor"</code></pre>
+<p>WordPress-Anwendungspasswörter, die 2FA umgehen würden, sind abgeschaltet.</p>
 
 <h3>Firewall im Detail</h3>
 <p>

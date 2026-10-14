@@ -2212,6 +2212,11 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
     <td>Der mysqld_exporter (Host) nutzt den minimal berechtigten <code>prometheus</code>-DB-Benutzer statt des Root-Passworts – die Credentials in <code>/etc/mysqld_exporter.cnf</code> geben so keinen Root-Zugang mehr.</td>
     <td><code>next_mariadb</code>, <code>common_mysqld_exporter</code></td>
   </tr>
+  <tr>
+    <td>php-fpm-exporter ohne root</td>
+    <td>Der Exporter-Sidecar im Nextcloud-Pod läuft als <code>nobody</code> (UID 65534, <code>runAsNonRoot</code>) statt als root – er spricht nur per TCP mit PHP-FPM. Seit 14.10.2026 in der Vorlage; wird mit dem nächsten <code>next_k3s_deploy</code>-Lauf aktiv (Pod-Neustart).</td>
+    <td><code>next_k3s_deploy</code></td>
+  </tr>
 </table>
 
 <h3>MariaDB: systemd-Sandbox</h3>
@@ -2248,6 +2253,66 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   <code>test</code>-Datenbank — die Signatur eines nie ausgeführten
   <code>mysql_secure_installation</code>. Und <code>skip_name_resolve = 1</code> beendet die
   vergeblichen Reverse-DNS-Abfragen für jede Pod-Verbindung (25 Warnungen in zwei Stunden).
+</p>
+
+<h3>Anmeldeschutz: SSH-Login-Alarm und Zwei-Faktor-Anmeldung</h3>
+<p>
+  Seit 14.10.2026 meldet jeder Server <strong>jede interaktive SSH-Anmeldung per Mail</strong>
+  (Rolle <code>common_ssh</code>, Schritt 8). Der Timer <code>ssh-login-alert.timer</code> liest alle
+  2&nbsp;Minuten das Login-Protokoll <code>wtmp</code> und schickt alle neuen Anmeldungen eines Durchgangs
+  in <strong>einer</strong> Mail („[host] SSH login: N new“). Beim allerersten Lauf merkt er sich nur den
+  Stand und schickt keine Mail für ältere Anmeldungen.
+</p>
+<ul>
+  <li><strong>Gemeldet:</strong> Sitzungen mit Terminal – also jedes <code>ssh host</code> mit Shell.</li>
+  <li><strong>Nicht gemeldet:</strong> Befehle ohne Terminal – die nächtlichen Backup-Abholungen und
+      Ansible (<code>usetty = False</code> in <code>ansible.cfg</code>).</li>
+  <li><strong>Bewusste Grenze:</strong> Wer mit einem gestohlenen Schlüssel nur Befehle ohne Terminal
+      schickt (<code>ssh host 'befehl'</code>), löst keinen Alarm aus. Dafür greifen auditd
+      (Benutzerdateien, sudo, Laden von Kernel-Modulen, K3s-Schlüssel) und AIDE.</li>
+  <li>Kein PAM-Hook: Ein Fehler darin könnte SSH aussperren, und SELinux würde den Mailversand aus sshd
+      heraus blockieren. Der Timer läuft getrennt von sshd und kann eine Anmeldung nie behindern.</li>
+</ul>
+<pre><code># Stand prüfen
+systemctl list-timers ssh-login-alert.timer
+cat /var/lib/ssh-login-alert/last-seen     # zuletzt gemeldete Anmeldung
+last -i | head                             # die Anmeldungen selbst
+# vorübergehend aussetzen / wieder an
+systemctl stop ssh-login-alert.timer ; systemctl start ssh-login-alert.timer</code></pre>
+<p>
+  <strong>Zwei-Faktor-Anmeldung für Admin-Konten:</strong> TOTP (App <code>twofactor_totp</code>) und
+  Backup-Codes, eingerichtet unter <em>Persönliche Einstellungen → Sicherheit</em>. Jede Instanz hat genau
+  ein aktives Admin-Konto. Notausgang, wenn App und Backup-Codes fehlen:
+</p>
+<pre><code>k3s kubectl exec deployment/nextcloud -n nextcloud -c nextcloud-fpm -- \
+  runuser -u www-data -- php occ twofactorauth:disable &lt;benutzer&gt; totp
+# Übersicht: wer hat 2FA?
+… php occ twofactorauth:state &lt;benutzer&gt;</code></pre>
+<p>
+  <strong>Passwortrichtlinie</strong> (App <code>password_policy</code>, Rolle <code>next_config</code>,
+  <code>tasks/password_policy.yml</code>, Werte in <code>nextcloud_password_policy</code>): mindestens
+  12&nbsp;Zeichen, keine sehr verbreiteten Passwörter, keine Passwörter aus bekannten Datenlecks (Have I Been
+  Pwned per k-Anonymität – nur 5 Zeichen des Hashes verlassen den Server). Zeichenklassen-Regeln und
+  Passwort-Historie sind bewusst aus. Gilt beim <strong>Setzen</strong> eines Passworts; bestehende Passwörter
+  bleiben unberührt.
+</p>
+<div class="callout callout-warn">
+  <strong>Ablauf ist fest auf 0</strong>
+  <code>expiration</code> steht ausdrücklich auf 0 („läuft nie ab“). Auf cvjm lag vom alten Server noch
+  <code>expiration=300</code>; beim Einschalten der App galt jedes Passwort, das älter als 300 Tage war, beim
+  nächsten Login als abgelaufen. Vor dem Aktivieren einer App immer erst ihre vorhandenen Einstellungen lesen:
+  <code>occ config:list password_policy</code>.
+</div>
+<p>
+  <strong>Inaktive Konten:</strong> Konten ohne Anmeldung seit mehr als 12 Monaten (und solche, die sich nie
+  angemeldet haben) werden deaktiviert, nicht gelöscht – Daten bleiben erhalten. Prüfen und wieder freischalten:
+</p>
+<pre><code>… php occ user:lastseen --all
+… php occ user:disable &lt;benutzer&gt;     # bzw. user:enable &lt;benutzer&gt;</code></pre>
+<p>
+  Vorher prüfen, ob das Konto Freigaben besitzt (Tabelle <code>oc_share</code>, Spalte <code>uid_owner</code>):
+  Freigaben eines deaktivierten Kontos sind für andere nicht mehr erreichbar. Die Login-Meldung lautet nur
+  „Dieses Konto ist deaktiviert“, ohne Grund.
 </p>
 
 <h3>Firewall im Detail</h3>

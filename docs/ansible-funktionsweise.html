@@ -515,9 +515,9 @@ Ausführlicher, Task für Task, steht es als Kommentar am Anfang jeder Datei unt
 
 <div class="rolle">
 <p><strong><code>common_ssh</code></strong> (beide)</p>
-<p><strong>Was:</strong> SSH auf Port 10022, gehärtete <code>sshd_config</code> (nur Schlüssel), SELinux-Label für den Port.
+<p><strong>Was:</strong> SSH auf Port 10022, gehärtete <code>sshd_config</code> (nur Schlüssel), SELinux-Label für den Port, Mail-Alarm bei jeder interaktiven Anmeldung.
 <strong>Warum:</strong> Nimmt den automatisierten Angriffen auf Port 22 die Grundlage und schließt Passwort-Logins aus. Ein systemd-Drop-in legt außerdem eine Sandbox um sshd, die jede SSH-Sitzung erbt: keine Kernel-Module, keine Kernel-Werte – das geht nur noch bewusst über <code>systemd-run</code> (Details in den Betriebs-Dokus, „Wichtige Sicherheitshinweise“).</p>
-<p class="wie"><strong>Wie:</strong> merken, ob dies der erste Lauf ist (<code>set_fact ssh_first_run</code>) → SELinux-Portliste lesen, Label nur bei Bedarf setzen → Konfiguration und Drop-ins kopieren (<code>copy</code>, <code>notify</code>) → Handler-Kette am Ende: mit <code>sshd -t</code> prüfen → sshd neu starten (<code>async</code>, weil die eigene Verbindung abreißt) → <code>reset_connection</code> → <code>wait_for_connection</code>.</p>
+<p class="wie"><strong>Wie:</strong> merken, ob dies der erste Lauf ist (<code>set_fact ssh_first_run</code>) → SELinux-Portliste lesen, Label nur bei Bedarf setzen → Konfiguration und Drop-ins kopieren (<code>copy</code>, <code>notify</code>) → Handler-Kette am Ende: mit <code>sshd -t</code> prüfen → sshd neu starten (<code>async</code>, weil die eigene Verbindung abreißt) → <code>reset_connection</code> → <code>wait_for_connection</code> → zuletzt den Login-Alarm einrichten: Skript aus Vorlage, systemd-Timer alle 2 Minuten, der neue interaktive Anmeldungen aus <code>wtmp</code> per Mail meldet.</p>
 </div>
 
 <div class="rolle">
@@ -686,9 +686,9 @@ Ausführlicher, Task für Task, steht es als Kommentar am Anfang jeder Datei unt
 
 <div class="rolle">
 <p><strong><code>next_config</code></strong> (Nextcloud)</p>
-<p><strong>Was:</strong> Nextcloud im laufenden Pod per <code>occ</code>: Domains, URL, Mail, Datenbank-Pflege, Office- und Vorschau-App, Collabora-Anbindung.
+<p><strong>Was:</strong> Nextcloud im laufenden Pod per <code>occ</code>: Domains, URL, Mail, Datenbank-Pflege, Office- und Vorschau-App, Collabora-Anbindung, Passwortrichtlinie.
 <strong>Warum:</strong> Die Einstellungen stehen im Repo statt nur in der laufenden Instanz.</p>
-<p class="wie"><strong>Wie:</strong> für jeden Wert „get → vergleichen → set“: aktuellen Wert lesen (<code>occ config:…:get</code>, <code>register</code>) → nur schreiben, <code>when</code> er abweicht (<code>changed_when: true</code>) → so meldet ein unveränderter Lauf nichts, und ein von Hand verstellter Wert wird zurückgesetzt und als Änderung angezeigt.</p>
+<p class="wie"><strong>Wie:</strong> für jeden Wert „get → vergleichen → set“: aktuellen Wert lesen (<code>occ config:…:get</code>, <code>register</code>) → nur schreiben, <code>when</code> er abweicht (<code>changed_when: true</code>) → so meldet ein unveränderter Lauf nichts, und ein von Hand verstellter Wert wird zurückgesetzt und als Änderung angezeigt. Als letzter Schritt dieselbe Kette für die Passwortrichtlinie (<code>password_policy.yml</code>): App einschalten → Werte lesen → abweichende alte Werte löschen → mit Typ neu setzen (<code>--type=integer|boolean</code>).</p>
 </div>
 
 <div class="rolle">

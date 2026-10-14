@@ -1814,6 +1814,33 @@ k3s kubectl logs -n nextcloud -l job-name=nextcloud-cron-&lt;id&gt;</code></pre>
   or remove the sshd hardening to work around this — it is deliberate.
 </p>
 
+<p>
+  <strong>What the sandbox blocks exactly</strong> &ndash; the full list in the drop-in:
+</p>
+<table>
+  <tr><th>Setting</th><th>Blocked inside an SSH session</th></tr>
+  <tr><td><code>ProtectKernelModules=yes</code></td><td>loading kernel modules; <code>/usr/lib/modules</code> appears empty (hence no kernel update over SSH)</td></tr>
+  <tr><td><code>ProtectKernelTunables=yes</code></td><td><code>/proc/sys</code> and <code>/sys</code> read-only (<code>sysctl -w</code>, THP)</td></tr>
+  <tr><td><code>ProtectControlGroups=yes</code></td><td>cgroup file system read-only</td></tr>
+  <tr><td><code>RestrictRealtime=yes</code>, <code>LockPersonality=yes</code></td><td>real-time priority, switching the execution domain</td></tr>
+  <tr><td><code>RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK</code></td><td>socket types other than IP, Unix sockets and netlink</td></tr>
+</table>
+<p>
+  <strong>Everything else works normally</strong>: editing files under <code>/etc</code>, installing and updating
+  packages (just no new kernel), <code>systemctl</code>, <code>kubectl</code>, <code>nft</code>, <code>ip</code>,
+  users and permissions. The blocked actions need <strong>root</strong> anyway, and so does
+  <code>systemd-run</code> as a system unit; a normal user only gets <code>systemd-run --user</code>, which runs
+  with that user's own rights.
+</p>
+<p>
+  <strong>Rating:</strong> the sandbox is an extra hurdle, not an unbreakable wall &ndash; root can bypass it with
+  <code>systemd-run</code> or by removing the drop-in. It stops automated attacks that load a kernel module right
+  after logging in, and turns a bypass into a deliberate step that leaves traces: auditd records every
+  <code>modprobe</code>/<code>insmod</code>/<code>rmmod</code> (key <code>modules</code>, also via
+  <code>systemd-run</code>), and AIDE reports any change under <code>/etc/systemd</code>, including the drop-in,
+  the next night. A <code>systemd-run</code> call itself is not logged separately.
+</p>
+
 <h3>"Cannot create repo temporary directory /tmp/libdnf.XXXXXX" from dnf over SSH</h3>
 <p>
   Until 2026-09-13 the sshd drop-in also carried <code>PrivateTmp=yes</code>. That gives
@@ -2159,6 +2186,11 @@ Both verified 2026-09-14.</p>
     <td>mysqld_exporter (host) uses the least-privilege <code>prometheus</code> DB user instead of the root password &ndash; the credentials in <code>/etc/mysqld_exporter.cnf</code> no longer grant root access.</td>
     <td><code>next_mariadb</code>, <code>common_mysqld_exporter</code></td>
   </tr>
+  <tr>
+    <td>php-fpm exporter without root</td>
+    <td>The exporter sidecar in the Nextcloud pod runs as <code>nobody</code> (UID 65534, <code>runAsNonRoot</code>) instead of root &ndash; it only talks to PHP-FPM over TCP. In the template since 2026-10-14; active with the next <code>next_k3s_deploy</code> run (pod restart).</td>
+    <td><code>next_k3s_deploy</code></td>
+  </tr>
 </table>
 
 <h3>MariaDB: systemd sandboxing</h3>
@@ -2195,6 +2227,64 @@ Both verified 2026-09-14.</p>
   <code>test</code> database — the signature of a <code>mysql_secure_installation</code> that was
   never run. And <code>skip_name_resolve = 1</code> ends the futile reverse-DNS lookups on every
   pod connection (25 warnings in two hours).
+</p>
+
+<h3>Login protection: SSH login alarm and two-factor sign-in</h3>
+<p>
+  Since 2026-10-14 every server <strong>mails every interactive SSH login</strong> (role
+  <code>common_ssh</code>, step 8). The timer <code>ssh-login-alert.timer</code> reads the login record
+  <code>wtmp</code> every 2&nbsp;minutes and sends all new logins of one pass in <strong>one</strong> mail
+  ("[host] SSH login: N new"). On its very first run it only stores the current position and mails nothing
+  about older logins.
+</p>
+<ul>
+  <li><strong>Reported:</strong> sessions with a terminal &ndash; every <code>ssh host</code> with a shell.</li>
+  <li><strong>Not reported:</strong> commands without a terminal &ndash; the nightly backup pulls and Ansible
+      (<code>usetty = False</code> in <code>ansible.cfg</code>).</li>
+  <li><strong>Accepted limit:</strong> someone using a stolen key only for commands without a terminal
+      (<code>ssh host 'command'</code>) does not trigger the alarm. auditd (identity files, sudo, kernel module
+      loading, K3s secrets) and AIDE cover that.</li>
+  <li>No PAM hook: a mistake there could lock out SSH, and SELinux would block sending mail from inside sshd.
+      The timer runs separately from sshd and can never get in the way of a login.</li>
+</ul>
+<pre><code># check
+systemctl list-timers ssh-login-alert.timer
+cat /var/lib/ssh-login-alert/last-seen     # last login that was reported
+last -i | head                             # the logins themselves
+# pause / resume
+systemctl stop ssh-login-alert.timer ; systemctl start ssh-login-alert.timer</code></pre>
+<p>
+  <strong>Two-factor sign-in for admin accounts:</strong> TOTP (app <code>twofactor_totp</code>) and backup
+  codes, set up under <em>Personal settings &rarr; Security</em>. Each instance has exactly one active admin
+  account. Escape hatch if both the app and the backup codes are gone:
+</p>
+<pre><code>k3s kubectl exec deployment/nextcloud -n nextcloud -c nextcloud-fpm -- \
+  runuser -u www-data -- php occ twofactorauth:disable &lt;user&gt; totp
+# who has 2FA?
+&hellip; php occ twofactorauth:state &lt;user&gt;</code></pre>
+<p>
+  <strong>Password policy</strong> (app <code>password_policy</code>, role <code>next_config</code>,
+  <code>tasks/password_policy.yml</code>, values in <code>nextcloud_password_policy</code>): at least
+  12&nbsp;characters, no very common passwords, no passwords from known data leaks (Have I Been Pwned via
+  k-anonymity &ndash; only 5 characters of the hash leave the server). Character-class rules and password history
+  are deliberately off. Applies when a password is <strong>set</strong>; existing passwords are untouched.
+</p>
+<div class="callout callout-warn">
+  <strong>Expiration is pinned to 0</strong>
+  <code>expiration</code> is set explicitly to 0 ("never expires"). cvjm still had <code>expiration=300</code>
+  from the old server; enabling the app made every password older than 300 days count as expired at the next
+  login. Always read an app's existing settings before enabling it: <code>occ config:list password_policy</code>.
+</div>
+<p>
+  <strong>Inactive accounts:</strong> accounts without a login for more than 12 months (and accounts that never
+  logged in) are disabled, not deleted &ndash; their data stays. Check and re-enable:
+</p>
+<pre><code>&hellip; php occ user:lastseen --all
+&hellip; php occ user:disable &lt;user&gt;     # or user:enable &lt;user&gt;</code></pre>
+<p>
+  Check first whether the account owns shares (table <code>oc_share</code>, column <code>uid_owner</code>):
+  shares of a disabled account are no longer reachable for others. The login message only says that the
+  account is disabled, without a reason.
 </p>
 
 <h3>Firewall in Detail</h3>
