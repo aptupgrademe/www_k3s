@@ -21,6 +21,8 @@
 # --- Kubernetes platform ------------------------------------------------------
 k3s_version:                 "v1.36.5+k3s1"   # github.com/k3s-io/k3s/releases
 helm_version:                "v4.3.0"         # github.com/helm/helm/releases
+helm_diff_version:           "3.15.15"        # github.com/databus23/helm-diff/releases + checksum below
+helm_diff_sha256:            "504e99410611daa70702362e1b10dc74929df8a912cb3f6b5d21d1ee9d0cb7d9"
 calico_version:              "v3.32.2"        # github.com/projectcalico/calico/releases (policy-only, see notes)
 ingress_nginx_chart_version: "2.7.3"          # F5 nginx-ingress chart, helm.nginx.com/stable index.yaml
 cert_manager_chart_version:  "1.21.2"         # charts.jetstack.io index.yaml (listed there as v1.21.2)
@@ -73,6 +75,16 @@ nextcloud_mariadb_repo_version: "10.11"   # MariaDB Community repo series on the
 #   known v4 breaking changes apply. Helm 3 stopped receiving bugfixes
 #   2026-07-08, security patches end 2026-11-11. The kubernetes.core modules
 #   need collection >= 6.5.0 for Helm 4 (requirements.yml).
+#
+# helm_diff_version / helm_diff_sha256
+#   Helm plugin "diff". kubernetes.core.helm uses it to tell whether an
+#   upgrade would change anything; without it the module only compares chart
+#   version and values and warns "Install helm diff >= 3.4.1 for better
+#   results" on every run. Installed by unpacking the release tarball into
+#   Helm's plugin directory (the archive already contains bin/diff, so the
+#   plugin's own download hook is not needed). The SHA-256 is computed from
+#   diff-<version>-linux-amd64.tgz - update both together.
+#   2026-10-14 added at 3.15.15 (supports Helm v4.3).
 #
 # calico_version
 #   "Policy-only" mode (common_calico): only Felix + kube-controllers, reading

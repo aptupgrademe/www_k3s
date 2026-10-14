@@ -72,6 +72,64 @@
     - /tmp/linux-amd64
   when: helm_download.changed | default(false)
 
+# -----------------------------------------------------------------------------
+# helm-diff plugin (helm_diff_version / helm_diff_sha256 in versions.yml)
+# -----------------------------------------------------------------------------
+# Lets kubernetes.core.helm compute a real diff of a release instead of only
+# comparing chart version and values (and silences its "Install helm diff"
+# warning). Same pinned-binary pattern as Helm itself: read the installed
+# version, download only when it differs - with a checksum - and unpack the
+# archive into Helm's plugin directory. The archive ships bin/diff, so the
+# plugin's own install hook (which would download it again) is not needed.
+- name: Helm | Installed helm-diff plugin version
+  ansible.builtin.command: helm plugin list
+  register: helm_plugins
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false
+
+- name: Helm | Install/upgrade the helm-diff plugin ({{ helm_diff_version }})
+  # "helm plugin list" prints "NAME VERSION TYPE ..." per line; take the
+  # VERSION of the line whose NAME is diff ('' when not installed).
+  when: >-
+    (helm_plugins.stdout_lines | default([]) | map('split')
+     | selectattr('0', 'equalto', 'diff') | map(attribute='1') | first | default('')) != helm_diff_version
+  block:
+    - name: Helm | Download the helm-diff release archive (checksum-verified)
+      ansible.builtin.get_url:
+        url: "https://github.com/databus23/helm-diff/releases/download/v{{ helm_diff_version }}/diff-{{ helm_diff_version }}-linux-amd64.tgz"
+        dest: /tmp/helm-diff.tgz
+        checksum: "sha256:{{ helm_diff_sha256 }}"
+        mode: "0644"
+
+    - name: Helm | Remove an older helm-diff plugin directory
+      ansible.builtin.file:
+        path: /root/.local/share/helm/plugins/diff
+        state: absent
+      when: not ansible_check_mode
+
+    - name: Helm | Ensure the Helm plugin directory exists
+      ansible.builtin.file:
+        path: /root/.local/share/helm/plugins
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Helm | Unpack the helm-diff plugin
+      ansible.builtin.unarchive:
+        src: /tmp/helm-diff.tgz
+        dest: /root/.local/share/helm/plugins
+        remote_src: true
+        owner: root
+        group: root
+      when: not ansible_check_mode   # --check downloads nothing, so there is nothing to unpack
+
+    - name: Helm | Clean up the helm-diff archive
+      ansible.builtin.file:
+        path: /tmp/helm-diff.tgz
+        state: absent
+
 - name: Helm | Set KUBECONFIG for Helm commands (K3s writes here)
   ansible.builtin.lineinfile:
     path: /root/.bashrc

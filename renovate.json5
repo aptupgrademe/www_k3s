@@ -71,6 +71,15 @@
       datasourceTemplate: "github-releases",
       extractVersionTemplate: "^v(?<version>.+)$",
     },
+    {
+      customType: "regex",
+      description: "helm-diff plugin",
+      managerFilePatterns: ["/^inventory/group_vars/all/versions\\.yml$/"],
+      matchStrings: ['\\nhelm_diff_version:\\s+"(?<currentValue>[^"]+)"'],
+      depNameTemplate: "databus23/helm-diff",
+      datasourceTemplate: "github-releases",
+      extractVersionTemplate: "^v(?<version>.+)$",
+    },
     // Helm charts
     {
       customType: "regex",
@@ -122,6 +131,14 @@
       dependencyDashboardApproval: true,
       prBodyNotes: [
         "**Also update `blog_wp_cli_sha512`** from the `.sha512` asset of this release - otherwise the WordPress init container rejects the phar.",
+      ],
+    },
+    // helm-diff is pinned together with its SHA-256 (helm_diff_sha256).
+    {
+      matchPackageNames: ["databus23/helm-diff"],
+      dependencyDashboardApproval: true,
+      prBodyNotes: [
+        "**Also update `helm_diff_sha256`** (sha256sum of `diff-<version>-linux-amd64.tgz` from this release) - otherwise the download task fails its checksum.",
       ],
     },
     // A K3s minor is a Kubernetes minor upgrade (one at a time, read the
