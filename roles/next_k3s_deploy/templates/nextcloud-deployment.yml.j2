@@ -247,7 +247,12 @@ spec:
         image: {{ nextcloud_image_fpm_exporter }}
         # Had no securityContext at all, unlike its siblings. Static Go
         # binary on a high port that never switches user: no capabilities.
+        # Runs as nobody (65534) since 2026-10-14 - before, the image default
+        # made it root. It only talks to PHP-FPM over TCP, so no user needed.
         securityContext:
+          runAsUser: 65534
+          runAsGroup: 65534
+          runAsNonRoot: true
           allowPrivilegeEscalation: false
           capabilities:
             drop: [ALL]

@@ -243,7 +243,12 @@ spec:
         image: {{ blog_image_fpm_exporter }}
         # Static Go binary, listens on a high port, never switches user:
         # needs no capabilities at all.
+        # Runs as nobody (65534) since 2026-10-14 - before, the image default
+        # made it root. It only talks to PHP-FPM over TCP, so no user needed.
         securityContext:
+          runAsUser: 65534
+          runAsGroup: 65534
+          runAsNonRoot: true
           allowPrivilegeEscalation: false
           capabilities:
             drop: [ALL]
