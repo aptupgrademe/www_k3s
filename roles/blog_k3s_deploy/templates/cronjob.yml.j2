@@ -45,12 +45,11 @@ spec:
                 drop: [ALL]
               seccompProfile:
                 type: RuntimeDefault
-              # NOT verified live yet. wp-cron.php runs the same WP bootstrap
+              # In production since 2026-09-11 (no failures). wp-cron.php runs the same WP bootstrap
               # as the main pod (wp_version_check/wp_update_plugins - see the
               # WORDPRESS_CONFIG_EXTRA comment below), which can shell out to
               # download_url()/tempnam() using PHP's default temp dir - same
-              # tmp mount as wordpress-fpm in the main Deployment. Check pod
-              # status after rollout.
+              # tmp mount as wordpress-fpm in the main Deployment.
               readOnlyRootFilesystem: true
             # 5s startup delay: Calico/Felix needs a moment after pod creation
             # to program this pod's NetworkPolicy rules (egress to

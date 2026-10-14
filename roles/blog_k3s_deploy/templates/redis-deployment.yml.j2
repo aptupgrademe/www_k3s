@@ -44,11 +44,10 @@ spec:
             drop: [ALL]
           seccompProfile:
             type: RuntimeDefault
-          # NOT verified live yet. --save "" --appendonly no means Redis
+          # In production since 2026-09-11 (no failures). --save "" --appendonly no means Redis
           # shouldn't write to disk at all, but the image's WORKDIR is /data -
           # the emptyDir below is a defensive backstop for that chdir, not
-          # something Redis is expected to actually use. Check pod status
-          # after rollout.
+          # something Redis is expected to actually use.
           readOnlyRootFilesystem: true
         # Disable all persistence – RAM-only cache, restarts start fresh.
         # maxmemory is set well below the 128Mi container limit (mem_fragmentation_ratio

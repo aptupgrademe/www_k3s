@@ -63,13 +63,13 @@ spec:
             add: [CHOWN, SETGID, SETUID, DAC_OVERRIDE, FOWNER]
           seccompProfile:
             type: RuntimeDefault
-          # NOT verified live yet. The entrypoint creates/chowns /run/mysqld
+          # In production since 2026-09-11 (no failures). The entrypoint creates/chowns /run/mysqld
           # (socket + pid) on every start regardless of readOnlyRootFilesystem,
           # and MariaDB's default tmpdir is /tmp - both covered by the
           # run-mysqld/tmp emptyDirs below. tmp is disk-backed (not tmpfs):
           # on-disk temp tables only get created once they exceed
           # tmp-table-size/max-heap-table-size (32M each below), so it needs
-          # real headroom, not a small RAM cap. Check pod status after rollout.
+          # real headroom, not a small RAM cap.
           readOnlyRootFilesystem: true
         args:
         - --slow-query-log=1
