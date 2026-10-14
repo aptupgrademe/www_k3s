@@ -260,6 +260,7 @@
   <div class="section-label">Flow</div>
   <a href="#playbooks">The playbooks</a>
   <a href="#roles">Roles</a>
+  <a href="#roles-detail">The roles in detail</a>
   <a href="#run">What happens during a run</a>
   <a href="#kubernetes">Kubernetes from Ansible</a>
 
@@ -484,6 +485,238 @@ into thematic files that <code>tasks/main.yml</code> pulls in with <code>import_
 </table>
 
 <!-- ===================================================================== -->
+<h2 id="roles-detail">The roles in detail</h2>
+<p>Each role in three parts: <strong>What</strong> it does, <strong>Why</strong> it exists, and <strong>How</strong>
+it works – as a chain of steps with the Ansible building blocks (→ = then). The order is the order of the playbooks.
+The task-by-task version is the comment at the top of each file under <code>roles/&lt;role&gt;/tasks/</code>.</p>
+<style>
+  .rolle { margin: 0 0 14px 0; }
+  .rolle p { margin: 2px 0 2px 0; }
+  .rolle .wie { padding-left: 1em; }
+</style>
+
+<h3>Preparation and base system</h3>
+
+<div class="rolle">
+<p><strong><code>common_version_check</code></strong> (both)</p>
+<p><strong>What:</strong> At the start of every run, shows which versions of K3s, Helm, nginx-ingress and cert-manager are installed, pinned and newly available.
+<strong>Why:</strong> Before each run you see whether a pin in <code>versions.yml</code> is outdated or not rolled out yet.</p>
+<p class="wie"><strong>How:</strong> collect the versions (<code>command</code> on the server, <code>uri</code> against the GitHub API) → bring them into one notation with a first <code>set_fact</code> (<code>regex_search</code>, <code>from_json</code>) → compare them with a second <code>set_fact</code> (<code>==</code> yields true/false) → print a coloured report with <code>debug</code>. Read-only, never aborts.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>blog_packages</code> / <code>next_packages</code></strong> (per stack)</p>
+<p><strong>What:</strong> Hostname, package repositories (EPEL; for Nextcloud also CRB and MariaDB), system update, base packages.
+<strong>Why:</strong> Without them, every later role lacks tools and dependencies.</p>
+<p class="wie"><strong>How:</strong> set the hostname (<code>hostname</code>) → set up repositories (read <code>dnf repolist</code> first, enable only what is missing) → update everything except the kernel (<code>dnf name: "*" state: latest</code>; the kernel cannot be installed from the sandboxed SSH session – <code>ProtectKernelModules</code> from <code>common_ssh</code> – it comes at night via <code>dnf-automatic</code>) → check whether a reboot is needed (<code>needs-restarting</code>, via <code>systemd-run</code>), <code>reboot</code> only then → install packages → stop and mask unused services.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_ssh</code></strong> (both)</p>
+<p><strong>What:</strong> SSH on port 10022, hardened <code>sshd_config</code> (keys only), SELinux label for the port, mail alarm on every interactive login.
+<strong>Why:</strong> Takes away the basis for automated attacks on port 22 and rules out password logins. A systemd drop-in also puts a sandbox around sshd that every SSH session inherits: no kernel modules, no kernel tunables – that only works deliberately via <code>systemd-run</code> (details in the operations docs, "Important security notes").</p>
+<p class="wie"><strong>How:</strong> remember whether this is the first run (<code>set_fact ssh_first_run</code>) → read the SELinux port list, set the label only if needed → copy configuration and drop-ins (<code>copy</code>, <code>notify</code>) → handler chain at the end: check with <code>sshd -t</code> → restart sshd (<code>async</code>, because the own connection drops) → <code>reset_connection</code> → <code>wait_for_connection</code> → finally set up the login alarm: script from a template, a systemd timer every 2 minutes that mails new interactive logins from <code>wtmp</code>.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_firewall</code></strong> (both)</p>
+<p><strong>What:</strong> nftables rules for IPv4/IPv6, optionally a country filter for SSH.
+<strong>Why:</strong> Only what is explicitly allowed gets through; fail2ban gets its ban sets.</p>
+<p class="wie"><strong>How:</strong> detect DHCP or static (read <code>nmcli</code> → <code>set_fact</code>) → optionally build the country list → write the ruleset from the template, checked first (<code>template validate: nft -c</code>) → limit reloads to the own table (systemd drop-in) → the handler reloads nftables and lets fail2ban re-add its bans (<code>listen</code>). First run: reboot instead of live activation (<code>include_tasks … when</code>).</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_sysctl</code></strong> (both)</p>
+<p><strong>What:</strong> Kernel parameters (TCP BBR, timeouts, queues, CIS network hardening) and Transparent Huge Pages set to <code>madvise</code>.
+<strong>Why:</strong> Faster web server, known network weaknesses closed.</p>
+<p class="wie"><strong>How:</strong> load the <code>tcp_bbr</code> module and register it for boot → values as files in <code>/etc/sysctl.d/</code> (<code>template</code>, persistent) → apply immediately (<code>sysctl --system</code> via <code>systemd-run</code>, because the sandboxed SSH session may not write kernel values) → a small systemd unit sets THP on every boot.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_cis_hardening</code></strong> (both)</p>
+<p><strong>What:</strong> The CIS benchmark items that are safe to apply: AIDE, blocked kernel modules, journal, no core dumps, cron/sudo permissions, mount options.
+<strong>Why:</strong> Less attack surface; risky items (PAM, GRUB, crypto policy) are deliberately left out.</p>
+<p class="wie"><strong>How:</strong> a series of small, independent groups, each following "check the state → change only if needed": e.g. create the AIDE database only if it is missing (<code>stat</code> → <code>when</code>) → write sudoers only after checking it (<code>validate: visudo -cf</code>) → write mount options to fstab and activate them right away (<code>mount state: mounted</code>).</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_selinux</code></strong> (both, profile <code>selinux_target</code>)</p>
+<p><strong>What:</strong> SELinux in enforcing mode and the host directories that are mounted into the pods as storage.
+<strong>Why:</strong> Containers may only write to files of type <code>container_file_t</code>.</p>
+<p class="wie"><strong>How:</strong> pick the profile (<code>selinux_profiles[selinux_target]</code>) → create directories with owner and mode (<code>file</code>, <code>loop</code>) → register the rule persistently (<code>semanage fcontext</code>; "already defined" counts neither as an error nor as a change) → apply it to existing files (<code>restorecon</code>).</p>
+</div>
+
+<h3>Nextcloud only: database and cache on the host</h3>
+
+<div class="rolle">
+<p><strong><code>next_mariadb</code></strong> (Nextcloud)</p>
+<p><strong>What:</strong> MariaDB on the host: systemd hardening, slow query log, rotation, database, user.
+<strong>Why:</strong> Nextcloud needs a database that only the pods can reach.</p>
+<p class="wie"><strong>How:</strong> check whether the Nextcloud database already exists (<code>register db_check</code>) → first run only: create root password, database and user (<code>when: db_check.rc != 0</code>) → every run: remove anonymous accounts and the test database, create or correct the exporter user (<code>community.mysql</code>, idempotent, <code>no_log</code>).</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>next_redis</code></strong> (Nextcloud)</p>
+<p><strong>What:</strong> Make Redis reachable for the pods and protect it with a password.
+<strong>Why:</strong> Redis holds Nextcloud's file locks and sessions.</p>
+<p class="wie"><strong>How:</strong> check that the password is in the vault (<code>assert</code>) → set three lines in <code>redis.conf</code> (<code>lineinfile</code>, <code>notify</code>) → restart right away instead of at the end (<code>meta: flush_handlers</code>) → wait until the port answers (<code>wait_for</code>).</p>
+</div>
+
+<h3>Kubernetes and the application</h3>
+
+<div class="rolle">
+<p><strong><code>common_k3s</code></strong> (both)</p>
+<p><strong>What:</strong> K3s, Helm with the helm-diff plugin, cert-manager (Let's Encrypt) and the F5 nginx ingress.
+The bundled K3s components nobody needs here (Traefik, ServiceLB, local-storage) are switched off.
+<strong>Why:</strong> This is the platform the blog and Nextcloud run on. What does not run cannot be attacked.</p>
+<p class="wie"><strong>How:</strong> read the installed version (<code>register</code>) → download the binary only if it differs from <code>k3s_version</code> (<code>get_url … when</code>, <code>notify</code>) → restart right away (<code>flush_handlers</code>) → wait until the API answers (<code>until</code>) → Helm the same way → download helm-diff only if the version differs from <code>helm_diff_version</code> (checksum in <code>get_url</code>) → install the charts (<code>kubernetes.core.helm</code> only changes something on a different chart version or different values).</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_calico</code></strong> (both)</p>
+<p><strong>What:</strong> Calico in policy-only mode – Flannel keeps doing the networking, Calico enforces the NetworkPolicies.
+<strong>Why:</strong> Without Calico, every NetworkPolicy would be silently ignored.</p>
+<p class="wie"><strong>How:</strong> render the template on the controller (<code>lookup('template')</code>) → split it into Kubernetes objects (<code>from_yaml_all</code>) → apply via the API (<code>kubernetes.core.k8s apply</code>, "changed" only on a real difference) → only then wait for the pods (<code>rollout status … when changed</code>). This <strong>K8s apply pattern</strong> is used by 26 tasks in the repo.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>blog_k3s_deploy</code> / <code>next_k3s_deploy</code></strong> (per stack)</p>
+<p><strong>What:</strong> All Kubernetes objects of the application: namespace, secrets, ConfigMaps, deployments, services, ingress, CronJobs, NetworkPolicies, image policy (for Nextcloud also Collabora, notify_push, app reconciliation).
+<strong>Why:</strong> So the application can be rebuilt from the repo at any time.</p>
+<p class="wie"><strong>How:</strong> one template and one task file per component, in dependency order (<code>import_tasks</code>) → apply each with the K8s apply pattern → wait for the new pods only if something changed → Nextcloud: MariaDB/Redis on the host as "external services" (service without selector + endpoints pointing at the host IP).</p>
+</div>
+
+<h3>Monitoring</h3>
+
+<div class="rolle">
+<p><strong><code>common_node_exporter</code></strong> / <strong><code>common_mysqld_exporter</code></strong> (both / Nextcloud only)</p>
+<p><strong>What:</strong> Expose metrics of the host and of the host MariaDB locally (<code>127.0.0.1:9100</code> / <code>:9104</code>).
+<strong>Why:</strong> Prometheus scrapes them there; nothing is reachable from outside.</p>
+<p class="wie"><strong>How:</strong> read the installed version → download, unpack and install the archive only on a different version (<code>get_url</code> → <code>unarchive</code> → <code>copy</code>, skipped in check mode) → write the systemd unit + sandbox drop-in (<code>notify</code>) → handlers reload systemd and restart the service once. The MariaDB exporter reads its password from a file only it can read (<code>no_log</code>).</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_prometheus</code></strong> (both)</p>
+<p><strong>What:</strong> Collects the metrics of all exporters and keeps them for 30 days, reachable only locally.
+<strong>Why:</strong> Basis for Grafana graphs and alerts.</p>
+<p class="wie"><strong>How:</strong> as with the exporters (check the version → download only on a difference) → configuration from the template, which adds the right exporters per stack (<code>template</code>) → unit and sandbox → exactly one restart at the end, no matter how many files changed (handler).</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_grafana</code></strong> (both)</p>
+<p><strong>What:</strong> Grafana with a Prometheus data source, three dashboards and alert mails, reachable at <code>/grafana/</code>.
+<strong>Why:</strong> Graphs and warnings without Prometheus itself having to face the outside.</p>
+<p class="wie"><strong>How:</strong> install the package, set single lines in <code>grafana.ini</code> (<code>lineinfile</code>) → start and wait until the API answers (<code>uri … until</code>) → via the HTTP API "look first, then create" (register the GET → POST only <code>when</code> it is missing) → download and import dashboards → alert rules via a small Python script.</p>
+</div>
+
+<h3>Protection, mail and maintenance</h3>
+
+<div class="rolle">
+<p><strong><code>common_fail2ban</code></strong> (both)</p>
+<p><strong>What:</strong> Bans IP addresses that attack SSH or the logins or probe the system.
+<strong>Why:</strong> Automated attacks end after a few attempts instead of never.</p>
+<p class="wie"><strong>How:</strong> own ban action (writes into the firewall's nftables sets), five filters and <code>jail.local</code> with seven jails from templates (<code>template</code>, <code>notify</code>) → start the service → a timer reloads the HTTP jails as soon as the ingress pod creates a new log file.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_msmtp</code></strong> (both)</p>
+<p><strong>What:</strong> msmtp as a lean replacement for <code>sendmail</code>.
+<strong>Why:</strong> cron, rkhunter, ClamAV, dnf-automatic and the check reports can send mail.</p>
+<p class="wie"><strong>How:</strong> install the package → <code>/etc/msmtprc</code> from the template (relay, port, credentials from the vault; mode 0600) → create the log file once (<code>file state: touch</code> with <code>preserve</code>, so it does not count as changed every time). No service: every program starts msmtp itself.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_dnf_automatic</code></strong> (both)</p>
+<p><strong>What:</strong> Installs security updates at night and reboots at 03:30 if needed.
+<strong>Why:</strong> Vulnerabilities get closed without anyone having to remember.</p>
+<p class="wie"><strong>How:</strong> two lines in <code>automatic.conf</code> (security updates only, really install) → move the timer to 01:00 with a drop-in (restarted only if the drop-in changed: <code>register</code> → <code>is changed</code>) → two <code>cron</code> entries: reboot if needed and a check mail at 06:00.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_rkhunter</code></strong> (both)</p>
+<p><strong>What:</strong> Looks for rootkits and changed system files at night, mails only on findings.
+<strong>Why:</strong> Early warning in case the server has been compromised.</p>
+<p class="wie"><strong>How:</strong> set options (<code>lineinfile</code> in a <code>loop</code> over key/value) → build the reference database (<code>--propupd</code>) → create the nightly <code>cron</code> entry, remove the package's duplicate scan → dnf plugin that renews the database after every update (otherwise false alarm).</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_clamav</code></strong> (both, profile <code>clamav_target</code>)</p>
+<p><strong>What:</strong> Nightly virus scan of uploaded files (blog: uploads, Nextcloud: user data), mail only on findings.
+<strong>Why:</strong> Malware in someone else's uploads is noticed by the next morning at the latest.</p>
+<p class="wie"><strong>How:</strong> pick the profile (<code>set_fact clamav: profiles[target]</code>) → download signatures once (<code>creates:</code>), after that the freshclam service keeps them current → generate exclude patterns for media files with Jinja → write the scan script (<code>copy</code> with a Jinja <code>{% if %}</code>) → <code>cron</code> entry.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>blog_visitor_stats</code></strong> (blog)</p>
+<p><strong>What:</strong> Every night, anonymously counts the previous day's visitors from the ingress log and stores only numbers.
+<strong>Why:</strong> Trends over months, although K3s keeps the logs only for a few days – no IP leaves the server.</p>
+<p class="wie"><strong>How:</strong> copy the script and the country database updater → two systemd timers from templates (<code>flush_handlers</code> before starting) → once: download the country database and backfill the days still available (<code>creates:</code>, <code>loop</code> over 1–5 days).</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_auditd</code></strong> (both)</p>
+<p><strong>What:</strong> The kernel logs security-relevant events (user files, sudo, SSH configuration, K3s keys …).
+<strong>Why:</strong> Traces for later investigation, and a mail on events that should never happen.</p>
+<p class="wie"><strong>How:</strong> copy the rules file → the handler loads it into the kernel (<code>augenrules --load</code>) → report script and a <code>cron</code> job every ten minutes that mails only the critical keys.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_logrotate</code></strong> (both)</p>
+<p><strong>What:</strong> Rotation rules for logs that have none or incomplete ones (Grafana, Prometheus, fail2ban, rkhunter).
+<strong>Why:</strong> Otherwise they grow without limit.</p>
+<p class="wie"><strong>How:</strong> four <code>copy</code> tasks into <code>/etc/logrotate.d/</code> – no restart needed, logrotate reads them on its next daily run.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_monit</code></strong> (both)</p>
+<p><strong>What:</strong> Watchdog for services, firewall, pods, certificates, storage and backups; restarts fail2ban if it fails.
+<strong>Why:</strong> Mails only on state changes – so every mail means something.</p>
+<p class="wie"><strong>How:</strong> check that the mail credentials are there (<code>assert</code>) → find out which services exist on this host (<code>systemctl cat</code> in a <code>loop</code> → <code>zip</code> + <code>selectattr</code>) → check scripts and configuration from templates → check the configuration with <code>monit -t</code> → start.</p>
+</div>
+
+<h3>Configuring and checking the application</h3>
+
+<div class="rolle">
+<p><strong><code>blog_wordpress</code></strong> (blog)</p>
+<p><strong>What:</strong> WordPress in the running pod via WP-CLI: installation, hardening plugin, plugins, menu/CSS, AI notice, settings, updates.
+<strong>Why:</strong> The blog's setup is reproducible, and updates come along with every run.</p>
+<p class="wie"><strong>How:</strong> everywhere "read the state → change only what is needed": e.g. read the plugin list once (<code>from_json</code>) → install only missing ones (<code>difference</code>), activate only inactive ones (<code>selectattr</code>) → write PHP files as <code>.new</code> first, swap them only on a different checksum → compare versions before and after the updates, restart only then.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>next_config</code></strong> (Nextcloud)</p>
+<p><strong>What:</strong> Nextcloud in the running pod via <code>occ</code>: domains, URL, mail, database maintenance, office and preview apps, Collabora connection, password policy.
+<strong>Why:</strong> The settings live in the repo instead of only in the running instance.</p>
+<p class="wie"><strong>How:</strong> for every value "get → compare → set": read the current value (<code>occ config:…:get</code>, <code>register</code>) → write only <code>when</code> it differs (<code>changed_when: true</code>) → so an unchanged run reports nothing, and a value changed by hand is reset and shown as a change. As the last step the same chain for the password policy (<code>password_policy.yml</code>): enable the app → read the values → delete differing old values → set them again with a type (<code>--type=integer|boolean</code>).</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>blog_verify</code> / <code>nextcloud_verify</code></strong> (per stack)</p>
+<p><strong>What:</strong> Smoke tests after the run: services, pods, HTTPS, certificate, headers, blocked paths, database/cache.
+<strong>Why:</strong> A run that reports "ok" does not mean the site works.</p>
+<p class="wie"><strong>How:</strong> only collect all checks (<code>register _v_*</code>, <code>failed_when: false</code>) → convert to true/false with <code>set_fact</code> (<code>_r_*</code>) → count, print the report, send the mail → only at the very end <code>assert</code> the critical points. Same pattern as the version check: gather first, then prepare, then judge.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_aide_refresh</code></strong> (both)</p>
+<p><strong>What:</strong> As the last role, renews the AIDE reference database if the run changed watched files.
+<strong>Why:</strong> Otherwise AIDE reports the run's own changes as a finding the next night.</p>
+<p class="wie"><strong>How:</strong> a single scan compares and writes the new database (<code>aide --update</code>) → evaluate the return code (1–7 = differences, 0 = identical, 14 and up = error) → activate the new database only on differences – the only task that reports "changed".</p>
+</div>
+
+<h3>Helper roles (not directly in the playbook)</h3>
+
+<div class="rolle">
+<p><strong><code>common_verify</code></strong> – The shared checks for host, Kubernetes and HTTP.
+<strong>How:</strong> included by the verify roles with <code>import_role … tasks_from</code>, only collects results (<code>_v_*</code>); the calling role makes the judgement.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_image_refresh</code></strong> – For the update playbooks: which deployments have a freshly built image?
+<strong>How:</strong> a Python script (<code>script</code>) pulls each image again and compares the digest with the running pod → result as JSON → <code>set_fact</code> → only what was really rebuilt gets restarted.</p>
+</div>
+
+<!-- ===================================================================== -->
 <h2 id="run">What happens during a run</h2>
 <ol class="steps">
   <li><strong>Gather facts</strong> – only <code>gather_subset: min</code>; nothing more is used anywhere.</li>
@@ -538,7 +771,8 @@ K3s API with the <code>kubernetes.core.k8s</code> module:</p>
     rollout" depend on <code>redis_apply.changed</code>.</li>
   <li>Queries use <code>kubernetes.core.k8s_info</code> (does the Secret exist yet?).</li>
   <li>The Helm charts (cert-manager, nginx-ingress) are managed by <code>kubernetes.core.helm</code>: it compares chart
-    version and values of the running release and only upgrades on a difference.</li>
+    version and values of the running release and only upgrades on a difference. With the helm-diff plugin,
+    <code>--check --diff</code> also shows which chart values would change.</li>
   <li>Needed on the server: the <code>python3-kubernetes</code> package (installed by <code>common_k3s</code>); on the
     controller: the <code>kubernetes.core</code> collection ≥ 6.5.0 (Helm 4).</li>
 </ul>

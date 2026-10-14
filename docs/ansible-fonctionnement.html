@@ -260,6 +260,7 @@
   <div class="section-label">Déroulement</div>
   <a href="#playbooks">Les playbooks</a>
   <a href="#roles">Rôles</a>
+  <a href="#roles-detail">Les rôles en détail</a>
   <a href="#execution">Ce qui se passe à l'exécution</a>
   <a href="#kubernetes">Kubernetes depuis Ansible</a>
 
@@ -490,6 +491,238 @@ de sélection :</p>
 </table>
 
 <!-- ===================================================================== -->
+<h2 id="roles-detail">Les rôles en détail</h2>
+<p>Chaque rôle en trois parties : <strong>Quoi</strong> – ce qu'il fait, <strong>Pourquoi</strong> – sa raison d'être, et <strong>Comment</strong>
+– son fonctionnement, sous forme d'enchaînement d'étapes avec les briques Ansible (→ = ensuite). L'ordre est celui des playbooks.
+La version détaillée, tâche par tâche, se trouve en commentaire en tête de chaque fichier sous <code>roles/&lt;rôle&gt;/tasks/</code>.</p>
+<style>
+  .rolle { margin: 0 0 14px 0; }
+  .rolle p { margin: 2px 0 2px 0; }
+  .rolle .wie { padding-left: 1em; }
+</style>
+
+<h3>Préparation et système de base</h3>
+
+<div class="rolle">
+<p><strong><code>common_version_check</code></strong> (les deux)</p>
+<p><strong>Quoi :</strong> Au début de chaque exécution, affiche les versions de K3s, Helm, nginx-ingress et cert-manager installées, fixées et nouvellement disponibles.
+<strong>Pourquoi :</strong> Avant chaque exécution, on voit si une version fixée dans <code>versions.yml</code> est dépassée ou pas encore déployée.</p>
+<p class="wie"><strong>Comment :</strong> relever les versions (<code>command</code> sur le serveur, <code>uri</code> vers l'API GitHub) → les ramener à une même notation avec un premier <code>set_fact</code> (<code>regex_search</code>, <code>from_json</code>) → les comparer avec un second <code>set_fact</code> (<code>==</code> donne vrai/faux) → afficher un rapport en couleur avec <code>debug</code>. Lecture seule, n'interrompt jamais.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>blog_packages</code> / <code>next_packages</code></strong> (par pile)</p>
+<p><strong>Quoi :</strong> Nom d'hôte, dépôts de paquets (EPEL ; pour Nextcloud aussi CRB et MariaDB), mise à jour du système, paquets de base.
+<strong>Pourquoi :</strong> Sans eux, tous les rôles suivants manquent d'outils et de dépendances.</p>
+<p class="wie"><strong>Comment :</strong> définir le nom d'hôte (<code>hostname</code>) → configurer les dépôts (lire d'abord <code>dnf repolist</code>, n'activer que ce qui manque) → tout mettre à jour sauf le noyau (<code>dnf name: "*" state: latest</code> ; le noyau ne peut pas être installé depuis la session SSH confinée – <code>ProtectKernelModules</code> de <code>common_ssh</code> –, il arrive la nuit via <code>dnf-automatic</code>) → vérifier si un redémarrage est nécessaire (<code>needs-restarting</code>, via <code>systemd-run</code>), <code>reboot</code> seulement dans ce cas → installer les paquets → arrêter et masquer les services inutilisés.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_ssh</code></strong> (les deux)</p>
+<p><strong>Quoi :</strong> SSH sur le port 10022, <code>sshd_config</code> durci (clés uniquement), étiquette SELinux pour le port, alarme par mail à chaque connexion interactive.
+<strong>Pourquoi :</strong> Retire leur base aux attaques automatisées sur le port 22 et exclut les connexions par mot de passe. Un drop-in systemd place en outre sshd dans un bac à sable dont hérite chaque session SSH : pas de modules du noyau, pas de paramètres du noyau – cela ne passe plus que délibérément par <code>systemd-run</code> (détails dans les docs d'exploitation, « Consignes de sécurité importantes »).</p>
+<p class="wie"><strong>Comment :</strong> retenir s'il s'agit de la première exécution (<code>set_fact ssh_first_run</code>) → lire la liste des ports SELinux, ne poser l'étiquette que si nécessaire → copier la configuration et les drop-ins (<code>copy</code>, <code>notify</code>) → chaîne de handlers à la fin : vérifier avec <code>sshd -t</code> → redémarrer sshd (<code>async</code>, car la propre connexion est coupée) → <code>reset_connection</code> → <code>wait_for_connection</code> → enfin installer l'alarme de connexion : script depuis un template, timer systemd toutes les 2 minutes qui signale par mail les nouvelles connexions interactives de <code>wtmp</code>.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_firewall</code></strong> (les deux)</p>
+<p><strong>Quoi :</strong> Règles nftables pour IPv4/IPv6, en option un filtre par pays pour SSH.
+<strong>Pourquoi :</strong> Seul ce qui est explicitement autorisé passe ; fail2ban reçoit ses ensembles de bannissement.</p>
+<p class="wie"><strong>Comment :</strong> détecter DHCP ou statique (lire <code>nmcli</code> → <code>set_fact</code>) → construire en option la liste des pays → écrire le jeu de règles depuis le template, vérifié au préalable (<code>template validate: nft -c</code>) → limiter le rechargement à la propre table (drop-in systemd) → le handler recharge nftables et laisse fail2ban reposer ses bannissements (<code>listen</code>). Première exécution : redémarrage au lieu d'une activation à chaud (<code>include_tasks … when</code>).</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_sysctl</code></strong> (les deux)</p>
+<p><strong>Quoi :</strong> Paramètres du noyau (TCP BBR, délais, files d'attente, durcissement réseau CIS) et Transparent Huge Pages sur <code>madvise</code>.
+<strong>Pourquoi :</strong> Serveur web plus rapide, faiblesses réseau connues corrigées.</p>
+<p class="wie"><strong>Comment :</strong> charger le module <code>tcp_bbr</code> et l'inscrire pour le démarrage → valeurs en fichiers dans <code>/etc/sysctl.d/</code> (<code>template</code>, permanent) → appliquer immédiatement (<code>sysctl --system</code> via <code>systemd-run</code>, car la session SSH confinée ne peut pas écrire de valeurs du noyau) → une petite unité systemd règle THP à chaque démarrage.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_cis_hardening</code></strong> (les deux)</p>
+<p><strong>Quoi :</strong> Les points du benchmark CIS applicables sans risque : AIDE, modules du noyau bloqués, journal, pas de core dumps, droits cron/sudo, options de montage.
+<strong>Pourquoi :</strong> Moins de surface d'attaque ; les points risqués (PAM, GRUB, politique crypto) restent volontairement de côté.</p>
+<p class="wie"><strong>Comment :</strong> une série de petits groupes indépendants, chacun selon le schéma « vérifier l'état → ne modifier que si nécessaire » : p. ex. ne créer la base AIDE que si elle manque (<code>stat</code> → <code>when</code>) → n'écrire sudoers qu'après vérification (<code>validate: visudo -cf</code>) → écrire les options de montage dans fstab et les activer aussitôt (<code>mount state: mounted</code>).</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_selinux</code></strong> (les deux, profil <code>selinux_target</code>)</p>
+<p><strong>Quoi :</strong> SELinux en mode « enforcing » et les répertoires de l'hôte montés comme stockage dans les pods.
+<strong>Pourquoi :</strong> Les conteneurs ne peuvent écrire que dans des fichiers de type <code>container_file_t</code>.</p>
+<p class="wie"><strong>Comment :</strong> choisir le profil (<code>selinux_profiles[selinux_target]</code>) → créer les répertoires avec propriétaire et droits (<code>file</code>, <code>loop</code>) → enregistrer la règle de façon permanente (<code>semanage fcontext</code> ; « already defined » ne compte ni comme erreur ni comme modification) → l'appliquer aux fichiers existants (<code>restorecon</code>).</p>
+</div>
+
+<h3>Nextcloud uniquement : base de données et cache sur l'hôte</h3>
+
+<div class="rolle">
+<p><strong><code>next_mariadb</code></strong> (Nextcloud)</p>
+<p><strong>Quoi :</strong> MariaDB sur l'hôte : durcissement systemd, journal des requêtes lentes, rotation, base de données, utilisateur.
+<strong>Pourquoi :</strong> Nextcloud a besoin d'une base de données que seuls les pods peuvent joindre.</p>
+<p class="wie"><strong>Comment :</strong> vérifier si la base Nextcloud existe déjà (<code>register db_check</code>) → à la première exécution seulement : créer le mot de passe root, la base et l'utilisateur (<code>when: db_check.rc != 0</code>) → à chaque exécution : supprimer les comptes anonymes et la base de test, créer ou corriger l'utilisateur de l'exporteur (<code>community.mysql</code>, idempotent, <code>no_log</code>).</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>next_redis</code></strong> (Nextcloud)</p>
+<p><strong>Quoi :</strong> Rendre Redis joignable pour les pods et le protéger par mot de passe.
+<strong>Pourquoi :</strong> Redis conserve les verrous de fichiers et les sessions de Nextcloud.</p>
+<p class="wie"><strong>Comment :</strong> vérifier que le mot de passe figure dans le vault (<code>assert</code>) → définir trois lignes dans <code>redis.conf</code> (<code>lineinfile</code>, <code>notify</code>) → redémarrer tout de suite plutôt qu'à la fin (<code>meta: flush_handlers</code>) → attendre que le port réponde (<code>wait_for</code>).</p>
+</div>
+
+<h3>Kubernetes et l'application</h3>
+
+<div class="rolle">
+<p><strong><code>common_k3s</code></strong> (les deux)</p>
+<p><strong>Quoi :</strong> K3s, Helm avec le plugin helm-diff, cert-manager (Let's Encrypt) et l'ingress F5 nginx.
+Les composants fournis avec K3s dont personne n'a besoin ici (Traefik, ServiceLB, local-storage) sont désactivés.
+<strong>Pourquoi :</strong> C'est la plateforme sur laquelle tournent le blog et Nextcloud. Ce qui ne tourne pas ne peut pas être attaqué.</p>
+<p class="wie"><strong>Comment :</strong> lire la version installée (<code>register</code>) → ne télécharger le binaire que s'il diffère de <code>k3s_version</code> (<code>get_url … when</code>, <code>notify</code>) → redémarrer tout de suite (<code>flush_handlers</code>) → attendre que l'API réponde (<code>until</code>) → Helm de la même façon → ne télécharger helm-diff que si la version diffère de <code>helm_diff_version</code> (somme de contrôle dans <code>get_url</code>) → installer les charts (<code>kubernetes.core.helm</code> ne modifie qu'en cas d'autre version de chart ou d'autres valeurs).</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_calico</code></strong> (les deux)</p>
+<p><strong>Quoi :</strong> Calico en mode policy-only – Flannel continue de gérer le réseau, Calico applique les NetworkPolicies.
+<strong>Pourquoi :</strong> Sans Calico, toutes les NetworkPolicies seraient ignorées en silence.</p>
+<p class="wie"><strong>Comment :</strong> rendre le template sur le contrôleur (<code>lookup('template')</code>) → le découper en objets Kubernetes (<code>from_yaml_all</code>) → appliquer via l'API (<code>kubernetes.core.k8s apply</code>, « changed » seulement en cas d'écart réel) → n'attendre les pods que dans ce cas (<code>rollout status … when changed</code>). Ce <strong>schéma d'application K8s</strong> est utilisé par 26 tâches du dépôt.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>blog_k3s_deploy</code> / <code>next_k3s_deploy</code></strong> (par pile)</p>
+<p><strong>Quoi :</strong> Tous les objets Kubernetes de l'application : namespace, secrets, ConfigMaps, deployments, services, ingress, CronJobs, NetworkPolicies, politique d'images (pour Nextcloud en plus Collabora, notify_push, synchronisation des apps).
+<strong>Pourquoi :</strong> Pour que l'application puisse être reconstruite à tout moment depuis le dépôt.</p>
+<p class="wie"><strong>Comment :</strong> un template et un fichier de tâches par composant, dans l'ordre des dépendances (<code>import_tasks</code>) → appliquer chacun avec le schéma d'application K8s → n'attendre les nouveaux pods que si quelque chose a changé → Nextcloud : MariaDB/Redis sur l'hôte en tant que « services externes » (service sans sélecteur + endpoints vers l'IP de l'hôte).</p>
+</div>
+
+<h3>Supervision</h3>
+
+<div class="rolle">
+<p><strong><code>common_node_exporter</code></strong> / <strong><code>common_mysqld_exporter</code></strong> (les deux / Nextcloud uniquement)</p>
+<p><strong>Quoi :</strong> Exposent localement les métriques de l'hôte ou de la MariaDB de l'hôte (<code>127.0.0.1:9100</code> / <code>:9104</code>).
+<strong>Pourquoi :</strong> Prometheus les récupère là ; rien n'est joignable de l'extérieur.</p>
+<p class="wie"><strong>Comment :</strong> lire la version installée → ne télécharger, décompresser et installer l'archive qu'en cas de version différente (<code>get_url</code> → <code>unarchive</code> → <code>copy</code>, ignorés en mode check) → écrire l'unité systemd + le drop-in de bac à sable (<code>notify</code>) → les handlers rechargent systemd et redémarrent le service une fois. L'exporteur MariaDB lit son mot de passe dans un fichier que lui seul peut lire (<code>no_log</code>).</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_prometheus</code></strong> (les deux)</p>
+<p><strong>Quoi :</strong> Collecte les métriques de tous les exporteurs et les conserve 30 jours, joignable uniquement en local.
+<strong>Pourquoi :</strong> Base des courbes et des alertes Grafana.</p>
+<p class="wie"><strong>Comment :</strong> comme pour les exporteurs (vérifier la version → ne télécharger qu'en cas d'écart) → configuration depuis le template, qui ajoute les bons exporteurs selon la pile (<code>template</code>) → unité et bac à sable → exactement un redémarrage à la fin, quel que soit le nombre de fichiers modifiés (handler).</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_grafana</code></strong> (les deux)</p>
+<p><strong>Quoi :</strong> Grafana avec une source de données Prometheus, trois tableaux de bord et des alertes par mail, accessible sous <code>/grafana/</code>.
+<strong>Pourquoi :</strong> Des courbes et des alertes sans que Prometheus lui-même doive être exposé.</p>
+<p class="wie"><strong>Comment :</strong> installer le paquet, définir des lignes isolées dans <code>grafana.ini</code> (<code>lineinfile</code>) → démarrer et attendre que l'API réponde (<code>uri … until</code>) → via l'API HTTP « regarder d'abord, puis créer » (enregistrer le GET → POST seulement <code>when</code> il manque) → télécharger et importer les tableaux de bord → règles d'alerte via un petit script Python.</p>
+</div>
+
+<h3>Protection, mail et maintenance</h3>
+
+<div class="rolle">
+<p><strong><code>common_fail2ban</code></strong> (les deux)</p>
+<p><strong>Quoi :</strong> Bannit les adresses IP qui attaquent SSH ou les connexions, ou qui sondent le système.
+<strong>Pourquoi :</strong> Les attaques automatisées s'arrêtent après quelques tentatives au lieu de jamais.</p>
+<p class="wie"><strong>Comment :</strong> action de bannissement propre (écrit dans les ensembles nftables du pare-feu), cinq filtres et <code>jail.local</code> avec sept jails depuis des templates (<code>template</code>, <code>notify</code>) → démarrer le service → un timer recharge les jails HTTP dès que le pod ingress crée un nouveau fichier de journal.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_msmtp</code></strong> (les deux)</p>
+<p><strong>Quoi :</strong> msmtp comme remplaçant léger de <code>sendmail</code>.
+<strong>Pourquoi :</strong> cron, rkhunter, ClamAV, dnf-automatic et les rapports de vérification peuvent envoyer des mails.</p>
+<p class="wie"><strong>Comment :</strong> installer le paquet → <code>/etc/msmtprc</code> depuis le template (relais, port, identifiants du vault ; droits 0600) → créer une fois le fichier de journal (<code>file state: touch</code> avec <code>preserve</code>, pour qu'il ne compte pas comme modifié à chaque fois). Pas de service : chaque programme lance msmtp lui-même.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_dnf_automatic</code></strong> (les deux)</p>
+<p><strong>Quoi :</strong> Installe les mises à jour de sécurité la nuit et redémarre à 03:30 si nécessaire.
+<strong>Pourquoi :</strong> Les failles sont corrigées sans que personne ait à y penser.</p>
+<p class="wie"><strong>Comment :</strong> deux lignes dans <code>automatic.conf</code> (mises à jour de sécurité uniquement, installer réellement) → déplacer le timer à 01:00 par un drop-in (redémarré seulement si le drop-in a changé : <code>register</code> → <code>is changed</code>) → deux entrées <code>cron</code> : redémarrage si nécessaire et mail de contrôle à 06:00.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_rkhunter</code></strong> (les deux)</p>
+<p><strong>Quoi :</strong> Recherche la nuit des rootkits et des fichiers système modifiés, n'envoie un mail qu'en cas de découverte.
+<strong>Pourquoi :</strong> Alerte précoce si le serveur a été compromis.</p>
+<p class="wie"><strong>Comment :</strong> définir les options (<code>lineinfile</code> dans une <code>loop</code> sur clé/valeur) → construire la base de référence (<code>--propupd</code>) → créer l'entrée <code>cron</code> nocturne, supprimer l'analyse en double du paquet → plugin dnf qui renouvelle la base après chaque mise à jour (sinon fausse alerte).</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_clamav</code></strong> (les deux, profil <code>clamav_target</code>)</p>
+<p><strong>Quoi :</strong> Analyse antivirus nocturne des fichiers envoyés (blog : uploads, Nextcloud : données des utilisateurs), mail seulement en cas de découverte.
+<strong>Pourquoi :</strong> Un logiciel malveillant dans des fichiers envoyés par d'autres est repéré au plus tard le lendemain matin.</p>
+<p class="wie"><strong>Comment :</strong> choisir le profil (<code>set_fact clamav: profiles[target]</code>) → télécharger une fois les signatures (<code>creates:</code>), ensuite le service freshclam les tient à jour → générer avec Jinja les motifs d'exclusion pour les fichiers multimédias → écrire le script d'analyse (<code>copy</code> avec un <code>{% if %}</code> Jinja) → entrée <code>cron</code>.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>blog_visitor_stats</code></strong> (blog)</p>
+<p><strong>Quoi :</strong> Chaque nuit, compte anonymement les visiteurs de la veille à partir du journal de l'ingress et ne stocke que des chiffres.
+<strong>Pourquoi :</strong> Une évolution sur des mois, bien que K3s ne conserve les journaux que quelques jours – aucune IP ne quitte le serveur.</p>
+<p class="wie"><strong>Comment :</strong> copier le script et l'outil de mise à jour de la base des pays → deux timers systemd depuis des templates (<code>flush_handlers</code> avant le démarrage) → une fois : télécharger la base des pays et rattraper les jours encore disponibles (<code>creates:</code>, <code>loop</code> sur 1 à 5 jours).</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_auditd</code></strong> (les deux)</p>
+<p><strong>Quoi :</strong> Le noyau journalise les opérations sensibles pour la sécurité (fichiers des utilisateurs, sudo, configuration SSH, clés K3s …).
+<strong>Pourquoi :</strong> Des traces pour une enquête ultérieure et un mail en cas d'événements qui ne devraient jamais se produire.</p>
+<p class="wie"><strong>Comment :</strong> copier le fichier de règles → le handler le charge dans le noyau (<code>augenrules --load</code>) → script de signalement et <code>cron</code> toutes les dix minutes, qui n'envoie par mail que les clés critiques.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_logrotate</code></strong> (les deux)</p>
+<p><strong>Quoi :</strong> Règles de rotation pour les journaux qui n'en ont pas ou dont les règles sont incomplètes (Grafana, Prometheus, fail2ban, rkhunter).
+<strong>Pourquoi :</strong> Sinon ils grossissent sans limite.</p>
+<p class="wie"><strong>Comment :</strong> quatre tâches <code>copy</code> vers <code>/etc/logrotate.d/</code> – pas de redémarrage nécessaire, logrotate les lit lors de sa prochaine exécution quotidienne.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_monit</code></strong> (les deux)</p>
+<p><strong>Quoi :</strong> Chien de garde pour les services, le pare-feu, les pods, les certificats, le stockage et les sauvegardes ; redémarre fail2ban en cas de panne.
+<strong>Pourquoi :</strong> N'envoie un mail qu'en cas de changement d'état – chaque mail a donc un sens.</p>
+<p class="wie"><strong>Comment :</strong> vérifier que les identifiants mail sont présents (<code>assert</code>) → déterminer quels services existent sur cet hôte (<code>systemctl cat</code> dans une <code>loop</code> → <code>zip</code> + <code>selectattr</code>) → scripts de vérification et configuration depuis des templates → vérifier la configuration avec <code>monit -t</code> → démarrer.</p>
+</div>
+
+<h3>Configurer et vérifier l'application</h3>
+
+<div class="rolle">
+<p><strong><code>blog_wordpress</code></strong> (blog)</p>
+<p><strong>Quoi :</strong> WordPress dans le pod en cours d'exécution via WP-CLI : installation, plugin de durcissement, plugins, menu/CSS, mention IA, réglages, mises à jour.
+<strong>Pourquoi :</strong> La configuration du blog est reproductible et les mises à jour accompagnent chaque exécution.</p>
+<p class="wie"><strong>Comment :</strong> partout « lire l'état → ne changer que le nécessaire » : p. ex. lire une fois la liste des plugins (<code>from_json</code>) → n'installer que ceux qui manquent (<code>difference</code>), n'activer que ceux qui sont inactifs (<code>selectattr</code>) → écrire d'abord les fichiers PHP en <code>.new</code>, ne les remplacer qu'en cas de somme de contrôle différente → comparer les versions avant et après les mises à jour, ne redémarrer que dans ce cas.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>next_config</code></strong> (Nextcloud)</p>
+<p><strong>Quoi :</strong> Nextcloud dans le pod en cours d'exécution via <code>occ</code> : domaines, URL, mail, maintenance de la base, apps Office et aperçus, connexion Collabora, politique de mots de passe.
+<strong>Pourquoi :</strong> Les réglages se trouvent dans le dépôt et pas seulement dans l'instance en cours.</p>
+<p class="wie"><strong>Comment :</strong> pour chaque valeur « get → comparer → set » : lire la valeur actuelle (<code>occ config:…:get</code>, <code>register</code>) → n'écrire que <code>when</code> elle diffère (<code>changed_when: true</code>) → ainsi une exécution sans changement ne signale rien, et une valeur modifiée à la main est rétablie et affichée comme modification. En dernière étape, la même chaîne pour la politique de mots de passe (<code>password_policy.yml</code>) : activer l'app → lire les valeurs → supprimer les anciennes valeurs divergentes → les redéfinir avec un type (<code>--type=integer|boolean</code>).</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>blog_verify</code> / <code>nextcloud_verify</code></strong> (par pile)</p>
+<p><strong>Quoi :</strong> Tests de fumée après l'exécution : services, pods, HTTPS, certificat, en-têtes, chemins bloqués, base de données/cache.
+<strong>Pourquoi :</strong> Une exécution qui affiche « ok » ne signifie pas encore que le site fonctionne.</p>
+<p class="wie"><strong>Comment :</strong> ne faire que collecter toutes les vérifications (<code>register _v_*</code>, <code>failed_when: false</code>) → les convertir en vrai/faux avec <code>set_fact</code> (<code>_r_*</code>) → compter, afficher le rapport, envoyer le mail → seulement tout à la fin, <code>assert</code> sur les points critiques. Même schéma que pour la vérification des versions : d'abord relever, puis préparer, puis juger.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_aide_refresh</code></strong> (les deux)</p>
+<p><strong>Quoi :</strong> En dernier rôle, renouvelle la base de référence AIDE si l'exécution a modifié des fichiers surveillés.
+<strong>Pourquoi :</strong> Sinon AIDE signale la nuit suivante les propres modifications de l'exécution comme une découverte.</p>
+<p class="wie"><strong>Comment :</strong> une seule analyse compare et écrit la nouvelle base (<code>aide --update</code>) → évaluer le code de retour (1 à 7 = différences, 0 = identique, 14 et plus = erreur) → n'activer la nouvelle base qu'en cas de différences – c'est la seule tâche qui signale « changed ».</p>
+</div>
+
+<h3>Rôles auxiliaires (pas directement dans le playbook)</h3>
+
+<div class="rolle">
+<p><strong><code>common_verify</code></strong> – Les vérifications communes pour l'hôte, Kubernetes et HTTP.
+<strong>Comment :</strong> inclus par les rôles de vérification via <code>import_role … tasks_from</code>, ne fait que collecter les résultats (<code>_v_*</code>) ; c'est le rôle appelant qui juge.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_image_refresh</code></strong> – Pour les playbooks de mise à jour : quels deployments ont une image fraîchement reconstruite ?
+<strong>Comment :</strong> un script Python (<code>script</code>) retélécharge chaque image et compare le digest avec celui du pod en cours → résultat en JSON → <code>set_fact</code> → seul ce qui a vraiment été reconstruit est redémarré.</p>
+</div>
+
+<!-- ===================================================================== -->
 <h2 id="execution">Ce qui se passe à l'exécution</h2>
 <ol class="steps">
   <li><strong>Collecte des facts</strong> – seulement <code>gather_subset: min</code> ; rien de plus n'est utilisé.</li>
@@ -546,7 +779,8 @@ directement à l'API K3s avec le module <code>kubernetes.core.k8s</code> :</p>
     rollout », dépendent de <code>redis_apply.changed</code>.</li>
   <li>Les requêtes passent par <code>kubernetes.core.k8s_info</code> (le Secret existe-t-il déjà ?).</li>
   <li>Les charts Helm (cert-manager, nginx-ingress) sont gérés par <code>kubernetes.core.helm</code> : il compare la
-    version du chart et les valeurs de la release en cours, et ne met à jour qu'en cas de différence.</li>
+    version du chart et les valeurs de la release en cours, et ne met à jour qu'en cas de différence. Avec le plugin
+    helm-diff, <code>--check --diff</code> montre aussi quelles valeurs du chart changeraient.</li>
   <li>Prérequis sur le serveur : le paquet <code>python3-kubernetes</code> (installé par <code>common_k3s</code>) ; sur le
     contrôleur : la collection <code>kubernetes.core</code> ≥ 6.5.0 (Helm 4).</li>
 </ul>

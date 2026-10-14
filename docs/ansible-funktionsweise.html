@@ -568,9 +568,10 @@ Ausführlicher, Task für Task, steht es als Kommentar am Anfang jeder Datei unt
 
 <div class="rolle">
 <p><strong><code>common_k3s</code></strong> (beide)</p>
-<p><strong>Was:</strong> K3s, Helm, cert-manager (Let's Encrypt) und der F5-nginx-Ingress.
-<strong>Warum:</strong> Das ist die Plattform, auf der Blog und Nextcloud laufen.</p>
-<p class="wie"><strong>Wie:</strong> installierte Version lesen (<code>register</code>) → Binary nur laden, wenn sie von <code>k3s_version</code> abweicht (<code>get_url … when</code>, <code>notify</code>) → Neustart sofort (<code>flush_handlers</code>) → warten, bis die API antwortet (<code>until</code>) → Helm genauso → Charts installieren (<code>kubernetes.core.helm</code> ändert nur bei anderer Chart-Version oder anderen Werten).</p>
+<p><strong>Was:</strong> K3s, Helm samt Plugin helm-diff, cert-manager (Let's Encrypt) und der F5-nginx-Ingress.
+Die mitgelieferten K3s-Bausteine, die hier keiner braucht (Traefik, ServiceLB, local-storage), sind abgeschaltet.
+<strong>Warum:</strong> Das ist die Plattform, auf der Blog und Nextcloud laufen. Was nicht läuft, kann auch nicht angegriffen werden.</p>
+<p class="wie"><strong>Wie:</strong> installierte Version lesen (<code>register</code>) → Binary nur laden, wenn sie von <code>k3s_version</code> abweicht (<code>get_url … when</code>, <code>notify</code>) → Neustart sofort (<code>flush_handlers</code>) → warten, bis die API antwortet (<code>until</code>) → Helm genauso → helm-diff nur laden, wenn die Version von <code>helm_diff_version</code> abweicht (Prüfsumme in <code>get_url</code>) → Charts installieren (<code>kubernetes.core.helm</code> ändert nur bei anderer Chart-Version oder anderen Werten).</p>
 </div>
 
 <div class="rolle">
@@ -773,7 +774,8 @@ die Unterschiede. Damit das hier aussagekräftig ist:</p>
     „Rollout abwarten“ hängen an <code>redis_apply.changed</code>.</li>
   <li>Abfragen laufen über <code>kubernetes.core.k8s_info</code> (gibt es das Secret schon?).</li>
   <li>Die Helm-Charts (cert-manager, nginx-ingress) verwaltet <code>kubernetes.core.helm</code>: Es vergleicht Chart-Version
-    und Werte des laufenden Releases und aktualisiert nur bei einem Unterschied.</li>
+    und Werte des laufenden Releases und aktualisiert nur bei einem Unterschied. Mit dem Plugin helm-diff
+    zeigt <code>--check --diff</code> auch bei Charts, welche Werte sich ändern würden.</li>
   <li>Voraussetzung auf dem Server: das Paket <code>python3-kubernetes</code> (installiert <code>common_k3s</code>);
     auf dem Controller die Collection <code>kubernetes.core</code> ≥ 6.5.0 (Helm 4).</li>
 </ul>
