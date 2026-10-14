@@ -122,6 +122,11 @@
       disable:
         - traefik
         - servicelb
+        # local-storage = the bundled local-path-provisioner (runs as root, can
+        # create directories on the host). Nothing here uses a PersistentVolumeClaim -
+        # all data lives in hostPath directories - so it ran for nothing
+        # (checked 2026-10-14: 0 PVCs, 0 PVs on all three hosts).
+        - local-storage
       flannel-backend: vxlan
       write-kubeconfig-mode: "0600"
       kube-apiserver-arg:
