@@ -2,7 +2,8 @@
 # =============================================================================
 # Role: common_grafana
 # Purpose: Install Grafana OSS on AlmaLinux 9, configure a Prometheus
-#          datasource and import dashboard 1860 (Node Exporter Full).
+#          datasource, import three dashboards (1860 Node Exporter Full,
+#          7362 MySQL Overview, 4912 PHP-FPM) and set up e-mail alerting.
 #          Grafana is exposed via K3s Ingress at /grafana/ on the main hostname.
 #          Access is protected by Grafana's own admin password (no host-level proxy auth).
 # =============================================================================
