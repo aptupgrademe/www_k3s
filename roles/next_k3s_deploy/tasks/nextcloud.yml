@@ -27,7 +27,7 @@
   # With --diff (check-drift.sh): one loop item per object, so the diff shows
   # each object's change (a list definition reports no diff). Otherwise one
   # call for all objects of the template - one module run instead of one per
-  # object (Calico alone has 33), same apply semantics.
+  # object (Calico alone has 34), same apply semantics.
   loop: "{{ k8s_objects if ansible_diff_mode else [k8s_objects] }}"
   loop_control:
     label: "{{ (item.kind ~ '/' ~ item.metadata.name) if item is mapping else ((item | length) ~ ' objects') }}"

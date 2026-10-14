@@ -25,8 +25,9 @@
     name: dnf-automatic
     state: present
 
-# Provides `needs-restarting`, used during manual full-system updates
-# to check whether a reboot is required (see docs/*-betrieb.html).
+# Provides `needs-restarting`: the two cron jobs at the end of this role use
+# it to decide whether a reboot is pending, and so do manual full-system
+# updates (see docs/*-betrieb.html).
 - name: dnf-automatic | Install dnf-utils (needs-restarting)
   ansible.builtin.dnf:
     name: dnf-utils
