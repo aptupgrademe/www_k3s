@@ -132,7 +132,7 @@ table inet filter {
     # -------------------------------------------------------------------------
 
     # Allow K3s pods to reach the K3s API server and kubelet.
-    # ClusterIP 10.43.0.1:443 is DNAT-rewritten by iptables to {{ server_ipv4 }}:6443.
+    # ClusterIP 10.43.0.1:443 is DNAT-rewritten by kube-proxy to {{ server_ipv4 }}:6443.
     # metrics-server scrapes kubelet metrics via {{ server_ipv4 }}:10250.
     # Without these rules the RFC-1918 drop below silently blocks pod→host traffic.
     ip saddr {{ k3s_pod_cidr }} tcp dport { 6443, 10250 } accept
@@ -268,8 +268,9 @@ table inet filter {
 
   # ===========================================================================
   # FORWARD – K3s inter-pod and pod-to-service traffic
-  # K3s manages its own KUBE-* chains in iptables (separate subsystem);
-  # the nftables FORWARD chain only needs to pass pod CIDR traffic.
+  # K3s (kube-proxy, flannel, Calico) keeps its own KUBE-*/cali-* chains in
+  # separate tables of the same nftables subsystem (written via iptables-nft);
+  # this chain only needs to pass pod CIDR traffic.
   # ===========================================================================
   chain forward {
     type filter hook forward priority filter; policy drop;

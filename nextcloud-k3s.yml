@@ -23,8 +23,11 @@
 #     → run nextcloud-update.yml first, then nextcloud-k3s.yml
 # -----------------------------------------------------------------------------
 #
-# First run on a fresh server: ansible_port must be 22 in host_vars.
-# After SSH hardening: change ansible_port to 10022.
+# First run on a fresh server: ansible_port must be 22 in host_vars. The run
+# reboots the server by itself once SSH and the firewall are configured
+# (common_firewall/tasks/first_run_reboot.yml) and finishes on port 10022.
+# Afterwards change ansible_port to 10022 in host_vars - the switch only
+# lasts for that one run.
 #
 # Production hosts (cvjm, sofie) require host_vars and encrypted vault.yml
 # before running without --limit.
