@@ -1988,6 +1988,33 @@ Both verified 2026-09-14.</p>
 
 <!-- ─────────────────────────── SECURITY ───────────────────────────── -->
 <section id="sicherheit">
+<h3>Tuning of 2026-10-16: measurements and settings</h3>
+<p>
+  Based on the Prometheus values of the last 7 days and counts on both hosts. Both hosts have
+  plenty of free RAM (cvjm ~19&nbsp;GB, sofie ~8&nbsp;GB available); the changes use it where it
+  measurably helps.
+</p>
+<table>
+  <tr><th>Area</th><th>Measurement</th><th>Setting</th><th>Where</th></tr>
+  <tr><td>PHP-FPM workers</td><td>peak cvjm 17 of 20, sofie 10 of 12 busy at once</td><td>cvjm 30 workers (container 6&nbsp;Gi / 3 cores), sofie 20 (5&nbsp;Gi / 2 cores)</td><td><code>host_vars/&lt;host&gt;/vars.yml</code>: <code>nextcloud_fpm_*</code></td></tr>
+  <tr><td>OPcache</td><td>15,500 (cvjm) / 17,800 (sofie) PHP files; limit 10,000 = 16,229 slots internally</td><td>256&nbsp;MB, <code>max_accelerated_files=20000</code> (32,531 internally)</td><td><code>next_k3s_deploy/templates/nginx-cm.yml.j2</code></td></tr>
+  <tr><td>APCu (<code>memcache.local</code>)</td><td>PHP default 32&nbsp;MB, one segment per pod shared by all workers</td><td><code>apc.shm_size = 128M</code></td><td>same file</td></tr>
+  <tr><td>MariaDB temp files</td><td>2,000–3,500 temp tables a day on disk (TEXT columns never fit the memory engine)</td><td>private tmpfs: <code>/tmp</code> 4&nbsp;G, <code>/var/tmp</code> 64&nbsp;M</td><td><code>next_mariadb/files/systemd-hardening.conf</code></td></tr>
+  <tr><td>Collabora</td><td>"office failed to load" on a cold start</td><td>warm children: cvjm 10 (limit 8&nbsp;Gi), sofie 6 (4&nbsp;Gi)</td><td><code>collabora_num_prealloc</code>, <code>collabora_mem_limit</code></td></tr>
+  <tr><td>Kernel</td><td>inotify default 128 instances; write-back at 10/30&nbsp;% of RAM</td><td>8192 instances / 524288 watches; write-back 5/10&nbsp;%; plus <code>dmesg_restrict</code>, <code>tcp_rfc1337</code>, <code>protected_fifos/regular=2</code></td><td><code>common_sysctl</code></td></tr>
+</table>
+<p>
+  <strong>Deliberately unchanged:</strong> the InnoDB buffer pool (hit ratio &gt; 99.8&nbsp;%, larger
+  than the data on both hosts – cvjm 2&nbsp;GB for 344&nbsp;MB) and Redis (1–1.5&nbsp;MB used). More
+  memory gains nothing there. Free RAM is not wasted anyway: Linux uses it as file cache.
+</p>
+<div class="callout callout-warn">
+  <strong>Do not combine <code>PrivateTmp=yes</code> with <code>TemporaryFileSystem=/tmp</code>.</strong>
+  Tested with <code>systemd-run</code>: the private disk directory wins and <code>/tmp</code> stays on
+  xfs. The drop-in therefore sets two tmpfs of its own. The SELinux label stays <code>tmp_t</code>.
+  The tmpfs only uses memory while files exist.
+</div>
+
 <h2>Security</h2>
 
 <h3>Multi-Layered Protection Strategy</h3>
@@ -2210,6 +2237,7 @@ Both verified 2026-09-14.</p>
   <tr><td><code>CAP_IPC_LOCK</code> needed?</td><td>no — <code>large_pages=0</code>, <code>memlock</code> unset</td><td><code>CapabilityBoundingSet=</code> emptied entirely</td></tr>
   <tr><td>Which devices?</td><td>only <code>/dev/null</code></td><td><code>PrivateDevices=yes</code></td></tr>
   <tr><td>Which writable paths?</td><td>only <code>/var/lib/mysql</code></td><td><code>ProtectSystem=strict</code> + explicit <code>ReadWritePaths</code></td></tr>
+  <tr><td>Where does <code>/tmp</code> go?</td><td>temp tables, filesort, ALTER sort files</td><td>a tmpfs of its own (4&nbsp;G) instead of <code>PrivateTmp</code> – since 2026-10-16, see Performance</td></tr>
   <tr><td><code>skip_name_resolve</code>?</td><td>off → reverse DNS per connection</td><td><code>AF_NETLINK</code> must stay allowed</td></tr>
 </table>
 <div class="callout callout-warn">

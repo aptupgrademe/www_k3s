@@ -2105,6 +2105,21 @@ Both verified 2026-09-14.</p>
 
 <!-- ─────────────────────────── SECURITY ─────────────────────────────── -->
 <section id="sicherheit">
+<h3>Tuning of 2026-10-16: measurements and settings</h3>
+<p>Based on the Prometheus values of the last 7 days. The host has ~5.7&nbsp;GB of RAM available.</p>
+<table>
+  <tr><th>Area</th><th>Measurement</th><th>Setting</th></tr>
+  <tr><td>PHP-FPM</td><td>peak 6 of 12 workers, queue at most 1</td><td>unchanged</td></tr>
+  <tr><td>OPcache</td><td>~4,600 PHP files, limit 10,000</td><td>unchanged</td></tr>
+  <tr><td>MariaDB buffer pool</td><td>hit ratio 99.99&nbsp;%, 384&nbsp;MB for ~40&nbsp;MB of data</td><td>unchanged</td></tr>
+  <tr><td>MariaDB temp files</td><td>~2,000 temp tables a day on disk</td><td><code>/tmp</code> emptyDir in RAM (<code>medium: Memory</code>, 512&nbsp;Mi); container limit 768&nbsp;Mi → 1280&nbsp;Mi, because a memory emptyDir counts against the memory limit</td></tr>
+  <tr><td>Kernel</td><td>inotify default 128 instances; write-back at 10/30&nbsp;%</td><td>8192/524288; 5/10&nbsp;%; plus <code>dmesg_restrict</code>, <code>tcp_rfc1337</code>, <code>protected_fifos/regular=2</code></td></tr>
+</table>
+<p>
+  Fixed on the way: the init container set the data directory to <code>0755</code>, the role to
+  <code>0750</code>, so it drifted after every pod restart. Both set <code>0750</code> now.
+</p>
+
 <h2>Security</h2>
 
 <h3>Multi-Layered Protection Strategy</h3>

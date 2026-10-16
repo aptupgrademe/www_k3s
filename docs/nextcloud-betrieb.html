@@ -2011,6 +2011,34 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
 
 <!-- ─────────────────────────── SICHERHEIT ───────────────────────────── -->
 <section id="sicherheit">
+<h3>Tuning vom 16.10.2026: Messwerte und Einstellungen</h3>
+<p>
+  Grundlage waren die Prometheus-Werte der letzten 7 Tage und Zählungen auf beiden Hosts.
+  Beide Hosts haben viel freien RAM (cvjm ~19&nbsp;GB, sofie ~8&nbsp;GB verfügbar); die
+  Anpassungen nutzen ihn dort, wo es messbar etwas bringt.
+</p>
+<table>
+  <tr><th>Bereich</th><th>Messung</th><th>Einstellung</th><th>Wo</th></tr>
+  <tr><td>PHP-FPM-Worker</td><td>Spitze cvjm 17 von 20, sofie 10 von 12 gleichzeitig belegt</td><td>cvjm 30 Worker (Container 6&nbsp;Gi / 3 Kerne), sofie 20 (5&nbsp;Gi / 2 Kerne)</td><td><code>host_vars/&lt;host&gt;/vars.yml</code>: <code>nextcloud_fpm_*</code></td></tr>
+  <tr><td>OPcache</td><td>15.500 (cvjm) bzw. 17.800 (sofie) PHP-Dateien; Limit 10.000 = intern 16.229 Plätze</td><td>256&nbsp;MB, <code>max_accelerated_files=20000</code> (intern 32.531)</td><td><code>next_k3s_deploy/templates/nginx-cm.yml.j2</code></td></tr>
+  <tr><td>APCu (<code>memcache.local</code>)</td><td>PHP-Standard 32&nbsp;MB, ein Segment pro Pod für alle Worker</td><td><code>apc.shm_size = 128M</code></td><td>ebenda</td></tr>
+  <tr><td>MariaDB-Temp-Dateien</td><td>2.000–3.500 Temp-Tabellen pro Tag auf der Platte (TEXT-Spalten passen nie in die Speicher-Engine)</td><td>privates tmpfs: <code>/tmp</code> 4&nbsp;G, <code>/var/tmp</code> 64&nbsp;M</td><td><code>next_mariadb/files/systemd-hardening.conf</code></td></tr>
+  <tr><td>Collabora</td><td>„Office konnte nicht geladen werden“ beim Kaltstart</td><td>vorgestartete Prozesse: cvjm 10 (Limit 8&nbsp;Gi), sofie 6 (4&nbsp;Gi)</td><td><code>collabora_num_prealloc</code>, <code>collabora_mem_limit</code></td></tr>
+  <tr><td>Kernel</td><td>inotify-Standard 128 Instanzen; Write-back bei 10/30&nbsp;% des RAM</td><td>8192 Instanzen / 524288 Watches; Write-back 5/10&nbsp;%; dazu <code>dmesg_restrict</code>, <code>tcp_rfc1337</code>, <code>protected_fifos/regular=2</code></td><td><code>common_sysctl</code></td></tr>
+</table>
+<p>
+  <strong>Bewusst unverändert:</strong> der InnoDB-Pufferpool (Trefferquote &gt; 99,8&nbsp;%, auf
+  beiden Hosts größer als die Daten – cvjm 2&nbsp;GB für 344&nbsp;MB) und Redis (1–1,5&nbsp;MB
+  belegt). Mehr Speicher bringt dort nichts. Freier RAM ist ohnehin nicht verschenkt: Linux
+  nutzt ihn als Dateicache.
+</p>
+<div class="callout callout-warn">
+  <strong><code>PrivateTmp=yes</code> und <code>TemporaryFileSystem=/tmp</code> nicht kombinieren.</strong>
+  Mit <code>systemd-run</code> getestet: Dann gewinnt das private Plattenverzeichnis, und
+  <code>/tmp</code> bleibt auf xfs. Das Drop-in setzt deshalb zwei eigene tmpfs. Das SELinux-Label
+  bleibt <code>tmp_t</code> wie zuvor. Speicher belegt das tmpfs nur, solange Dateien darin liegen.
+</div>
+
 <h2>Sicherheit</h2>
 
 <h3>Mehrschichtige Schutzstrategie</h3>
@@ -2236,6 +2264,7 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   <tr><td><code>CAP_IPC_LOCK</code> nötig?</td><td>nein — <code>large_pages=0</code>, <code>memlock</code> leer</td><td><code>CapabilityBoundingSet=</code> komplett geleert</td></tr>
   <tr><td>Welche Geräte?</td><td>nur <code>/dev/null</code></td><td><code>PrivateDevices=yes</code></td></tr>
   <tr><td>Welche Schreibpfade?</td><td>nur <code>/var/lib/mysql</code></td><td><code>ProtectSystem=strict</code> + explizite <code>ReadWritePaths</code></td></tr>
+  <tr><td>Wohin schreibt <code>/tmp</code>?</td><td>Temp-Tabellen, Filesort, ALTER-Sortierdateien</td><td>eigenes tmpfs (4&nbsp;G) statt <code>PrivateTmp</code> – seit 2026-10-16, siehe Performance</td></tr>
   <tr><td><code>skip_name_resolve</code>?</td><td>aus → Reverse-DNS je Verbindung</td><td><code>AF_NETLINK</code> muss erlaubt bleiben</td></tr>
 </table>
 <div class="callout callout-warn">
