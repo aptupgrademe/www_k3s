@@ -28,7 +28,7 @@ ingress_nginx_chart_version: "2.7.3"          # F5 nginx-ingress chart, helm.ngi
 cert_manager_chart_version:  "1.21.2"         # charts.jetstack.io index.yaml (listed there as v1.21.2)
 
 # --- Nextcloud containers -------------------------------------------------------
-nextcloud_image_fpm:          "nextcloud:34.0.4-fpm"         # majors one at a time (34 -> 35)
+nextcloud_image_fpm:          "nextcloud:34.0.5-fpm"         # majors one at a time (34 -> 35)
 nextcloud_image_nginx:        "nginx:1.30.5-alpine"          # nginx stable branch, see notes
 nextcloud_image_collabora:    "collabora/code:26.04.5.1.1"
 nextcloud_image_fpm_exporter: "hipages/php-fpm_exporter:2.2.0"
