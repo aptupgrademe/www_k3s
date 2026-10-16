@@ -68,3 +68,20 @@ kernel.randomize_va_space = 2
 # sysctl change in this repo goes through `systemd-run -- sysctl --system`
 # instead of a direct write).
 fs.suid_dumpable = 0
+
+# --- Kernel log only for root ---
+# dmesg can reveal kernel addresses, hardware details and driver errors that
+# help an attacker; unprivileged users (and processes in pods) cannot read it.
+kernel.dmesg_restrict = 1
+
+# --- RFC 1337: ignore RST for sockets in TIME-WAIT ---
+# Prevents "TIME-WAIT assassination", where a forged RST closes a waiting
+# connection early and a delayed old segment is accepted by a new one.
+net.ipv4.tcp_rfc1337 = 1
+
+# --- Protected FIFOs and regular files in sticky directories ---
+# 2 = also refuse O_CREAT opens of FIFOs/files in world-writable sticky
+# directories (/tmp, /var/tmp, /dev/shm) that belong to another user, even
+# when the directory is group-writable - closes /tmp spoofing attacks.
+fs.protected_fifos   = 2
+fs.protected_regular = 2

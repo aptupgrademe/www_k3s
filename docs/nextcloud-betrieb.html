@@ -1931,7 +1931,7 @@ rm -f ~/.ansible/cp/*</code></pre>
   <tr><th>Ebene</th><th>Maßnahme</th><th>Konfigurationsort</th></tr>
   <tr>
     <td>TCP/Kernel</td>
-    <td>BBR Congestion Control, tcp_slow_start_after_idle=0, tcp_fastopen=3, optimierte Timeouts; <code>tcp_max_syn_backlog=4096</code>; THP=madvise (verhindert Latenz-Spikes in K3s-Pods, MariaDB, Redis)</td>
+    <td>BBR Congestion Control, tcp_slow_start_after_idle=0, tcp_fastopen=3, optimierte Timeouts; <code>tcp_max_syn_backlog=4096</code>; THP=madvise (verhindert Latenz-Spikes in K3s-Pods, MariaDB, Redis); inotify-Limits für K3s (8192 Instanzen, 524288 Watches – der Standard von 128 Instanzen reicht für containerd, kubelet und Pods nicht); Dirty-Page-Write-back früher (5&nbsp;% / 10&nbsp;% statt 10 / 30) für gleichmäßigere Schreiblast</td>
     <td><code>common_sysctl</code> → <code>/etc/sysctl.d/99-webserver.conf</code> + <code>set-thp-madvise.service</code></td>
   </tr>
   <tr>
@@ -2169,13 +2169,13 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   WP-Cron-Abschnitt im WordPress-Betriebshandbuch).
 </div>
 <div class="callout callout-info">
-  <strong>OS-Level-CIS-Härtung ebenfalls geteilt, ebenfalls noch nicht angewendet (2026-08-20)</strong>
+  <strong>OS-Level-CIS-Härtung ebenfalls geteilt</strong>
   <code>common_cis_hardening</code> (AIDE, Kernel-Modul-Blacklist,
   Mount-Härtung, journald-/Coredump-/Cron-/Sudo-Härtung) und die
   CIS-Netzwerk-Sysctls in <code>common_sysctl</code> wurden auch in
   <code>nextcloud-k3s.yml</code>s Rollenliste aufgenommen, neben denen des
-  Blogs – sind Host-Level, nicht app-spezifisch. Gleicher Vorbehalt wie oben:
-  bisher nur auf dem Blog-Host tatsächlich ausgeführt und verifiziert. Volle
+  Blogs – sind Host-Level, nicht app-spezifisch. Auf beiden Nextcloud-Hosts
+  ausgerollt und verifiziert (Drift-Check ohne Abweichungen, 2026-10-12). Volle
   OpenSCAP-Ergebnisse und die Begründung für bewusst Ausgelassenes
   (PAM/authselect, GRUB2-Passwort, Custom-Crypto-Policy) siehe
   Sicherheits-Abschnitt im WordPress-Betriebshandbuch.

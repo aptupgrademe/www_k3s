@@ -33,3 +33,19 @@ net.core.somaxconn               = 4096
 # Match SYN backlog to somaxconn – avoids SYN drop under burst traffic.
 net.ipv4.tcp_max_syn_backlog     = 4096
 
+# --- inotify limits for K3s ---
+# containerd, the kubelet and the pods watch files with inotify. The kernel
+# default of 128 instances per user is shared by all of them; once it runs
+# out, new pods or "kubectl logs -f" fail with "too many open files".
+# 8192 / 524288 are the values commonly recommended for Kubernetes nodes
+# (live on 2026-10-16: 128 instances, 56k-176k watches on the three hosts).
+fs.inotify.max_user_instances = 8192
+fs.inotify.max_user_watches   = 524288
+
+# --- Write-back of dirty pages ---
+# Defaults are 10 % / 30 % of RAM: on a 24 GB host up to ~7 GB of unwritten
+# data can pile up and then be flushed in one burst (backup pulls, database
+# dumps, big uploads), stalling other I/O. Starting background write-back at
+# 5 % and throttling writers at 10 % keeps the flushes smaller and steadier.
+vm.dirty_background_ratio = 5
+vm.dirty_ratio            = 10

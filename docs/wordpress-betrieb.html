@@ -1985,7 +1985,7 @@ rm -f ~/.ansible/cp/*</code></pre>
   <tr><th>Ebene</th><th>Maßnahme</th><th>Konfigurationsort</th></tr>
   <tr>
     <td>TCP/Kernel</td>
-    <td>BBR Congestion Control, tcp_slow_start_after_idle=0, tcp_fastopen=3, optimierte Timeouts; <code>tcp_max_syn_backlog=4096</code> (passt zu somaxconn, verhindert SYN-Drop unter Last); THP=madvise (verhindert Latenz-Spikes in K3s-Pods, MariaDB, Redis)</td>
+    <td>BBR Congestion Control, tcp_slow_start_after_idle=0, tcp_fastopen=3, optimierte Timeouts; <code>tcp_max_syn_backlog=4096</code> (passt zu somaxconn, verhindert SYN-Drop unter Last); THP=madvise (verhindert Latenz-Spikes in K3s-Pods, MariaDB, Redis); inotify-Limits für K3s (8192 Instanzen, 524288 Watches – der Standard von 128 Instanzen reicht für containerd, kubelet und Pods nicht); Dirty-Page-Write-back früher (5&nbsp;% / 10&nbsp;% statt 10 / 30) für gleichmäßigere Schreiblast</td>
     <td><code>common_sysctl</code> → <code>/etc/sysctl.d/99-webserver.conf</code> + <code>set-thp-madvise.service</code></td>
   </tr>
   <tr>
@@ -2372,7 +2372,7 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
     <td>Netzwerk-Kernel-Härtung</td>
     <td>ICMP-Redirects/Source-Routing abgelehnt, Martian-Packet-Logging,
         TCP-SYN-Cookies, <code>ptrace_scope</code> auf Nachkommen beschränkt,
-        volles ASLR. Bewusst ausgenommen:
+        volles ASLR, Kernel-Log nur für root (<code>dmesg_restrict</code>), RFC-1337-Schutz gegen TIME-WAIT-Angriffe, geschützte FIFOs/Dateien in <code>/tmp</code> (<code>protected_fifos/regular = 2</code>). Bewusst ausgenommen:
         <code>ip_forward</code>/<code>rp_filter</code> – von k3s/Calico so
         gebraucht, siehe Hinweis unten</td>
     <td><code>common_sysctl</code></td>

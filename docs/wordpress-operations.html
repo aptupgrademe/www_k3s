@@ -1961,7 +1961,7 @@ rm -f ~/.ansible/cp/*</code></pre>
   <tr><th>Layer</th><th>Measure</th><th>Configuration</th></tr>
   <tr>
     <td>TCP/Kernel</td>
-    <td>BBR congestion control, tcp_slow_start_after_idle=0, tcp_fastopen=3, optimised timeouts; <code>tcp_max_syn_backlog=4096</code> (matches somaxconn, prevents SYN drops under load); THP=madvise (prevents latency spikes in K3s pods, MariaDB, Redis)</td>
+    <td>BBR congestion control, tcp_slow_start_after_idle=0, tcp_fastopen=3, optimised timeouts; <code>tcp_max_syn_backlog=4096</code> (matches somaxconn, prevents SYN drops under load); THP=madvise (prevents latency spikes in K3s pods, MariaDB, Redis); inotify limits for K3s (8192 instances, 524288 watches – the default of 128 instances is too low for containerd, the kubelet and the pods); earlier dirty-page write-back (5&nbsp;% / 10&nbsp;% instead of 10 / 30) for a steadier write load</td>
     <td><code>common_sysctl</code> → <code>/etc/sysctl.d/99-webserver.conf</code> + <code>set-thp-madvise.service</code></td>
   </tr>
   <tr>
@@ -2334,7 +2334,7 @@ Both verified 2026-09-14.</p>
     <td>Network kernel hardening</td>
     <td>ICMP redirects/source routing refused, martian packet logging, TCP
         SYN cookies, <code>ptrace_scope</code> restricted to descendants,
-        full ASLR. Deliberately excludes
+        full ASLR, kernel log for root only (<code>dmesg_restrict</code>), RFC 1337 protection against TIME-WAIT assassination, protected FIFOs/files in <code>/tmp</code> (<code>protected_fifos/regular = 2</code>). Deliberately excludes
         <code>ip_forward</code>/<code>rp_filter</code> – required as-is by
         k3s/Calico, see the callout below</td>
     <td><code>common_sysctl</code></td>
