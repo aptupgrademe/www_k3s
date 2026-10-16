@@ -72,11 +72,14 @@ mail_smtpauth:     true
 # MariaDB buffer pool - hold the whole DB in RAM with headroom (role default 256M).
 mariadb_innodb_buffer_pool_size: "2G"
 
-# PHP-FPM worker pool (defaults: 12 / 4 / 2 / 8).
-nextcloud_fpm_max_children: 20
-nextcloud_fpm_start_servers: 6
+# PHP-FPM worker pool (defaults: 12 / 4 / 2 / 8). 30 workers need more than the
+# 4Gi / 1500m container defaults (30 x ~150 MB peak + OPcache/APCu ~= 4.8 GB).
+nextcloud_fpm_max_children: 30
+nextcloud_fpm_start_servers: 8
 nextcloud_fpm_min_spare:    4
-nextcloud_fpm_max_spare:    12
+nextcloud_fpm_max_spare:    16
+nextcloud_fpm_mem_limit:    "6Gi"
+nextcloud_fpm_cpu_limit:    "3000m"
 
 # K3s container requests/limits (defaults in group_vars/all/main.yml reproduce the
 # previous hardcoded values). This host is roomy enough to keep the defaults, so

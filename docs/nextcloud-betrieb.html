@@ -1966,12 +1966,12 @@ rm -f ~/.ansible/cp/*</code></pre>
   </tr>
   <tr>
     <td>PHP OPcache</td>
-    <td>Bytecode-Cache im Container – Nextcloud-Image liefert OPcache vorinstalliert</td>
+    <td>Bytecode-Cache im Container – Nextcloud-Image liefert OPcache vorinstalliert; 256&nbsp;MB, <code>max_accelerated_files=20000</code> (Nextcloud mit Apps hat 15.500–17.800 PHP-Dateien), <code>validate_timestamps=0</code></td>
     <td>Nextcloud-Container-Default</td>
   </tr>
   <tr>
     <td>PHP-FPM Pool</td>
-    <td>max_children=12, max_requests=500 (Worker-Recycling gegen Memory-Leaks); FPM-Status-Endpoint für Prometheus-Exporter</td>
+    <td>max_children=12 als Standard, pro Host überschreibbar (cvjm 30, sofie 20 seit 2026-10-16, mit passend angehobenem Container-Limit), max_requests=500 (Worker-Recycling gegen Memory-Leaks); FPM-Status-Endpoint für Prometheus-Exporter</td>
     <td><code>next_k3s_deploy</code> → ConfigMap <code>nextcloud-fpm-pool-config</code></td>
   </tr>
 </table>

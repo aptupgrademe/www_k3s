@@ -171,10 +171,12 @@ data:
 # PHP_MEMORY_LIMIT/PHP_UPLOAD_LIMIT env vars (see nextcloud-deployment.yml.j2)
 # – intentionally not duplicated here to avoid conflicting settings.
 # OPcache has no equivalent env var in the image, so it needs this file.
-# Mirrors roles/blog_k3s_deploy/templates/nginx-cm.yml.j2; max_accelerated_files
-# is not yet verified against a live instance – Nextcloud's app ecosystem may
-# need a higher value than WordPress's 10000, check `opcache_get_status()` /
-# opcache.log after rollout.
+# Sized for Nextcloud, not copied from the blog: a Nextcloud installation with
+# its apps has 15,500-17,800 PHP files (counted on cvjm/sofie 2026-10-16),
+# while max_accelerated_files = 10000 (rounded up internally to 16229) let
+# files fall out of the cache again. 20000 (-> 32531) leaves room for app
+# updates; 256 MB of memory holds them. validate_timestamps = 0, so a full
+# cache is never re-checked - another reason not to run it at the limit.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -189,9 +191,9 @@ data:
     ; --- OPcache (production tuning) ---
     ; validate_timestamps=0: never check file mtimes – pod restart clears cache on deploy
     opcache.enable                 = 1
-    opcache.memory_consumption     = 128
+    opcache.memory_consumption     = 256
     opcache.interned_strings_buffer = 16
-    opcache.max_accelerated_files  = 10000
+    opcache.max_accelerated_files  = 20000
     opcache.validate_timestamps    = 0
     opcache.revalidate_freq        = 0
     opcache.fast_shutdown          = 1
