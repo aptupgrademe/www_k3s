@@ -1966,7 +1966,7 @@ rm -f ~/.ansible/cp/*</code></pre>
   </tr>
   <tr>
     <td>PHP OPcache</td>
-    <td>Bytecode-Cache im Container – Nextcloud-Image liefert OPcache vorinstalliert; 256&nbsp;MB, <code>max_accelerated_files=20000</code> (Nextcloud mit Apps hat 15.500–17.800 PHP-Dateien), <code>validate_timestamps=0</code></td>
+    <td>Bytecode-Cache im Container – Nextcloud-Image liefert OPcache vorinstalliert; 256&nbsp;MB, <code>max_accelerated_files=20000</code> (Nextcloud mit Apps hat 15.500–17.800 PHP-Dateien), <code>validate_timestamps=0</code>; APCu 128&nbsp;MB (<code>apc.shm_size</code>, PHP-Standard wäre 32&nbsp;MB)</td>
     <td>Nextcloud-Container-Default</td>
   </tr>
   <tr>

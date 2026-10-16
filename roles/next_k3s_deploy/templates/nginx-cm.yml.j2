@@ -197,3 +197,10 @@ data:
     opcache.validate_timestamps    = 0
     opcache.revalidate_freq        = 0
     opcache.fast_shutdown          = 1
+
+    ; --- APCu (memcache.local) ---
+    ; One shared memory segment per pod, used by all FPM workers. PHP's default
+    ; is 32M (the image does not set it). Nextcloud caches app/config lookups
+    ; there; 128M costs nothing on these hosts and keeps the cache from
+    ; evicting under load. This file loads after docker-php-ext-apcu.ini.
+    apc.shm_size = 128M
