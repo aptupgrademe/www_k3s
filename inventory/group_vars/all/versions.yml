@@ -19,24 +19,24 @@
 # =============================================================================
 
 # --- Kubernetes platform ------------------------------------------------------
-k3s_version:                 "v1.36.5+k3s1"   # github.com/k3s-io/k3s/releases
-helm_version:                "v4.3.0"         # github.com/helm/helm/releases
+k3s_version:                 "v1.37.1+k3s1"   # github.com/k3s-io/k3s/releases
+helm_version:                "v4.3.1"         # github.com/helm/helm/releases
 helm_diff_version:           "3.15.15"        # github.com/databus23/helm-diff/releases + checksum below
 helm_diff_sha256:            "504e99410611daa70702362e1b10dc74929df8a912cb3f6b5d21d1ee9d0cb7d9"
 calico_version:              "v3.32.2"        # github.com/projectcalico/calico/releases (policy-only, see notes)
-ingress_nginx_chart_version: "2.7.3"          # F5 nginx-ingress chart, helm.nginx.com/stable index.yaml
+ingress_nginx_chart_version: "2.8.0"          # F5 nginx-ingress chart, helm.nginx.com/stable index.yaml
 cert_manager_chart_version:  "1.21.2"         # charts.jetstack.io index.yaml (listed there as v1.21.2)
 
 # --- Nextcloud containers -------------------------------------------------------
 nextcloud_image_fpm:          "nextcloud:34.0.5-fpm"         # majors one at a time (34 -> 35)
-nextcloud_image_nginx:        "nginx:1.30.5-alpine"          # nginx stable branch, see notes
+nextcloud_image_nginx:        "nginx:1.30.6-alpine"          # nginx stable branch, see notes
 nextcloud_image_collabora:    "collabora/code:26.04.5.1.1"
 nextcloud_image_fpm_exporter: "hipages/php-fpm_exporter:2.2.0"
 nextcloud_image_busybox:      "busybox:1"                    # init containers, floating on purpose
 
 # --- WordPress containers -------------------------------------------------------
 blog_image_wordpress:       "wordpress:7.1.3-php8.4-fpm"
-blog_image_nginx:           "nginx:1.30.5-alpine"            # keep equal to nextcloud_image_nginx
+blog_image_nginx:           "nginx:1.30.6-alpine"            # keep equal to nextcloud_image_nginx
 blog_image_mariadb:         "mariadb:10.11.19"               # 10.11 LTS (until Feb 2028)
 blog_image_redis:           "redis:7.4.11-alpine"            # 7.4 = last Redis 7 line
 blog_image_mysqld_exporter: "prom/mysqld-exporter:v0.20.0"   # keep equal to mysqld_exporter_version
@@ -59,6 +59,9 @@ nextcloud_mariadb_repo_version: "10.11"   # MariaDB Community repo series on the
 # k3s_version
 #   common_k3s compares this with the installed version and upgrades in place
 #   (binary swap + service restart) if they differ.
+#   2026-10-16 v1.36.5+k3s1 -> v1.37.1+k3s1 (one minor step; Kubernetes 1.37.1,
+#   etcd 3.7.1, kine 0.17.1, cadvisor 0.60.5, CA hash validation; no breaking
+#   K3s notes). Roll out host by host, drift check first.
 #   2026-10-11 v1.36.4+k3s1 -> v1.36.5+k3s1 (patch: gRPC CVE fix, supervisor
 #   router (spegel/pprof/metrics) rejects anonymous access, CoreDNS 1.14.7,
 #   metrics-server 0.9.0; containerd 2.3.4, runc 1.4.2, etcd 3.6.14
@@ -97,12 +100,18 @@ nextcloud_mariadb_repo_version: "10.11"   # MariaDB Community repo series on the
 #   stays at the version it was derived from. Fine for a patch release with no
 #   CRD or RBAC changes - re-derive the manifest for a minor or major bump
 #   instead of just moving this string.
+#   v3.33.0 (2026-10-01) is NOT a string bump: it ships most components in one
+#   image (quay.io/calico/calico), so the manifest must be re-derived from the
+#   v3.33.0 canal.yaml (keep our tiers "status" addition or drop it - 3.33
+#   fixes that warning upstream, calico#13082). Planned for 2026-10-19.
 #   2026-09-13 v3.32.1 -> v3.32.2: bugfix/CVE release. Two fixes matter here: a
 #   panic in kube-controllers when the informer delivers a tombstone to a
 #   delete handler, and IP-set programming errors in nftables mode - both
 #   components this host actually runs.
 #
 # ingress_nginx_chart_version
+#   2026-10-16 2.7.3 -> 2.8.0 (controller 5.6.3 -> 5.7.0): security hardening
+#   and bug fixes, no breaking changes listed; check helm diff on rollout.
 #   2026-10-13 2.6.4 -> 2.7.3 (controller 5.5.4 -> 5.6.3). The controller
 #   image bundles its own nginx: 5.5.4 ships nginx 1.31.3, which is in the
 #   range of CVE-2026-90439 (HTTP/3 module, fixed in 1.31.6 = controller
