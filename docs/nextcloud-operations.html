@@ -1996,7 +1996,7 @@ Both verified 2026-09-14.</p>
 </p>
 <table>
   <tr><th>Area</th><th>Measurement</th><th>Setting</th><th>Where</th></tr>
-  <tr><td>PHP-FPM workers</td><td>peak cvjm 17 of 20, sofie 10 of 12 busy at once</td><td>cvjm 30 workers (container 6&nbsp;Gi / 3 cores), sofie 20 (5&nbsp;Gi / 2 cores)</td><td><code>host_vars/&lt;host&gt;/vars.yml</code>: <code>nextcloud_fpm_*</code></td></tr>
+  <tr><td>PHP-FPM workers</td><td>peak cvjm 17 of 20, sofie 10 of 12 busy at once</td><td>cvjm 30 workers (container 6&nbsp;Gi / 3 cores), sofie 20 (5&nbsp;Gi / 2 cores); <code>request_terminate_timeout = 3600s</code> against hung workers (generous so long ZIP downloads are not cut off)</td><td><code>host_vars/&lt;host&gt;/vars.yml</code>: <code>nextcloud_fpm_*</code></td></tr>
   <tr><td>OPcache</td><td>15,500 (cvjm) / 17,800 (sofie) PHP files; limit 10,000 = 16,229 slots internally</td><td>256&nbsp;MB, <code>max_accelerated_files=20000</code> (32,531 internally)</td><td><code>next_k3s_deploy/templates/nginx-cm.yml.j2</code></td></tr>
   <tr><td>APCu (<code>memcache.local</code>)</td><td>PHP default 32&nbsp;MB, one segment per pod shared by all workers</td><td><code>apc.shm_size = 128M</code></td><td>same file</td></tr>
   <tr><td>MariaDB temp files</td><td>2,000–3,500 temp tables a day on disk (TEXT columns never fit the memory engine)</td><td>private tmpfs: <code>/tmp</code> 4&nbsp;G, <code>/var/tmp</code> 64&nbsp;M</td><td><code>next_mariadb/files/systemd-hardening.conf</code></td></tr>

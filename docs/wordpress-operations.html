@@ -2109,7 +2109,7 @@ Both verified 2026-09-14.</p>
 <p>Based on the Prometheus values of the last 7 days. The host has ~5.7&nbsp;GB of RAM available.</p>
 <table>
   <tr><th>Area</th><th>Measurement</th><th>Setting</th></tr>
-  <tr><td>PHP-FPM</td><td>peak 6 of 12 workers, queue at most 1</td><td>unchanged</td></tr>
+  <tr><td>PHP-FPM</td><td>peak 6 of 12 workers, queue at most 1</td><td>workers unchanged; new <code>request_terminate_timeout = 300s</code> – a hung worker is killed after 300&nbsp;s, the same moment nginx returns 504</td></tr>
   <tr><td>OPcache</td><td>~4,600 PHP files, limit 10,000</td><td>unchanged</td></tr>
   <tr><td>MariaDB buffer pool</td><td>hit ratio 99.99&nbsp;%, 384&nbsp;MB for ~40&nbsp;MB of data</td><td>unchanged</td></tr>
   <tr><td>MariaDB temp files</td><td>~2,000 temp tables a day on disk</td><td><code>/tmp</code> emptyDir in RAM (<code>medium: Memory</code>, 512&nbsp;Mi); container limit 768&nbsp;Mi → 1280&nbsp;Mi, because a memory emptyDir counts against the memory limit</td></tr>

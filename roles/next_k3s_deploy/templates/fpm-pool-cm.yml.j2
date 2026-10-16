@@ -22,6 +22,15 @@ data:
     ; slow-request counter of the php-fpm exporter (Grafana dashboard 4912).
     request_slowlog_trace_depth = 0
 
+    ; --- Hard limit per request ---
+    ; Without it a hung request (stuck on a lock, the database or an external
+    ; storage) holds its worker until the pod restarts. 3600 s, not the 300 s
+    ; of the blog: streamed downloads (folders as ZIP, large files) can run for
+    ; many minutes and must not be cut off; nginx's 300 s read timeout only
+    ; counts silence, not the total time. cron.php, occ and the update
+    ; playbook run PHP on the CLI and are not affected.
+    request_terminate_timeout = 3600s
+
     ; --- Pool tuning ---
     ; Without these the container silently inherits php-fpm's stock default of
     ; pm.max_children = 5, which is the real concurrency ceiling of this

@@ -213,6 +213,15 @@ data:
     slowlog = /proc/1/fd/2
     request_slowlog_timeout = 5s
 
+    ; --- Hard limit per request ---
+    ; max_execution_time (300) only counts PHP's own CPU time, not waiting on
+    ; the database or the network, and nginx gives up after 300 s
+    ; (fastcgi_read_timeout) while the worker keeps running. Without this a
+    ; hung request holds its worker forever; FPM now kills it after 300 s, the
+    ; same moment the visitor already got a 504. WP-CLI, the WP-Cron CronJob
+    ; and the nightly update job run PHP on the CLI and are not affected.
+    request_terminate_timeout = 300s
+
     ; --- Pool tuning ---
     ; Sized for a 4-core node with wordpress-fpm cpu limit=2000m, memory limit=1Gi.
     ; max_children is capped by memory, not CPU: 12 workers at the ~55-70 MB

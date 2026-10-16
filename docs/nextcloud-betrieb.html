@@ -2019,7 +2019,7 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
 </p>
 <table>
   <tr><th>Bereich</th><th>Messung</th><th>Einstellung</th><th>Wo</th></tr>
-  <tr><td>PHP-FPM-Worker</td><td>Spitze cvjm 17 von 20, sofie 10 von 12 gleichzeitig belegt</td><td>cvjm 30 Worker (Container 6&nbsp;Gi / 3 Kerne), sofie 20 (5&nbsp;Gi / 2 Kerne)</td><td><code>host_vars/&lt;host&gt;/vars.yml</code>: <code>nextcloud_fpm_*</code></td></tr>
+  <tr><td>PHP-FPM-Worker</td><td>Spitze cvjm 17 von 20, sofie 10 von 12 gleichzeitig belegt</td><td>cvjm 30 Worker (Container 6&nbsp;Gi / 3 Kerne), sofie 20 (5&nbsp;Gi / 2 Kerne); <code>request_terminate_timeout = 3600s</code> gegen hängende Worker (großzügig, damit lange ZIP-Downloads nicht abbrechen)</td><td><code>host_vars/&lt;host&gt;/vars.yml</code>: <code>nextcloud_fpm_*</code></td></tr>
   <tr><td>OPcache</td><td>15.500 (cvjm) bzw. 17.800 (sofie) PHP-Dateien; Limit 10.000 = intern 16.229 Plätze</td><td>256&nbsp;MB, <code>max_accelerated_files=20000</code> (intern 32.531)</td><td><code>next_k3s_deploy/templates/nginx-cm.yml.j2</code></td></tr>
   <tr><td>APCu (<code>memcache.local</code>)</td><td>PHP-Standard 32&nbsp;MB, ein Segment pro Pod für alle Worker</td><td><code>apc.shm_size = 128M</code></td><td>ebenda</td></tr>
   <tr><td>MariaDB-Temp-Dateien</td><td>2.000–3.500 Temp-Tabellen pro Tag auf der Platte (TEXT-Spalten passen nie in die Speicher-Engine)</td><td>privates tmpfs: <code>/tmp</code> 4&nbsp;G, <code>/var/tmp</code> 64&nbsp;M</td><td><code>next_mariadb/files/systemd-hardening.conf</code></td></tr>

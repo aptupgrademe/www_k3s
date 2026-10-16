@@ -2144,7 +2144,7 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
 <p>Grundlage waren die Prometheus-Werte der letzten 7 Tage. Der Host hat ~5,7&nbsp;GB RAM verfügbar.</p>
 <table>
   <tr><th>Bereich</th><th>Messung</th><th>Einstellung</th></tr>
-  <tr><td>PHP-FPM</td><td>Spitze 6 von 12 Workern, Warteschlange höchstens 1</td><td>unverändert</td></tr>
+  <tr><td>PHP-FPM</td><td>Spitze 6 von 12 Workern, Warteschlange höchstens 1</td><td>Worker unverändert; neu <code>request_terminate_timeout = 300s</code> – ein hängender Worker wird nach 300&nbsp;s beendet, zeitgleich mit dem 504 von nginx</td></tr>
   <tr><td>OPcache</td><td>~4.600 PHP-Dateien, Limit 10.000</td><td>unverändert</td></tr>
   <tr><td>MariaDB-Pufferpool</td><td>Trefferquote 99,99&nbsp;%, 384&nbsp;MB für ~40&nbsp;MB Daten</td><td>unverändert</td></tr>
   <tr><td>MariaDB-Temp-Dateien</td><td>~2.000 Temp-Tabellen pro Tag auf der Platte</td><td><code>/tmp</code>-emptyDir im RAM (<code>medium: Memory</code>, 512&nbsp;Mi); Container-Limit 768&nbsp;Mi → 1280&nbsp;Mi, weil ein RAM-emptyDir zum Speicherlimit zählt</td></tr>
