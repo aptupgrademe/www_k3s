@@ -45,7 +45,10 @@ spec:
         - -c
         - |
           chown 999:999 /var/lib/mysql
-          chmod 0755 /var/lib/mysql
+          # Same mode as tasks/dirs.yml - with 0755 here the two disagreed and
+          # the playbook "changed" the directory again after every pod restart
+          # (found 2026-10-16 after the nightly reboot).
+          chmod 0750 /var/lib/mysql
         volumeMounts:
         - name: mariadb-data
           mountPath: /var/lib/mysql
@@ -66,10 +69,11 @@ spec:
           # In production since 2026-09-11 (no failures). The entrypoint creates/chowns /run/mysqld
           # (socket + pid) on every start regardless of readOnlyRootFilesystem,
           # and MariaDB's default tmpdir is /tmp - both covered by the
-          # run-mysqld/tmp emptyDirs below. tmp is disk-backed (not tmpfs):
-          # on-disk temp tables only get created once they exceed
-          # tmp-table-size/max-heap-table-size (32M each below), so it needs
-          # real headroom, not a small RAM cap.
+          # run-mysqld/tmp emptyDirs below. tmp is memory-backed since
+          # 2026-10-16: MariaDB writes ~2,000 internal temp tables a day there
+          # (TEXT columns never fit the in-memory engine), plus filesort files.
+          # A memory emptyDir counts against this container's memory limit,
+          # so the limit below includes its 512Mi.
           readOnlyRootFilesystem: true
         args:
         - --slow-query-log=1
@@ -121,7 +125,8 @@ spec:
           limits:
             # Node has 4 cores; InnoDB's purge/IO/page-cleaner background
             # threads benefit from more than 0.5 core under load.
-            memory: "768Mi"
+            # 768Mi for MariaDB itself + 512Mi for the memory-backed /tmp.
+            memory: "1280Mi"
             cpu: "1500m"
         readinessProbe:
           exec:
@@ -203,13 +208,14 @@ spec:
           defaultMode: 0444
       # Below: backing store for MariaDB's writable paths now that
       # readOnlyRootFilesystem is on. run-mysqld is tiny (socket + pid file);
-      # tmp is disk-backed on purpose - see the securityContext comment above.
+      # tmp lives in RAM - see the securityContext comment above.
       - name: run-mysqld
         emptyDir:
           medium: Memory
           sizeLimit: 4Mi
       - name: tmp
         emptyDir:
+          medium: Memory
           sizeLimit: 512Mi
 ---
 apiVersion: v1

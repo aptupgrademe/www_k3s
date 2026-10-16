@@ -85,5 +85,5 @@ nextcloud_fpm_max_spare:    12
 # K3s container requests/limits for 12 GB / 6 vCPU.
 nextcloud_fpm_mem_limit: "5Gi"     # default 4Gi
 nextcloud_fpm_cpu_limit: "2000m"   # default 1500m
-collabora_mem_limit:     "2Gi"     # default 3Gi; ~8 concurrent Collabora editors
-collabora_num_prealloc:   2
+collabora_mem_limit:     "4Gi"     # default 3Gi; room for 6 warm children + editors
+collabora_num_prealloc:   6         # default 4; fewer cold starts ("office failed to load")
