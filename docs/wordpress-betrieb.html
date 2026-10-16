@@ -298,6 +298,9 @@
   Das Playbook ist idempotent – es kann jederzeit neu ausgeführt werden,
   ohne Daten zu verändern oder Dienste unnötig zu unterbrechen.
 </p>
+<div class="callout callout-info">
+  <strong>Warum noch AlmaLinux 9 und nicht 10?</strong> AlmaLinux 10 gibt es seit Mai 2025. Die Rollen bleiben vorerst bei 9: Die Version ist im Produktivbetrieb erprobt, EPEL, die SELinux-Richtlinie für K3s, der CIS-Benchmark und Paketquellen wie die von MariaDB sind dafür ausgereift, und Sicherheitsupdates gibt es bis Mai 2032 (aktive Weiterentwicklung bis Mai 2027). Der Umstieg kommt später, als neuer Server per Playbook mit zurückgespielten Daten, sobald 10 einige Unterversionen hinter sich hat und die Rollen dagegen getestet sind.
+</div>
 
 <div class="card-grid">
   <div class="card">

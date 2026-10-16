@@ -237,6 +237,7 @@ issuance succeeds.
 
 ### Internet servers (AlmaLinux 9)
 - Fresh AlmaLinux 9 install
+- Why not AlmaLinux 10 (available since May 2025)? 9 is proven, its ecosystem (EPEL, SELinux policy for K3s, CIS benchmark, MariaDB repos) is mature, and it gets security updates until May 2032. The move to 10 comes later as a fresh server set up by the playbook, once the roles are tested against it.
 - Min. 4 GB RAM (8 GB recommended with Collabora)
 - Public IPv4 with DNS A-records
 - SSH root access on port 22 (switches to 10022 after first run)
