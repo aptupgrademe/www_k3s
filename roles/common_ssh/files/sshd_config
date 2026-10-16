@@ -150,9 +150,14 @@ HostbasedAuthentication no
 IgnoreRhosts yes
 PermitUserEnvironment no
 
-# Reduce brute-force exposure: only 2 auth attempts per connection, 2 sessions max.
+# Reduce brute-force exposure: only 2 auth attempts per connection.
+# MaxSessions limits sessions multiplexed over ONE authenticated connection
+# (Ansible's ControlPersist reuses one). 2 was too tight for parallel Ansible
+# tasks against the same host ("error: no more sessions", 2026-10-16); 4 is
+# still well inside the CIS limit of 10 and does not help an attacker, who
+# needs a valid key before any session exists.
 MaxAuthTries 2
-MaxSessions 2
+MaxSessions 4
 
 TCPKeepAlive yes
 

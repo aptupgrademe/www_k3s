@@ -140,7 +140,8 @@ Internet
   deliberately rate-limited
 - **Reload touches only `table inet filter`**: the ruleset replaces its own
   table atomically, and a systemd drop-in scopes `reload`/`stop` the same way.
-  kube-proxy, flannel and Calico keep their rules in nftables too (iptables-nft),
+  kube-proxy, flannel and Calico keep their rules in nftables too on hosts where
+  they use iptables-nft (the Nextcloud hosts; the blog uses iptables-legacy),
   and the stock `flush ruleset` wiped them, breaking Service traffic for up to
   90 s on every firewall change
 - The template is checked with `nft -c` before it replaces the live file

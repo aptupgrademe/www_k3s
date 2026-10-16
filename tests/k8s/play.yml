@@ -25,6 +25,8 @@
       ansible.builtin.include_role: { name: common_k3s, tasks_from: cert_manager.yml }
     - name: Default ServiceAccount hardening
       ansible.builtin.include_role: { name: common_k3s, tasks_from: default_sa_hardening.yml }
+    - name: CoreDNS custom imports
+      ansible.builtin.include_role: { name: common_k3s, tasks_from: coredns_custom.yml }
     - name: Calico
       ansible.builtin.include_role: { name: common_calico }
     - name: Blog workloads

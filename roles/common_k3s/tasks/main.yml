@@ -7,13 +7,14 @@
 # Target:  AlmaLinux 9 (SELinux enforcing)
 # =============================================================================
 #
-# How it works: five task files, in this order (each needs the previous):
+# How it works: six task files, in this order (each needs the previous):
 #   install_k3s.yml           config, binary (pinned k3s_version), installer,
 #                             service, API ready, kubeconfig for root
 #   install_helm.yml          Helm binary (pinned helm_version)
 #   cert_manager.yml          cert-manager chart + Let's Encrypt ClusterIssuer
 #   nginx_ingress.yml         default TLS cert + F5 nginx-ingress chart
 #   default_sa_hardening.yml  CIS 5.1.5 on the namespaces that exist now
+#   coredns_custom.yml        empty coredns-custom ConfigMap (no import-glob warnings)
 # From here on, the other roles talk to Kubernetes through the
 # kubernetes.core modules (k8s, k8s_info, helm), using the kubeconfig at
 # k3s_kubeconfig - the K8s apply pattern is explained in common_calico.
@@ -28,3 +29,5 @@
   ansible.builtin.import_tasks: nginx_ingress.yml
 - name: common_k3s | Default ServiceAccount hardening (CIS 5.1.5)
   ansible.builtin.import_tasks: default_sa_hardening.yml
+- name: common_k3s | CoreDNS custom imports
+  ansible.builtin.import_tasks: coredns_custom.yml

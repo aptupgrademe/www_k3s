@@ -84,6 +84,9 @@ spec:
         - --max-connections=50
         - --tmp-table-size=32M
         - --max-heap-table-size=32M
+        # No binary log here, but the image's config sets expire_logs_days = 10,
+        # and MariaDB warned on every start that it needs --log-bin to work.
+        - --expire-logs-days=0
         env:
         # CIS 5.4.1: files, not plain env vars — mariadb's file_env() helper
         # supports the _FILE convention (verified live against this image).

@@ -268,9 +268,12 @@ table inet filter {
 
   # ===========================================================================
   # FORWARD – K3s inter-pod and pod-to-service traffic
-  # K3s (kube-proxy, flannel, Calico) keeps its own KUBE-*/cali-* chains in
-  # separate tables of the same nftables subsystem (written via iptables-nft);
-  # this chain only needs to pass pod CIDR traffic.
+  # K3s (kube-proxy, flannel, its network policy controller) and Calico keep
+  # their own KUBE-*/cali-* chains outside this table - depending on the host
+  # in iptables-legacy (blog, checked 2026-10-16) or in nftables tables of
+  # their own via iptables-nft (both Nextcloud hosts). Either way the kernel
+  # evaluates them alongside this table at the same hooks, so this chain only
+  # needs to pass pod CIDR traffic.
   # ===========================================================================
   chain forward {
     type filter hook forward priority filter; policy drop;

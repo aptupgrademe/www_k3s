@@ -1,0 +1,21 @@
+---
+# K3s's Corefile imports /etc/coredns/custom/*.override and *.server from the
+# optional ConfigMap "coredns-custom". Without it the glob matches nothing,
+# and CoreDNS logged two "[WARNING] No files matching import glob pattern"
+# lines on every reload check - about 950 lines in 6 hours per host. An
+# empty file per pattern silences that and changes nothing: an empty import
+# adds no directive. Real DNS overrides would go here as well.
+- name: CoreDNS | Apply coredns-custom ConfigMap (empty imports)
+  kubernetes.core.k8s:
+    kubeconfig: "{{ k3s_kubeconfig }}"
+    state: present
+    apply: true
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: coredns-custom
+        namespace: kube-system
+      data:
+        empty.override: "# intentionally empty - see roles/common_k3s/tasks/coredns_custom.yml\n"
+        empty.server: "# intentionally empty - see roles/common_k3s/tasks/coredns_custom.yml\n"

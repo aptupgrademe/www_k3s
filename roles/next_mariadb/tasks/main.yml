@@ -189,11 +189,14 @@
       # Risk: up to 1 second of committed transactions lost on hard crash.
       # Benefit: significantly faster write throughput for Nextcloud workloads.
       innodb_flush_log_at_trx_commit = 2
+      # Classic Linux AIO instead of trying io_uring first: the kernel has
+      # io_uring disabled (kernel.io_uring_disabled = 2, the AlmaLinux default),
+      # so "auto" logged an io_uring_queue_init() EPERM warning on every start
+      # and then fell back to this anyway.
+      innodb_linux_aio               = aio
       # Bounds per-connection/session memory use. Mirrors the WordPress pod's
-      # MariaDB tuning (roles/blog_k3s_deploy/templates/mariadb-deployment.yml.j2)
-      # for a similarly modest host. max_connections in particular may need
-      # raising for heavier sync-client/WebDAV concurrency – not yet verified
-      # against a live Nextcloud instance.
+      # MariaDB tuning (roles/blog_k3s_deploy/templates/mariadb-deployment.yml.j2).
+      # Measured 2026-10-16: at most 12 (cvjm) / 7 (sofie) connections in 7 days.
       max_connections                = 50
       tmp_table_size                 = 32M
       max_heap_table_size            = 32M
@@ -330,6 +333,25 @@
     - localhost
     - "{{ ansible_facts['fqdn'] }}"
     - "{{ ansible_facts['hostname'] }}"
+  no_log: true
+
+# mariadb-install-db also writes a PROXY grant for 'mysql'@'<host name>'. With
+# skip_name_resolve a host-name entry can never match, and MariaDB warned
+# "'proxies_priv' entry ... ignored in --skip-name-resolve mode" on every
+# start. The localhost entries stay; only the host-name one goes.
+- name: MariaDB | Remove the host-name PROXY grant skip_name_resolve ignores
+  community.mysql.mysql_query:
+    # No FLUSH PRIVILEGES needed: the table is only read at startup, which is
+    # also the only place the warning appeared. (positional_args would be
+    # applied to every query of a list, so a second query would break it.)
+    query: DELETE FROM mysql.proxies_priv WHERE Host = %s
+    positional_args:
+      - "{{ ansible_facts['fqdn'] }}"
+    login_unix_socket: "{{ mariadb_socket }}"
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+  register: mariadb_proxies_cleanup
+  changed_when: (mariadb_proxies_cleanup.rowcount | default([0]) | first | int) > 0
   no_log: true
 
 - name: MariaDB | Remove the unused 'test' database

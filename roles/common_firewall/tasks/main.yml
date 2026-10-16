@@ -5,9 +5,10 @@
 #          /etc/sysconfig/nftables.conf is the file read by the nftables systemd
 #          service on AlmaLinux 9 at boot (ExecStart) and on reload (ExecReload).
 #          The commonly referenced /etc/nftables.conf is NOT used by the service.
-#          K3s (kube-proxy, flannel, Calico) writes its rules through
-#          iptables-nft, i.e. into its OWN nftables tables in the same kernel
-#          subsystem. This role therefore only ever replaces table
+#          K3s (kube-proxy, flannel, Calico) writes its rules either to
+#          iptables-legacy (blog) or through iptables-nft into its OWN
+#          nftables tables (both Nextcloud hosts, checked 2026-10-16). For
+#          the second case this role only ever replaces table
 #          "inet filter" ("delete table" + recreate in fw.nft.j2, and the
 #          systemd drop-in below scopes reload/stop the same way) - never
 #          "flush ruleset", which would wipe K3s's tables too.

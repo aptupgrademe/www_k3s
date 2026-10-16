@@ -80,6 +80,17 @@
     line: "!/var/log/containers"
     insertafter: '^!/var/log/pods$'
 
+# /boot/efi is a FAT file system (SELinux type dosfs_t), and the policy does not
+# let aide_t read it: every check logged 13 AVC denials and AIDE silently skipped
+# the partition anyway. Excluding it states that honestly instead of producing
+# denials. The EFI binaries come from rpm packages (shim, grub2-efi), so
+# "rpm -V shim-x64 grub2-efi-x64" checks them by hand if ever needed.
+- name: CIS | Exclude /boot/efi from AIDE (vfat, unreadable for aide_t under SELinux)
+  ansible.builtin.lineinfile:
+    path: /etc/aide.conf
+    line: "!/boot/efi"
+    insertafter: '^!/var/log/containers$'
+
 - name: CIS | Check whether the AIDE database already exists
   ansible.builtin.stat:
     path: /var/lib/aide/aide.db.gz

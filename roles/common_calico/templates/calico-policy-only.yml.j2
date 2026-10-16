@@ -5656,6 +5656,15 @@ spec:
                 order:
                   type: number
               type: object
+            # Not in upstream (v3.32.2): calico-kube-controllers re-creates the
+            # three default tiers every 10 s (409 AlreadyExists is its normal
+            # path) and sends a "status" field with each attempt, so the API
+            # server answered every one with 'unknown field "status"' - about
+            # 3 log lines every 10 s. Declaring the field silences that; it is
+            # not used by anything.
+            status:
+              type: object
+              x-kubernetes-preserve-unknown-fields: true
           required:
             - metadata
             - spec
