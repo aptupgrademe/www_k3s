@@ -14,6 +14,35 @@ scrape_configs:
         labels:
           instance: "{{ inventory_hostname }}"
 
+  # Per-container metrics (common_kube_metrics). cAdvisor is part of the
+  # kubelet; it needs the scraper token (nodes/metrics only).
+  # insecure_skip_verify: the kubelet's serving certificate is self-signed
+  # by K3s and the connection never leaves 127.0.0.1.
+  # metric_relabel_configs drops the series of the pause containers and the
+  # pod-level cgroup sums (container=""), about half of all series.
+  - job_name: "kubelet_cadvisor"
+    scheme: https
+    metrics_path: /metrics/cadvisor
+    authorization:
+      credentials_file: /etc/prometheus/kubelet-token
+    tls_config:
+      insecure_skip_verify: true
+    static_configs:
+      - targets: ["127.0.0.1:10250"]
+        labels:
+          instance: "{{ inventory_hostname }}"
+    metric_relabel_configs:
+      - source_labels: [container]
+        regex: "|POD"
+        action: drop
+
+  # kube-state-metrics via NodePort {{ kube_state_metrics_nodeport }}: limits, restarts, termination reasons.
+  - job_name: "kube_state_metrics"
+    static_configs:
+      - targets: ["127.0.0.1:{{ kube_state_metrics_nodeport }}"]
+        labels:
+          instance: "{{ inventory_hostname }}"
+
   # Only the exporters of this host's stack. Until 2026-10-02 all four jobs
   # were rendered everywhere, so every host showed two targets permanently
   # DOWN (the other stack's ports) - noise in Grafana's target views.

@@ -484,6 +484,7 @@ des valeurs différentes, <code>stack</code> sélectionne un profil :</p>
   <tr><td><code>next_mariadb</code>, <code>next_redis</code></td><td>Nextcloud</td><td>base de données et cache sur l'hôte</td></tr>
   <tr><td><code>common_k3s</code></td><td>les deux</td><td>K3s, Helm, cert-manager, F5 nginx-ingress, durcissement des ServiceAccounts</td></tr>
   <tr><td><code>common_calico</code></td><td>les deux</td><td>Calico en mode « policy only » : les NetworkPolicies sont appliquées</td></tr>
+  <tr><td><code>common_kube_metrics</code></td><td>les deux</td><td>Métriques par conteneur : cAdvisor (dans le kubelet) et kube-state-metrics pour Prometheus</td></tr>
   <tr><td><code>blog_k3s_deploy</code> / <code>next_k3s_deploy</code></td><td>chacun</td><td>objets Kubernetes de l'application (Deployments, Secrets, Ingress, CronJobs, policies)</td></tr>
   <tr><td><code>common_node_exporter</code>, <code>common_prometheus</code>, <code>common_grafana</code>, <code>common_mysqld_exporter</code></td><td>les deux / Nextcloud</td><td>supervision, accessible en local uniquement, Grafana via Ingress</td></tr>
   <tr><td><code>common_fail2ban</code>, <code>common_monit</code>, <code>common_auditd</code>, <code>common_rkhunter</code>, <code>common_clamav</code></td><td>les deux</td><td>protection, chien de garde, audit, analyse rootkit et antivirus</td></tr>
@@ -586,7 +587,14 @@ Les composants fournis avec K3s dont personne n'a besoin ici (Traefik, ServiceLB
 <p><strong><code>common_calico</code></strong> (les deux)</p>
 <p><strong>Quoi :</strong> Calico en mode policy-only – Flannel continue de gérer le réseau, Calico applique les NetworkPolicies.
 <strong>Pourquoi :</strong> Sans Calico, toutes les NetworkPolicies seraient ignorées en silence.</p>
-<p class="wie"><strong>Comment :</strong> rendre le template sur le contrôleur (<code>lookup('template')</code>) → le découper en objets Kubernetes (<code>from_yaml_all</code>) → appliquer via l'API (<code>kubernetes.core.k8s apply</code>, « changed » seulement en cas d'écart réel) → n'attendre les pods que dans ce cas (<code>rollout status … when changed</code>). Ce <strong>schéma d'application K8s</strong> est utilisé par 26 tâches du dépôt.</p>
+<p class="wie"><strong>Comment :</strong> rendre le template sur le contrôleur (<code>lookup('template')</code>) → le découper en objets Kubernetes (<code>from_yaml_all</code>) → appliquer via l'API (<code>kubernetes.core.k8s apply</code>, « changed » seulement en cas d'écart réel) → n'attendre les pods que dans ce cas (<code>rollout status … when changed</code>). Ce <strong>schéma d'application K8s</strong> est utilisé par 27 tâches du dépôt.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_kube_metrics</code></strong> (les deux)</p>
+<p><strong>Quoi :</strong> un ServiceAccount qui ne peut que lire les métriques du kubelet, plus kube-state-metrics dans <code>kube-system</code> (NodePort 30808, local uniquement).
+<strong>Pourquoi :</strong> Node Exporter ne voit que l'hôte dans son ensemble ; ici CPU, mémoire, bridage, redémarrages et OOM kills apparaissent par conteneur, rapportés à ses limites (tableau de bord Grafana « Container-Ressourcen », quatre alertes).</p>
+<p class="wie"><strong>Comment :</strong> motif K8s apply → <code>common_prometheus</code> lit le Secret du jeton (<code>k8s_info</code>, répété jusqu'à ce que le contrôleur de jetons l'ait rempli) et l'écrit dans <code>/etc/prometheus/kubelet-token</code> pour le job <code>kubelet_cadvisor</code>.</p>
 </div>
 
 <div class="rolle">
@@ -614,7 +622,7 @@ Les composants fournis avec K3s dont personne n'a besoin ici (Traefik, ServiceLB
 
 <div class="rolle">
 <p><strong><code>common_grafana</code></strong> (les deux)</p>
-<p><strong>Quoi :</strong> Grafana avec une source de données Prometheus, trois tableaux de bord et des alertes par mail, accessible sous <code>/grafana/</code>.
+<p><strong>Quoi :</strong> Grafana avec une source de données Prometheus, quatre tableaux de bord et des alertes par mail, accessible sous <code>/grafana/</code>.
 <strong>Pourquoi :</strong> Des courbes et des alertes sans que Prometheus lui-même doive être exposé.</p>
 <p class="wie"><strong>Comment :</strong> installer le paquet, définir des lignes isolées dans <code>grafana.ini</code> (<code>lineinfile</code>) → démarrer et attendre que l'API réponde (<code>uri … until</code>) → via l'API HTTP « regarder d'abord, puis créer » (enregistrer le GET → POST seulement <code>when</code> il manque) → télécharger et importer les tableaux de bord → règles d'alerte via un petit script Python.</p>
 </div>

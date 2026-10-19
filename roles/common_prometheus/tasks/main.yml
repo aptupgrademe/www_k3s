@@ -146,6 +146,38 @@
     mode: "0644"
   notify: restart prometheus
 
+# Token of the prometheus-scraper ServiceAccount (common_kube_metrics): the
+# kubelet only hands out cAdvisor metrics to an authenticated caller allowed
+# to read nodes/metrics. K3s's token controller fills the Secret a moment
+# after it is created, hence the retries. Prometheus reads the file on every
+# scrape, so a new token needs no restart.
+- name: Prometheus | Read kubelet scraper token
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ k3s_kubeconfig }}"
+    kind: Secret
+    namespace: kube-system
+    name: prometheus-scraper-token
+  register: prometheus_scraper_secret
+  check_mode: false   # read-only API query, also runs in --check
+  until: ansible_check_mode or prometheus_scraper_token != ''
+  retries: 10
+  delay: 3
+  vars:
+    prometheus_scraper_token: "{{ ((prometheus_scraper_secret.resources | default([]) | first | default({})).data | default({})).token | default('') }}"
+  no_log: true
+
+# Skipped in --check on a host where common_kube_metrics has not created the
+# Secret yet (first run of the role).
+- name: Prometheus | Write kubelet scraper token
+  ansible.builtin.copy:
+    dest: /etc/prometheus/kubelet-token
+    content: "{{ prometheus_scraper_secret.resources[0].data.token | b64decode }}"
+    owner: root
+    group: prometheus
+    mode: "0640"
+  when: prometheus_scraper_secret.resources | default([]) | length > 0
+  no_log: true
+
 - name: Prometheus | Deploy alert rules
   ansible.builtin.template:
     src: alert.rules.yml.j2

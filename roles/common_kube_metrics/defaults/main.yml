@@ -1,0 +1,7 @@
+---
+# kube_state_metrics_image is pinned in inventory/group_vars/all/versions.yml.
+#
+# NodePort of kube-state-metrics. Prometheus scrapes it on 127.0.0.1; the
+# firewall drops new connections to 30000-32767 on the public addresses
+# (common_firewall, PREROUTING), like the exporter NodePorts 30104/30253/30254.
+kube_state_metrics_nodeport: 30808

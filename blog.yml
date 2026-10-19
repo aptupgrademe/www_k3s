@@ -92,6 +92,7 @@
     - { role: common_selinux,       tags: [common_selinux] }  # SELinux enforcing + container_file_t for HostPath  ← before deploy!
     - { role: common_k3s,           tags: [common_k3s] }            # K3s + Helm + cert-manager + nginx-ingress (F5)
     - { role: common_calico,        tags: [common_calico] }         # Calico policy-only mode: NetworkPolicy enforcement (Flannel alone ignores it)
+    - { role: common_kube_metrics,  tags: [common_kube_metrics] }   # Container metrics: cAdvisor scraper token + kube-state-metrics (NodePort 30808)
     - { role: blog_k3s_deploy,      tags: [blog_k3s_deploy] }       # WordPress K8s objects; waits until MariaDB, Redis and WordPress are ready
 
     # Host-side services. Several watch what the deploy just created: Prometheus
@@ -99,7 +100,7 @@
     # the pods.
     - { role: common_node_exporter, tags: [common_node_exporter] }  # Node Exporter (metrics, port 9100)
     - { role: common_prometheus,    tags: [common_prometheus] }     # Prometheus (scrapes node:9100 + K3s NodePorts, port 9090)
-    - { role: common_grafana,       tags: [common_grafana] }        # Grafana (dashboards 1860/7362/4912, port 3000)
+    - { role: common_grafana,       tags: [common_grafana] }        # Grafana (dashboards 1860/7362/4912 + Container-Ressourcen, port 3000)
     - { role: common_fail2ban,      tags: [common_fail2ban] }       # Fail2Ban: SSH + nginx + WordPress login protection
     - { role: common_msmtp,         tags: [common_msmtp] }          # msmtp sendmail relay (rkhunter, cron, dnf-automatic)
     - { role: common_dnf_automatic, tags: [common_dnf_automatic] }  # Automatic security-only updates via dnf-automatic
@@ -113,6 +114,7 @@
     # Configures WordPress inside its running pod (ready since blog_k3s_deploy).
     - { role: blog_wordpress,       tags: [blog_wordpress] }        # WordPress install + plugins via kubectl exec
     - { role: blog_verify,          tags: [blog_verify] }           # Post-deployment smoke tests (services, K8s, HTTPS, security, performance)
+    - { role: common_version_active, tags: [common_version_active] }  # Are the pinned versions ACTIVE (kubelet, charts, running images, reboot)?
 
     # Always last: refresh the AIDE baseline if this run changed anything it
     # watches, so tomorrow's scheduled AIDE check isn't a false alarm about

@@ -2,15 +2,16 @@
 # =============================================================================
 # Role: common_grafana
 # Purpose: Install Grafana OSS on AlmaLinux 9, configure a Prometheus
-#          datasource, import three dashboards (1860 Node Exporter Full,
-#          7362 MySQL Overview, 4912 PHP-FPM) and set up e-mail alerting.
+#          datasource, import four dashboards (1860 Node Exporter Full,
+#          7362 MySQL Overview, 4912 PHP-FPM from grafana.com, our own
+#          Container-Ressourcen from files/) and set up e-mail alerting.
 #          Grafana is exposed via K3s Ingress at /grafana/ on the main hostname.
 #          Access is protected by Grafana's own admin password (no host-level proxy auth).
 # =============================================================================
 #
 # How it works: main.yml only pulls in three task files, in this order:
 #   install.yml     repo, package, grafana.ini settings, start + wait
-#   dashboards.yml  Prometheus datasource + three dashboards from grafana.com
+#   dashboards.yml  Prometheus datasource + four dashboards (three from grafana.com)
 #   alerting.yml    SMTP, e-mail contact point, alert rules
 # The order matters: the API calls in the last two files need a running
 # Grafana, which install.yml guarantees by waiting for /api/health.

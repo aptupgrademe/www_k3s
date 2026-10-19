@@ -263,6 +263,43 @@
               "Node Exporter antwortet nicht – Server möglicherweise down!",
               "node_up",
           ),
+          # Container rules (common_kube_metrics). max() turns the per-
+          # container series into one value; the dashboard
+          # "Container-Ressourcen" shows which container it was.
+          make_rule(
+              "alert-container-memory",
+              "Container-Speicher > 90% vom Limit",
+              'max(sum by (namespace, pod, container) (container_memory_working_set_bytes) '
+              '/ on (namespace, pod, container) kube_pod_container_resource_limits{resource="memory"}) * 100',
+              90, "gt",
+              "Ein Container nutzt mehr als 90% seines Speicherlimits – OOM-Kill droht (Dashboard Container-Ressourcen).",
+              "container_mem_pct",
+          ),
+          make_rule(
+              "alert-container-throttling",
+              "Container-CPU gedrosselt > 50%",
+              'max(sum by (namespace, pod, container) (rate(container_cpu_cfs_throttled_periods_total[5m])) '
+              '/ sum by (namespace, pod, container) (rate(container_cpu_cfs_periods_total[5m]))) * 100',
+              50, "gt",
+              "Ein Container wird seit 5 min in mehr als der Hälfte der Perioden gebremst – CPU-Limit zu knapp?",
+              "container_throttled_pct",
+          ),
+          make_rule(
+              "alert-container-oom",
+              "Container OOM-Kill",
+              "max(increase(container_oom_events_total[15m])) or vector(0)",
+              0, "gt",
+              "Ein Container wurde wegen Speichermangel beendet (OOMKilled) – Limit prüfen.",
+              "container_oom",
+          ),
+          make_rule(
+              "alert-container-crashloop",
+              "Container startet wiederholt neu",
+              "max(increase(kube_pod_container_status_restarts_total[15m])) or vector(0)",
+              2, "gt",
+              "Ein Container ist in 15 min mehr als zweimal neu gestartet (Crash-Schleife?).",
+              "container_restarts",
+          ),
       ]
 
       for rule in rules:

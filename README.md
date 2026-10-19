@@ -366,12 +366,14 @@ ansible-vault encrypt inventory/host_vars/<host>/vault.yml
 | `common_dnf_automatic` | Automatic security updates on AlmaLinux |
 | `common_logrotate` | Log rotation for Grafana, fail2ban, rkhunter |
 | `common_version_check` | Pre-flight: K3s, Helm, chart and image versions vs. latest |
+| `common_version_active` | Last check: is every pin from versions.yml really running (kubelet, deployed charts, images of running containers, Prometheus/exporters, pending reboot, services on old code)? Reports only what is not active |
 | `common_k3s` | K3s, Helm, cert-manager, F5 nginx-ingress (HTTP/2, Brotli, OCSP) |
 | `common_calico` | Calico policy-only mode: NetworkPolicy enforcement (both stacks) |
+| `common_kube_metrics` | Container metrics: read-only scraper token for the kubelet's cAdvisor + kube-state-metrics (NodePort 30808, local only) |
 | `common_firewall` | nftables (table inet, banned/scan-ban sets, port-scan detection, K3s exceptions, table-scoped reload, optional SSH country allowlist) |
 | `common_ssh` | SSH hardening (port 10022, key-only, PermitRootLogin without-password) |
 | `common_prometheus` | Prometheus metrics collector (dashboards/history only – see note below) |
-| `common_grafana` | Grafana dashboards |
+| `common_grafana` | Grafana dashboards (incl. our own "Container-Ressourcen") |
 | `common_node_exporter` | Host metrics exporter |
 | `common_mysqld_exporter` | MariaDB metrics exporter |
 | `common_monit` | Watchdog and **the actual alerting path** – e-mails on resource/service/firewall/pod/TLS-certificate problems, auto-restarts fail2ban |
@@ -389,8 +391,9 @@ ansible-vault encrypt inventory/host_vars/<host>/vault.yml
 > `alert.rules.yml`, but no Alertmanager is deployed, so a firing rule is only
 > visible in its web UI. That is deliberate for a single-node setup: Monit
 > already covers the same ground (load, memory, disk, services, firewall, K3s
-> pods, TLS expiry) and mails about it. Grafana adds five mail alerts of its own
-> (disk, RAM, CPU, node down) via the `email-admin` contact point. Each rule
+> pods, TLS expiry) and mails about it. Grafana adds nine mail alerts of its own
+> (disk root/data, RAM, CPU, node down; per container: memory near the limit,
+> CPU throttling, OOM kill, restart loop) via the `email-admin` contact point. Each rule
 > needs `"condition": "B"`; without it Grafana logs "condition must not be
 > empty" on every evaluation and never fires.
 
@@ -412,16 +415,20 @@ at every playbook run. Before rolling a bump out: `scripts/check-drift.sh <playb
 
 ```yaml
 # Helm charts
-ingress_nginx_chart_version: "2.7.3"
+ingress_nginx_chart_version: "2.8.0"
 cert_manager_chart_version:  "1.21.2"
 
 # Container images
 blog_image_wordpress: "wordpress:7.1.3-php8.4-fpm"
-nextcloud_image_fpm:  "nextcloud:34.0.4-fpm"
+nextcloud_image_fpm:  "nextcloud:34.0.5-fpm"
 
 # Calico (policy-only NetworkPolicy enforcement)
-calico_version: "v3.32.2"
+calico_version: "v3.33.0"
 ```
+
+Calico upgrade: bump `calico_version`, run `scripts/calico-derive-manifest.py <version>` – it regenerates
+`roles/common_calico/templates/calico-policy-only.yml.j2` from the upstream Canal manifest (the edits are listed in
+its docstring) – review the diff, then `tests/k8s/run.sh` and a drift check per host.
 
 ---
 

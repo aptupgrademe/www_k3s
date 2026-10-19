@@ -1,0 +1,41 @@
+---
+# =============================================================================
+# Role: common_kube_metrics
+# Purpose: Per-container metrics for the host Prometheus (since 2026-10-19).
+#          Node Exporter only sees the host as a whole; this role makes the
+#          pods visible one by one:
+#            - cAdvisor (built into the kubelet, nothing to install): CPU,
+#              memory, CPU throttling and OOM events per container, on
+#              https://127.0.0.1:10250/metrics/cadvisor. Reading it needs a
+#              token - the prometheus-scraper ServiceAccount may read
+#              nodes/metrics and nothing else.
+#            - kube-state-metrics: the API server's view - limits and
+#              requests, restarts and their reason (OOMKilled), ready status.
+#          common_prometheus writes the scraper token to
+#          /etc/prometheus/kubelet-token and scrapes both; common_grafana
+#          imports the "Container resources" dashboard and the alert rules.
+# Target:  both stacks (blog.yml, nextcloud-k3s.yml), after common_calico and
+#          before common_prometheus.
+# =============================================================================
+#
+# Same K8s apply pattern as common_calico (explained there).
+
+- name: Kube metrics | Apply scraper account and kube-state-metrics
+  kubernetes.core.k8s:
+    kubeconfig: "{{ k3s_kubeconfig }}"
+    state: present
+    apply: true
+    definition: "{{ item }}"
+  loop: "{{ k8s_objects if ansible_diff_mode else [k8s_objects] }}"
+  loop_control:
+    label: "{{ (item.kind ~ '/' ~ item.metadata.name) if item is mapping else ((item | length) ~ ' objects') }}"
+  vars:
+    k8s_objects: "{{ lookup('ansible.builtin.template', 'kube-metrics.yml.j2') | ansible.builtin.from_yaml_all | select | list }}"
+  register: kube_metrics_apply
+
+- name: Kube metrics | Wait for kube-state-metrics to be ready (up to 2 min)
+  ansible.builtin.command: >
+    k3s kubectl -n kube-system rollout status deployment/kube-state-metrics
+    --timeout=120s
+  changed_when: false
+  when: kube_metrics_apply.changed

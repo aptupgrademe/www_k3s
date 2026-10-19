@@ -32,7 +32,7 @@
 #          nextcloud-k3s.yml and blog.yml)
 # =============================================================================
 #
-# THE K8S APPLY PATTERN - used by 26 tasks in this repo, explained once here:
+# THE K8S APPLY PATTERN - used by 27 tasks in this repo, explained once here:
 #
 #   - name: ... | Apply <something>
 #     kubernetes.core.k8s:

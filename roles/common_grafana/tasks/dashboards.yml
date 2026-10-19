@@ -241,6 +241,29 @@
       # with every run ("message too long" from rsyslog, found 2026-10-02).
       no_log: true
 
+
+    # -----------------------------------------------------------------------------
+    # Container-Ressourcen – our own dashboard (files/container-resources.json)
+    # -----------------------------------------------------------------------------
+    # Data from common_kube_metrics (cAdvisor + kube-state-metrics): CPU and
+    # memory per container against its limit, CPU throttling, restarts, OOM
+    # kills, last termination reason. Lives in the repo instead of
+    # grafana.com, so there is no download; the fixed uid is in the file.
+    - name: Grafana | Import dashboard Container-Ressourcen
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:3000/api/dashboards/db"
+        method: POST
+        user: "{{ grafana_basic_auth_user }}"
+        password: "{{ grafana_admin_pass }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          dashboard: "{{ lookup('ansible.builtin.file', 'container-resources.json') | from_json }}"
+          overwrite: true
+          folderId: 0
+        status_code: 200
+      no_log: true
+
 # Note: Grafana is proxied via K3s Ingress at /grafana/
 # Access control is handled by Grafana's own admin_password (set above).
 # No host-level Nginx or htpasswd file needed.

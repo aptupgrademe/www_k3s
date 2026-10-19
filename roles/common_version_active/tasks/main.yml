@@ -1,0 +1,218 @@
+---
+# =============================================================================
+# Role: common_version_active
+# Purpose: ARE THE PINNED VERSIONS ACTIVE? (last check of the playbook)
+# =============================================================================
+#
+# common_version_check runs at the START of a playbook and shows what is installed and
+# what is newer upstream. This file runs at the END (since 2026-10-19) and
+# answers a different question: did this run really put every pin from
+# inventory/group_vars/all/versions.yml into service?
+#
+# "Installed" is not enough - a new binary is only active after a restart,
+# a new image only after the pods were replaced, a kernel update only after
+# a reboot. So every value is read from the RUNNING thing:
+#   K3s              the kubelet version the node reports to the API server
+#                    (not "k3s --version", which is the file on disk)
+#   Helm charts      the chart of the deployed release (helm list)
+#   container images the images of RUNNING containers; another tag of the
+#                    same image still running (an old pod) counts as a miss
+#   Prometheus       /api/v1/status/buildinfo of the running server
+#   exporters        the *_build_info metric of the running exporter
+#   reboot pending   needs-restarting -r: a new kernel/glibc/systemd is
+#                    installed but not running yet
+#   old code         needs-restarting -s: services still running replaced
+#                    libraries/binaries (restart-updated-services, 03:45)
+#
+# Report: only what is NOT active yet, plus one summary line.
+#
+# Read-only like common_version_check: changed_when: false, check_mode: false, failed_when:
+# false on every query. The play does not fail on a miss - the report says
+# what is not active yet, the decision (restart, reboot, re-run) stays manual.
+#
+# Ansible/Jinja used here:
+#   from_json        kubectl/helm print JSON; parsed in Jinja, no jq/python
+#   map(attribute=)  picks one field from every item of a list
+#   selectattr('a.b', 'defined')  keeps the items that HAVE that (nested) field
+#   flatten          one list out of a list of lists (containers of all pods)
+#   loop + set_fact  "x: {{ x + [new] }}" collects one row per loop item
+
+- name: Active versions | Set color codes
+  ansible.builtin.set_fact:
+    _h: "\x1b[1;36m"
+    _b: "\x1b[1m"
+    _g: "\x1b[32m"
+    _br: "\x1b[1;31m"
+    _z: "\x1b[0m"
+    _upd: "\x1b[1;31m✗\x1b[0m"
+
+
+# -----------------------------------------------------------------------------
+# Queries (on the server)
+# -----------------------------------------------------------------------------
+- name: Active versions | Node status (kubelet version)
+  ansible.builtin.command: k3s kubectl get nodes -o json
+  register: _va_nodes
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false
+
+- name: Active versions | Helm client
+  ansible.builtin.command: helm version --short
+  register: _va_helm
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false
+
+- name: Active versions | Deployed Helm releases
+  ansible.builtin.command: helm list -A -o json
+  register: _va_releases
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false
+
+- name: Active versions | All pods (images of running containers)
+  ansible.builtin.command: k3s kubectl get pods -A -o json
+  register: _va_pods
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false
+
+- name: Active versions | Prometheus build info
+  ansible.builtin.uri:
+    url: http://127.0.0.1:9090/api/v1/status/buildinfo
+    return_content: true
+    timeout: 10
+  register: _va_prometheus
+  check_mode: false   # read-only GET; uri is skipped in --check otherwise
+  failed_when: false
+
+# loop over the exporters of this stack; results[i].content is /metrics
+- name: Active versions | Exporter build info
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ item.port }}/metrics"
+    return_content: true
+    timeout: 10
+  loop: "{{ _va_exporters }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: _va_exporter_metrics
+  check_mode: false   # read-only GET; uri is skipped in --check otherwise
+  failed_when: false
+  vars:
+    _va_exporters: >-
+      {{ [{'name': 'node_exporter', 'port': 9100, 'want': node_exporter_version}]
+         + ([{'name': 'mysqld_exporter', 'port': 9104, 'want': mysqld_exporter_version}]
+            if stack == 'nextcloud' else []) }}
+
+# Exit code 1 = reboot needed. -s lists the services running replaced code.
+- name: Active versions | Reboot pending?
+  ansible.builtin.command: needs-restarting -r
+  register: _va_reboot
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false
+
+- name: Active versions | Services running replaced code?
+  ansible.builtin.command: needs-restarting -s
+  register: _va_services
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false
+
+
+# -----------------------------------------------------------------------------
+# Compare
+# -----------------------------------------------------------------------------
+# containerd reports "docker.io/library/nginx:1.30.6-alpine" for the pin
+# "nginx:1.30.6-alpine" - both sides are normalised the same way.
+- name: Active versions | Running images and expected images
+  ansible.builtin.set_fact:
+    _va_running: >-
+      {{ ((_va_pods.stdout | default('') | trim or '{"items": []}') | from_json)['items']
+         | map(attribute='status') | selectattr('containerStatuses', 'defined')
+         | map(attribute='containerStatuses') | flatten
+         | selectattr('state.running', 'defined') | map(attribute='image')
+         | map('regex_replace', '^docker[.]io/(library/)?', '') | unique | list }}
+    _va_expected: >-
+      {{ (['quay.io/calico/node:' ~ calico_version, 'quay.io/calico/calico:' ~ calico_version]
+          + ([kube_state_metrics_image] if kube_state_metrics_image is defined else [])
+          + ([blog_image_wordpress, blog_image_nginx, blog_image_mariadb, blog_image_redis,
+              blog_image_mysqld_exporter, blog_image_fpm_exporter] if stack == 'wordpress' else [])
+          + ([nextcloud_image_fpm, nextcloud_image_nginx, nextcloud_image_collabora,
+              nextcloud_image_fpm_exporter] if stack == 'nextcloud' else []))
+         | map('regex_replace', '^docker[.]io/(library/)?', '') | unique | list }}
+    _va_rows: []
+
+# One row per expected image. "others" = the same image with another tag
+# still running, i.e. an old pod that was not replaced.
+- name: Active versions | Compare images
+  ansible.builtin.set_fact:
+    _va_rows: >-
+      {{ _va_rows + [{'name': 'Image ' ~ (_repo | regex_replace('^.*/', '')),
+                      'want': item | regex_replace('^.*:', ''),
+                      'have': (([item] if item in _va_running else []) + _others) | map('regex_replace', '^.*:', '') | join(', ') or 'not running',
+                      'ok': item in _va_running and not _others}] }}
+  loop: "{{ _va_expected }}"
+  vars:
+    _repo: "{{ item | regex_replace(':[^:]*$', '') }}"
+    _others: "{{ _va_running | select('match', (_repo | regex_escape) ~ ':') | reject('equalto', item) | list }}"
+
+# One row per exporter, from the build_info metric of the running process.
+- name: Active versions | Compare exporters
+  ansible.builtin.set_fact:
+    _va_rows: >-
+      {{ _va_rows + [{'name': item.item.name, 'want': item.item.want, 'have': _v, 'ok': _v == item.item.want}] }}
+  loop: "{{ _va_exporter_metrics.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  vars:
+    _v: "{{ item.content | default('') | regex_search('build_info[{][^}]*version=\"([^\"]+)\"', '\\1') | default(['?'], true) | first }}"
+
+# The regexes avoid backslashes ([0-9], [.]) for the same reason as in
+# common_version_check.
+- name: Active versions | Compare the rest
+  ansible.builtin.set_fact:
+    _va_rows: >-
+      {{ [{'name': 'K3s (kubelet)', 'want': k3s_version, 'have': _k3s, 'ok': _k3s == k3s_version},
+          {'name': 'Helm', 'want': helm_version, 'have': _helm, 'ok': _helm == helm_version},
+          {'name': 'Chart nginx-ingress', 'want': ingress_nginx_chart_version, 'have': _ingress,
+           'ok': _ingress == ingress_nginx_chart_version},
+          {'name': 'Chart cert-manager', 'want': cert_manager_chart_version, 'have': _certmgr,
+           'ok': _certmgr == cert_manager_chart_version},
+          {'name': 'Prometheus', 'want': prometheus_version, 'have': _prom, 'ok': _prom == prometheus_version}]
+         + _va_rows
+         + [{'name': 'Reboot pending', 'want': 'no', 'ok': _va_reboot.rc | default(1) == 0,
+             'have': 'no' if _va_reboot.rc | default(1) == 0 else 'yes – new kernel/glibc/systemd not running'},
+            {'name': 'Services on old code', 'want': 'none', 'ok': not _old,
+             'have': _old | join(', ') or 'none'}] }}
+  vars:
+    _k3s: "{{ (((_va_nodes.stdout | default('') | trim or '{\"items\": [{}]}') | from_json)['items'] | first).status.nodeInfo.kubeletVersion | default('?') }}"
+    _helm: "{{ _va_helm.stdout | default('') | regex_search('v[0-9]+[.][0-9]+[.][0-9]+') | default('?', true) }}"
+    _releases: "{{ (_va_releases.stdout | default('') | trim or '[]') | from_json | selectattr('status', 'equalto', 'deployed') }}"
+    _ingress: "{{ _releases | selectattr('name', 'equalto', 'ingress-nginx') | map(attribute='chart') | first | default('?') | regex_replace('^nginx-ingress-', '') }}"
+    _certmgr: "{{ _releases | selectattr('name', 'equalto', 'cert-manager') | map(attribute='chart') | first | default('?') | regex_replace('^cert-manager-v?', '') }}"
+    _prom: "{{ (_va_prometheus.json | default({})).data.version | default('?') }}"
+    _old: "{{ _va_services.stdout_lines | default([]) | select('match', '.*[.]service$') | map('trim') | list }}"
+
+
+# -----------------------------------------------------------------------------
+# Report
+# -----------------------------------------------------------------------------
+- name: Active versions | Print report
+  ansible.builtin.debug:
+    msg: |
+
+      {{ _h }}╔══════════════════════════════════════════════════════════╗{{ _z }}
+      {{ _h }}║       ACTIVE VERSIONS  (pin = running?)                 ║{{ _z }}
+      {{ _h }}╚══════════════════════════════════════════════════════════╝{{ _z }}
+      {% set bad = _va_rows | rejectattr('ok') | list %}
+      {% for r in bad %}
+        {{ _upd }}  {{ '%-24s' | format(r.name) }} {{ _br ~ r.have ~ _z ~ '   (pin: ' ~ r.want ~ ')' }}
+      {% endfor %}
+      {% if bad %}
+        {{ _br }}  {{ bad | length }} of {{ _va_rows | length }} NOT ACTIVE YET – restart/reboot or re-run the role{{ _z }}
+      {% else %}
+        {{ _g }}{{ _b }}  ALL {{ _va_rows | length }} ACTIVE  ✓{{ _z }}
+      {% endif %}
+      {{ _h }}══════════════════════════════════════════════════════════════{{ _z }}

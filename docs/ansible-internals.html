@@ -479,6 +479,7 @@ and Nextcloud need the same thing with different values, <code>stack</code> sele
   <tr><td><code>next_mariadb</code>, <code>next_redis</code></td><td>Nextcloud</td><td>database and cache on the host</td></tr>
   <tr><td><code>common_k3s</code></td><td>both</td><td>K3s, Helm, cert-manager, F5 nginx-ingress, ServiceAccount hardening</td></tr>
   <tr><td><code>common_calico</code></td><td>both</td><td>Calico in policy-only mode: NetworkPolicies are enforced</td></tr>
+  <tr><td><code>common_kube_metrics</code></td><td>both</td><td>Container metrics: cAdvisor (in the kubelet) and kube-state-metrics for Prometheus</td></tr>
   <tr><td><code>blog_k3s_deploy</code> / <code>next_k3s_deploy</code></td><td>each</td><td>the application's Kubernetes objects (Deployments, Secrets, Ingress, CronJobs, policies)</td></tr>
   <tr><td><code>common_node_exporter</code>, <code>common_prometheus</code>, <code>common_grafana</code>, <code>common_mysqld_exporter</code></td><td>both / Nextcloud</td><td>monitoring, local only, Grafana via Ingress</td></tr>
   <tr><td><code>common_fail2ban</code>, <code>common_monit</code>, <code>common_auditd</code>, <code>common_rkhunter</code>, <code>common_clamav</code></td><td>both</td><td>protection, watchdog, audit, rootkit and virus scan</td></tr>
@@ -581,7 +582,14 @@ The bundled K3s components nobody needs here (Traefik, ServiceLB, local-storage)
 <p><strong><code>common_calico</code></strong> (both)</p>
 <p><strong>What:</strong> Calico in policy-only mode – Flannel keeps doing the networking, Calico enforces the NetworkPolicies.
 <strong>Why:</strong> Without Calico, every NetworkPolicy would be silently ignored.</p>
-<p class="wie"><strong>How:</strong> render the template on the controller (<code>lookup('template')</code>) → split it into Kubernetes objects (<code>from_yaml_all</code>) → apply via the API (<code>kubernetes.core.k8s apply</code>, "changed" only on a real difference) → only then wait for the pods (<code>rollout status … when changed</code>). This <strong>K8s apply pattern</strong> is used by 26 tasks in the repo.</p>
+<p class="wie"><strong>How:</strong> render the template on the controller (<code>lookup('template')</code>) → split it into Kubernetes objects (<code>from_yaml_all</code>) → apply via the API (<code>kubernetes.core.k8s apply</code>, "changed" only on a real difference) → only then wait for the pods (<code>rollout status … when changed</code>). This <strong>K8s apply pattern</strong> is used by 27 tasks in the repo.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_kube_metrics</code></strong> (both)</p>
+<p><strong>What:</strong> A ServiceAccount that may only read the kubelet's metrics, plus kube-state-metrics in <code>kube-system</code> (NodePort 30808, local only).
+<strong>Why:</strong> Node Exporter sees the host as a whole; this shows CPU, memory, throttling, restarts and OOM kills per container against its limits (Grafana dashboard "Container-Ressourcen", four alerts).</p>
+<p class="wie"><strong>How:</strong> K8s apply pattern → <code>common_prometheus</code> reads the account's token Secret (<code>k8s_info</code>, retried until the token controller has filled it) and writes it to <code>/etc/prometheus/kubelet-token</code> for the <code>kubelet_cadvisor</code> job.</p>
 </div>
 
 <div class="rolle">
@@ -609,7 +617,7 @@ The bundled K3s components nobody needs here (Traefik, ServiceLB, local-storage)
 
 <div class="rolle">
 <p><strong><code>common_grafana</code></strong> (both)</p>
-<p><strong>What:</strong> Grafana with a Prometheus data source, three dashboards and alert mails, reachable at <code>/grafana/</code>.
+<p><strong>What:</strong> Grafana with a Prometheus data source, four dashboards and alert mails, reachable at <code>/grafana/</code>.
 <strong>Why:</strong> Graphs and warnings without Prometheus itself having to face the outside.</p>
 <p class="wie"><strong>How:</strong> install the package, set single lines in <code>grafana.ini</code> (<code>lineinfile</code>) → start and wait until the API answers (<code>uri … until</code>) → via the HTTP API "look first, then create" (register the GET → POST only <code>when</code> it is missing) → download and import dashboards → alert rules via a small Python script.</p>
 </div>

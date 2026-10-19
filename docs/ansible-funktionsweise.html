@@ -481,6 +481,7 @@ Profil:</p>
   <tr><td><code>next_mariadb</code>, <code>next_redis</code></td><td>Nextcloud</td><td>Datenbank und Cache auf dem Host</td></tr>
   <tr><td><code>common_k3s</code></td><td>beide</td><td>K3s, Helm, cert-manager, F5 nginx-ingress, ServiceAccount-Härtung</td></tr>
   <tr><td><code>common_calico</code></td><td>beide</td><td>Calico im Policy-Modus: NetworkPolicies werden durchgesetzt</td></tr>
+  <tr><td><code>common_kube_metrics</code></td><td>beide</td><td>Container-Metriken: cAdvisor (im Kubelet) und kube-state-metrics für Prometheus</td></tr>
   <tr><td><code>blog_k3s_deploy</code> / <code>next_k3s_deploy</code></td><td>je</td><td>Kubernetes-Objekte der Anwendung (Deployments, Secrets, Ingress, CronJobs, Policies)</td></tr>
   <tr><td><code>common_node_exporter</code>, <code>common_prometheus</code>, <code>common_grafana</code>, <code>common_mysqld_exporter</code></td><td>beide / Nextcloud</td><td>Monitoring, nur lokal erreichbar, Grafana per Ingress</td></tr>
   <tr><td><code>common_fail2ban</code>, <code>common_monit</code>, <code>common_auditd</code>, <code>common_rkhunter</code>, <code>common_clamav</code></td><td>beide</td><td>Schutz, Wachhund, Audit, Rootkit- und Virenscan</td></tr>
@@ -583,7 +584,14 @@ Die mitgelieferten K3s-Bausteine, die hier keiner braucht (Traefik, ServiceLB, l
 <p><strong><code>common_calico</code></strong> (beide)</p>
 <p><strong>Was:</strong> Calico nur im Policy-Modus – das Netz macht weiter Flannel, Calico setzt die NetworkPolicies durch.
 <strong>Warum:</strong> Ohne Calico würden alle NetworkPolicies still ignoriert.</p>
-<p class="wie"><strong>Wie:</strong> Vorlage auf dem Controller rendern (<code>lookup('template')</code>) → in Kubernetes-Objekte zerlegen (<code>from_yaml_all</code>) → per API anwenden (<code>kubernetes.core.k8s apply</code>, „changed“ nur bei echter Abweichung) → nur dann auf die Pods warten (<code>rollout status … when changed</code>). Dieses <strong>K8s-Apply-Muster</strong> nutzen 26 Tasks im Repo.</p>
+<p class="wie"><strong>Wie:</strong> Vorlage auf dem Controller rendern (<code>lookup('template')</code>) → in Kubernetes-Objekte zerlegen (<code>from_yaml_all</code>) → per API anwenden (<code>kubernetes.core.k8s apply</code>, „changed“ nur bei echter Abweichung) → nur dann auf die Pods warten (<code>rollout status … when changed</code>). Dieses <strong>K8s-Apply-Muster</strong> nutzen 27 Tasks im Repo.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_kube_metrics</code></strong> (beide)</p>
+<p><strong>Was:</strong> Ein ServiceAccount, der nur die Metriken des Kubelets lesen darf, dazu kube-state-metrics in <code>kube-system</code> (NodePort 30808, nur lokal).
+<strong>Warum:</strong> Der Node Exporter sieht nur den Host als Ganzes; so werden CPU, Speicher, Drosselung, Neustarts und OOM-Kills pro Container im Verhältnis zu seinen Limits sichtbar (Grafana-Dashboard „Container-Ressourcen“, vier Alarme).</p>
+<p class="wie"><strong>Wie:</strong> K8s-Apply-Muster → <code>common_prometheus</code> liest das Token-Secret des Accounts (<code>k8s_info</code>, mit Wiederholungen, bis der Token-Controller es gefüllt hat) und schreibt es nach <code>/etc/prometheus/kubelet-token</code> für den Job <code>kubelet_cadvisor</code>.</p>
 </div>
 
 <div class="rolle">
@@ -611,7 +619,7 @@ Die mitgelieferten K3s-Bausteine, die hier keiner braucht (Traefik, ServiceLB, l
 
 <div class="rolle">
 <p><strong><code>common_grafana</code></strong> (beide)</p>
-<p><strong>Was:</strong> Grafana mit Prometheus-Datenquelle, drei Dashboards und Alarm-Mails, erreichbar unter <code>/grafana/</code>.
+<p><strong>Was:</strong> Grafana mit Prometheus-Datenquelle, vier Dashboards und Alarm-Mails, erreichbar unter <code>/grafana/</code>.
 <strong>Warum:</strong> Kurven und Warnungen, ohne dass Prometheus selbst nach außen muss.</p>
 <p class="wie"><strong>Wie:</strong> Paket installieren, einzelne Zeilen in <code>grafana.ini</code> setzen (<code>lineinfile</code>) → starten und warten, bis die API antwortet (<code>uri … until</code>) → per HTTP-API „erst nachsehen, dann anlegen“ (GET registrieren → POST nur <code>when</code> es fehlt) → Dashboards laden und importieren → Alarmregeln per kleinem Python-Skript.</p>
 </div>
