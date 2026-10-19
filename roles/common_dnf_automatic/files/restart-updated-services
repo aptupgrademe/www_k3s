@@ -1,0 +1,40 @@
+#!/bin/bash
+# Managed by Ansible (common_dnf_automatic) - do not edit manually.
+#
+# Restart host services that still run code an update has replaced.
+# "needs-restarting -r" (the 03:30 reboot) only covers kernel, glibc, systemd
+# and a few more. A security update of sshd, fail2ban, redis or mariadb is
+# installed at night but the running process keeps the old, vulnerable code
+# until the next reboot - possibly weeks. "needs-restarting -s" lists exactly
+# those services; this restarts them, except the ones where a restart is
+# disruptive or impossible (they wait for the next reboot and are only named
+# in the mail). Silent when nothing needs a restart.
+set -u
+SKIP='^(dbus.*|dbus-broker|systemd-.*|user@.*|user-runtime-dir@.*|getty@.*|serial-getty@.*|auditd|NetworkManager|k3s|polkit)$'
+MAIL_TO="${1:-root}"
+mapfile -t units < <(/usr/bin/needs-restarting -s 2>/dev/null | sed 's/\.service$//' | sort -u)
+[ ${#units[@]} -eq 0 ] && exit 0
+
+done_ok=(); failed=(); skipped=()
+for u in "${units[@]}"; do
+    [ -z "$u" ] && continue
+    if [[ "$u" =~ $SKIP ]]; then skipped+=("$u"); continue; fi
+    # sshd: never restart into a broken configuration
+    if [ "$u" = sshd ] && ! /usr/sbin/sshd -t 2>/dev/null; then failed+=("sshd (sshd -t failed)"); continue; fi
+    if systemctl restart "$u.service" 2>/dev/null && systemctl is-active -q "$u.service"; then
+        done_ok+=("$u")
+    else
+        failed+=("$u")
+    fi
+done
+
+# Only skipped units left (e.g. dbus): nothing was done, the next reboot
+# handles them - no nightly mail for that.
+[ ${#done_ok[@]} -eq 0 ] && [ ${#failed[@]} -eq 0 ] && exit 0
+
+{
+    echo "Restarted (were running replaced code): ${done_ok[*]:-none}"
+    echo "Skipped, wait for the next reboot:       ${skipped[*]:-none}"
+    echo "FAILED:                                  ${failed[*]:-none}"
+} | /usr/bin/mail -s "[$(hostname -f)] ${failed:+FAILED: }services restarted after updates" "$MAIL_TO"
+[ ${#failed[@]} -eq 0 ]

@@ -7,9 +7,10 @@
 #
 # How it works: dnf-automatic is a systemd timer + service from the OS that
 # runs "dnf upgrade" unattended. The role restricts it to security updates
-# (automatic.conf), moves its timer to 01:00 (drop-in), and adds two cron
-# jobs: reboot at 03:30 if needs-restarting says so, and a 06:00 warning if
-# a reboot is still pending.
+# (automatic.conf), moves its timer to 01:00 (drop-in), and adds three cron
+# jobs: reboot at 03:30 if needs-restarting says so, restart services that
+# still run replaced code at 03:45, and a 06:00 warning if a reboot is still
+# pending.
 #
 # Ansible concepts used here:
 #   register on copy + "is changed"  the timer is RESTARTED only when its
@@ -49,7 +50,7 @@
 
 # The night is planned around this window: AIDE check 00:00
 # (common_cis_hardening), updates 01:00-02:00, reboot-if-needed 03:30,
-# AIDE baseline refresh 04:00, ClamAV data scan 04:30 (Nextcloud hosts,
+# service restarts 03:45, AIDE baseline refresh 04:00, ClamAV data scan 04:30 (Nextcloud hosts,
 # common_clamav), reboot-required check 06:00. The packaged
 # timer fires at 06:00 + up to 60 min, i.e. AFTER the reboot and the AIDE
 # refresh - found 2026-10-01: every security update (gawk) mailed an AIDE
@@ -109,6 +110,32 @@
     job: >-
       OUT=$(/usr/bin/needs-restarting -r 2>&1);
       [ $? -ne 0 ] && { echo "$OUT" | /usr/bin/mail -s "[$(hostname -f)] Rebooting now after security update" {{ dnf_automatic_reboot_mail }}; /usr/sbin/shutdown -r now; }
+    user: root
+
+# -----------------------------------------------------------------------------
+# Restart services that run replaced code
+# needs-restarting -r above only covers what needs a REBOOT (kernel, glibc,
+# systemd ...). An updated sshd, fail2ban, redis or mariadb keeps running its
+# old code until the next reboot. At 03:45 - after a possible 03:30 reboot,
+# which already restarts everything - the script restarts what
+# "needs-restarting -s" still lists, skips dbus/systemd/NetworkManager/
+# auditd/k3s (disruptive or not restartable; they wait for the next reboot),
+# checks sshd's config first, and mails only when it did or failed something.
+# -----------------------------------------------------------------------------
+- name: dnf-automatic | Deploy restart-updated-services script
+  ansible.builtin.copy:
+    src: restart-updated-services
+    dest: /usr/local/sbin/restart-updated-services
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: dnf-automatic | Restart services with replaced code at 03:45
+  ansible.builtin.cron:
+    name: "restart services after updates"
+    hour: "3"
+    minute: "45"
+    job: "/usr/local/sbin/restart-updated-services {{ dnf_automatic_reboot_mail }}"
     user: root
 
 # -----------------------------------------------------------------------------
