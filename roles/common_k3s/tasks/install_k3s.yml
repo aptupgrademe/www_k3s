@@ -34,6 +34,32 @@
       - python3-kubernetes
     state: present
 
+# k3s-selinux: the SELinux policy for K3s itself. Without it the k3s binary
+# is plain bin_t, containerd is started without SELinux support, and every
+# pod ran as unconfined_service_t (Nextcloud hosts) or spc_t (blog) - not
+# confined at all, although SELinux is enforcing (found 2026-10-19). With it,
+# k3s is container_runtime_exec_t and "selinux: true" in config.yaml below
+# makes containerd start each pod as container_t with its own MCS pair.
+# The repository is Rancher's (signed packages, gpgcheck), the same one the
+# K3s install script adds; written here so all hosts get it, not only the
+# one where the script happened to add it.
+- name: K3s | Rancher repository for the k3s-selinux policy
+  ansible.builtin.yum_repository:
+    name: rancher-k3s-common-stable
+    file: rancher-k3s-common   # the file name the K3s install script uses
+    description: Rancher K3s Common (stable)
+    baseurl: "https://rpm.rancher.io/k3s/stable/common/centos/{{ ansible_facts['distribution_major_version'] }}/noarch"
+    gpgcheck: true
+    repo_gpgcheck: false
+    gpgkey: https://rpm.rancher.io/public.key
+    enabled: true
+
+- name: K3s | Install the k3s-selinux policy
+  ansible.builtin.dnf:
+    name: k3s-selinux
+    state: present
+  notify: Restart k3s service
+
 
 # -----------------------------------------------------------------------------
 # K3s config file – written before install so flags apply even on re-runs
@@ -129,6 +155,12 @@
         - local-storage
       flannel-backend: vxlan
       write-kubeconfig-mode: "0600"
+      # containerd with SELinux support: every pod runs as container_t with
+      # its own MCS categories and may only write container_file_t
+      # (common_selinux labels the HostPath directories). Privileged pods
+      # (Calico) get spc_t. Needs the k3s-selinux policy above. Pods started
+      # before this was set keep their old domain until they are recreated.
+      selinux: true
       kube-apiserver-arg:
         # CIS 1.2.16-1.2.19: API audit log, rotated.
         - "audit-log-path=/var/lib/rancher/k3s/server/logs/audit.log"
@@ -233,6 +265,16 @@
   notify: Restart k3s service
   timeout: 600
 
+# get_url replaces the file through a temporary file, so a new binary gets
+# the label of its directory (bin_t) instead of k3s-selinux's
+# container_runtime_exec_t - and K3s then runs unconfined again. restorecon
+# puts the right label back; -v prints a line only when it changed one.
+- name: K3s | Restore the SELinux label of the k3s binary
+  ansible.builtin.command: restorecon -v /usr/local/bin/k3s
+  register: k3s_restorecon
+  changed_when: k3s_restorecon.stdout | length > 0
+  notify: Restart k3s service
+
 # The install script comes from the k3s repo at the same tag as the binary
 # (k3s_version), not from get.k3s.io: that always serves the newest script,
 # and it answered HTTP 500 for a while on 2026-09-29 (first run of the new
@@ -286,6 +328,32 @@
   delay: 5
   changed_when: false
   check_mode: false   # read-only query, also runs in --check
+
+# One-time migration to "selinux: true": pods keep the SELinux domain they
+# were started with, so after the switch they still run unconfined until
+# they are recreated. Every pod has a pause container; if not a single one
+# runs as container_t, all pods predate the switch - restart the workloads
+# once. Afterwards (or on a fresh install, where nothing runs yet) this
+# finds container_t pause processes, or no workloads, and does nothing.
+- name: K3s | Count pause containers confined as container_t
+  ansible.builtin.shell: |
+    set -o pipefail
+    ps -eZ | awk '$NF == "pause" {print $1}' | grep -c ':container_t:' || true
+  register: k3s_confined_pods
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+
+- name: K3s | Recreate the workloads so they start confined (one-time)
+  ansible.builtin.shell: |
+    set -o pipefail
+    for ns in $(k3s kubectl get namespaces -o jsonpath='{.items[*].metadata.name}'); do
+      k3s kubectl -n "$ns" get deployment,daemonset,statefulset -o name | while read -r w; do
+        k3s kubectl -n "$ns" rollout restart "$w"
+      done
+    done
+  register: k3s_selinux_restart
+  when: (k3s_confined_pods.stdout | trim) == '0'
+  changed_when: "'restarted' in k3s_selinux_restart.stdout"
 
 # CIS 1.1.20: k3s writes these world/group-readable (0644). Re-asserted on
 # every run since k3s regenerates some of them on restart/cert rotation.
