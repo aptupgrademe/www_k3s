@@ -325,7 +325,7 @@
   </div>
   <div class="card">
     <div class="label">Ingress</div>
-    <div class="value">nginx-ingress F5 2.7.3</div>
+    <div class="value">nginx-ingress F5 2.8.0</div>
   </div>
 </div>
 
@@ -430,7 +430,7 @@
   HostPath-Volume abgelegt.</p>
 
   <h4>Container 2: <code>nginx</code></h4>
-  <p>nginx-Sidecar (<code>nginx:1.30.5-alpine</code>) auf Port 80. Beantwortet
+  <p>nginx-Sidecar (<code>nginx:1.30.6-alpine</code>) auf Port 80. Beantwortet
   statische Anfragen direkt aus dem gemeinsamen Volume; PHP-Anfragen werden per
   FastCGI an Port 9000 weitergeleitet. TLS ist bereits durch nginx-ingress (F5)
   terminiert – dieser nginx spricht nur plain HTTP.</p>
@@ -829,7 +829,7 @@ k3s kubectl get secret wordpress-secrets -n wordpress \
 <pre><code># inventory/group_vars/all/versions.yml
 blog_image_wordpress: "wordpress:7.1.3-php8.4-fpm"   # WordPress PHP-FPM
 blog_image_mariadb:   "mariadb:10.11.19"    # MariaDB (10.11 LTS)
-blog_image_nginx:     "nginx:1.30.5-alpine" # nginx Sidecar (1.30 stable)</code></pre>
+blog_image_nginx:     "nginx:1.30.6-alpine" # nginx Sidecar (1.30 stable)</code></pre>
 
 <h3>Tag-Strategie</h3>
 <p>
@@ -859,7 +859,7 @@ blog_image_nginx:     "nginx:1.30.5-alpine" # nginx Sidecar (1.30 stable)</code>
   <tr>
     <td><code>1.30.4-alpine</code></td>
     <td>Exakter nginx-Patch auf dem Stable-Branch 1.30.x; wird manuell hochgesetzt</td>
-    <td><code>nginx:1.30.5-alpine</code></td>
+    <td><code>nginx:1.30.6-alpine</code></td>
   </tr>
 </table>
 
@@ -1042,7 +1042,7 @@ k3s kubectl exec -n wordpress deployment/mariadb -- \
   <strong>Deployment-Verification (blog_verify)</strong>
   Am Ende von <code>blog.yml</code> führt die Rolle <code>blog_verify</code> automatisch
   26 Smoke-Tests durch: Dienste, K8s-Pods, HTTPS-Erreichbarkeit, Security-Header,
-  Performance-Prüfungen. Fehlschlagende Tests werden als Ansible-Fehler gemeldet.
+  Performance-Prüfungen. Nur kritische Fehlschläge (Firewall, K3s, Pods, HTTPS/TLS …) brechen das Play ab, die übrigen stehen im Bericht und in der Mail. Danach prüft <code>common_version_active</code> (seit 19.10.2026), ob jede Version aus <code>versions.yml</code> wirklich läuft: Kubelet, installierte Charts, Images der laufenden Container, Prometheus und Exporter, ausstehender Reboot, Dienste mit altem Code. Es meldet nur, was noch nicht aktiv ist, und bricht nicht ab.
 </div>
 
 <h3>Idempotente Wiederholung (z.B. nach Konfig-Änderung)</h3>
@@ -1155,7 +1155,7 @@ k3s kubectl describe certificate wordpress-tls -n wordpress</code></pre>
     <div class="label">Grafana</div>
     <div class="value"><code>https://www.apt-upgrade.me/grafana/</code></div>
     <p style="margin-top:8px;font-size:13px;color:var(--muted)">
-      Dashboards: Node Exporter Full (1860), MySQL Overview (7362), PHP-FPM (4912)<br>
+      Dashboards: Node Exporter Full (1860), MySQL Overview (7362), PHP-FPM (4912), Container-Ressourcen (eigenes, seit 19.10.2026)<br>
       Login: Grafana-Admin-Passwort aus vault.yml
     </p>
   </div>
@@ -1323,6 +1323,30 @@ k3s kubectl logs -n wordpress deployment/wordpress -c wordpress-fpm -f | grep -i
     <td>Höchster Wert seit FPM-Start. Hilft bei der Dimensionierung von <code>pm.max_children</code>.</td>
   </tr>
 </table>
+
+<h4>Container-Ressourcen (eigenes Dashboard, seit 19.10.2026)</h4>
+<p>
+  Node Exporter sieht nur den Host als Ganzes. Dieses Dashboard zeigt jeden Container einzeln im Verhältnis zu
+  seinen Limits. Datenquellen (Rolle <code>common_kube_metrics</code>): <strong>cAdvisor</strong> im Kubelet
+  (<code>https://127.0.0.1:10250/metrics/cadvisor</code>, Prometheus-Job <code>kubelet_cadvisor</code>, mit dem Token
+  des ServiceAccounts <code>prometheus-scraper</code>, der nur <code>nodes/metrics</code> lesen darf) und
+  <strong>kube-state-metrics</strong> v2.20.0 in <code>kube-system</code> (NodePort 30808, nur lokal, Job
+  <code>kube_state_metrics</code>). Das Dashboard liegt im Repo (<code>roles/common_grafana/files/container-resources.json</code>).
+</p>
+<table>
+  <tr><th>Panel</th><th>Was man abliest</th></tr>
+  <tr><td>CPU – Anteil am Limit</td><td>Verbrauch geteilt durch das CPU-Limit. Nahe 100&nbsp;% bremst der Kernel.</td></tr>
+  <tr><td>CPU – Drosselung</td><td>Anteil der 100-ms-Perioden, in denen der Container warten musste. Dauerhaft über 25&nbsp;%: Limit zu knapp, auch wenn der Host noch Luft hat.</td></tr>
+  <tr><td>Arbeitsspeicher – Anteil am Limit</td><td>working set (das zählt der OOM-Killer) geteilt durch das Speicherlimit. Bei 100&nbsp;% wird der Container beendet.</td></tr>
+  <tr><td>Neustarts und OOM-Kills</td><td>Pro Stunde. Jeder Wert über 0 hat einen Grund – siehe nächste Tabelle.</td></tr>
+  <tr><td>Letzter Abbruchgrund</td><td>OOMKilled, Error oder Completed je Container.</td></tr>
+  <tr><td>Limits und Requests</td><td>Die gesetzten Werte (CPU in Kernen, Speicher in Bytes) zum Abgleich.</td></tr>
+</table>
+<p>
+  Vier Grafana-Alarme per Mail gehören dazu: Speicher über 90&nbsp;% vom Limit, CPU-Drosselung über 50&nbsp;%
+  (je 5&nbsp;min), ein OOM-Kill und mehr als zwei Neustarts in 15&nbsp;min.
+</p>
+
 <div class="callout callout-info">
   <strong>Grafana Dashboard-Variablen werden automatisch initialisiert</strong>
   Dashboard 1860 (Node Exporter Full) liegt im modernen Grafana-11-Format ohne <code>__inputs</code>-Sektion.

@@ -421,6 +421,7 @@ Historie je Eintrag.</p>
   <li>Konfiguration <em>in</em> der Anwendung (<code>blog_wordpress</code> bzw. <code>next_config</code>, per
     <code>kubectl exec</code>) – jetzt sind die Pods bereit.</li>
   <li><code>*_verify</code> – Rauchtests mit farbigem Bericht und Mail.</li>
+  <li><code>common_version_active</code> – läuft jeder Pin aus <code>versions.yml</code> wirklich? Meldet nur, was noch nicht aktiv ist.</li>
   <li><code>common_aide_refresh</code> <em>immer zuletzt</em> – erneuert die AIDE-Basis, damit die nächtliche Prüfung
     die eigenen, gewollten Änderungen nicht als Alarm meldet.</li>
 </ol>
@@ -489,6 +490,7 @@ Profil:</p>
   <tr><td><code>blog_visitor_stats</code></td><td>Blog</td><td>anonyme Besucherstatistik, auf dem Host berechnet</td></tr>
   <tr><td><code>blog_wordpress</code> / <code>next_config</code></td><td>je</td><td>Einstellungen in der Anwendung per wp-cli bzw. occ</td></tr>
   <tr><td><code>blog_verify</code> / <code>nextcloud_verify</code> (+ <code>common_verify</code>)</td><td>je</td><td>Rauchtests, Bericht, Mail, harte Prüfung kritischer Punkte</td></tr>
+  <tr><td><code>common_version_active</code></td><td>beide</td><td>laufen die gepinnten Versionen (Kubelet, Charts, Container-Images, Reboot)?</td></tr>
   <tr><td><code>common_aide_refresh</code></td><td>beide</td><td>AIDE-Basis erneuern, wenn sich etwas geändert hat</td></tr>
 </table>
 
@@ -577,7 +579,7 @@ Ausführlicher, Task für Task, steht es als Kommentar am Anfang jeder Datei unt
 <p><strong>Was:</strong> K3s, Helm samt Plugin helm-diff, cert-manager (Let's Encrypt) und der F5-nginx-Ingress.
 Die mitgelieferten K3s-Bausteine, die hier keiner braucht (Traefik, ServiceLB, local-storage), sind abgeschaltet.
 <strong>Warum:</strong> Das ist die Plattform, auf der Blog und Nextcloud laufen. Was nicht läuft, kann auch nicht angegriffen werden.</p>
-<p class="wie"><strong>Wie:</strong> installierte Version lesen (<code>register</code>) → Binary nur laden, wenn sie von <code>k3s_version</code> abweicht (<code>get_url … when</code>, <code>notify</code>) → Neustart sofort (<code>flush_handlers</code>) → warten, bis die API antwortet (<code>until</code>) → Helm genauso → helm-diff nur laden, wenn die Version von <code>helm_diff_version</code> abweicht (Prüfsumme in <code>get_url</code>) → Charts installieren (<code>kubernetes.core.helm</code> ändert nur bei anderer Chart-Version oder anderen Werten).</p>
+<p class="wie"><strong>Wie:</strong> installierte Version lesen (<code>register</code>) → Binary nur laden, wenn sie von <code>k3s_version</code> abweicht (<code>get_url force: true … when</code>, <code>notify</code>) → Neustart sofort (<code>flush_handlers</code>) → warten, bis die API antwortet (<code>until</code>) → Helm genauso → helm-diff nur laden, wenn die Version von <code>helm_diff_version</code> abweicht (Prüfsumme in <code>get_url</code>) → Charts installieren (<code>kubernetes.core.helm</code> ändert nur bei anderer Chart-Version oder anderen Werten).</p>
 </div>
 
 <div class="rolle">
@@ -710,6 +712,13 @@ Die mitgelieferten K3s-Bausteine, die hier keiner braucht (Traefik, ServiceLB, l
 <p><strong>Was:</strong> Rauchtests nach dem Lauf: Dienste, Pods, HTTPS, Zertifikat, Header, gesperrte Pfade, Datenbank/Cache.
 <strong>Warum:</strong> Ein Lauf, der „ok“ meldet, heißt noch nicht, dass die Seite funktioniert.</p>
 <p class="wie"><strong>Wie:</strong> alle Prüfungen nur sammeln (<code>register _v_*</code>, <code>failed_when: false</code>) → per <code>set_fact</code> in wahr/falsch umrechnen (<code>_r_*</code>) → zählen, Bericht ausgeben, Mail schicken → erst ganz am Ende <code>assert</code> auf die kritischen Punkte. Gleiches Muster wie beim Versions-Check: erst erheben, dann aufbereiten, dann bewerten.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_version_active</code></strong> (beide)</p>
+<p><strong>Was:</strong> Das Gegenstück zum Versions-Check am Ende: vergleicht jeden Pin aus <code>versions.yml</code> mit dem, was <em>läuft</em> – Kubelet-Version, installierte Charts, Images der laufenden Container, Build-Info von Prometheus und Exportern, ausstehender Reboot und Dienste, die noch ersetzten Code ausführen.
+<strong>Warum:</strong> Installiert ist nicht aktiv: Ein neues Binary braucht einen Neustart, ein neues Image neue Pods, ein neuer Kernel einen Reboot (gefunden am 19.10.2026: ein K3s-Update war nie installiert worden).</p>
+<p class="wie"><strong>Wie:</strong> nur lesende Abfragen (<code>command</code>, <code>uri</code>, <code>check_mode: false</code>) → JSON in Jinja auswerten (<code>from_json</code>, <code>selectattr</code>, <code>map</code>) → je Komponente eine Zeile per <code>loop</code> + <code>set_fact</code> sammeln → nur die Zeilen ausgeben, die nicht passen. Bricht das Play nie ab.</p>
 </div>
 
 <div class="rolle">

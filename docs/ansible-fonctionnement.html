@@ -424,6 +424,7 @@ l'historique de chaque entrée en dessous.</p>
   <li>Configuration <em>dans</em> l'application (<code>blog_wordpress</code> ou <code>next_config</code>, via
     <code>kubectl exec</code>) – les pods sont alors prêts.</li>
   <li><code>*_verify</code> – tests de fumée avec rapport en couleur et e-mail.</li>
+  <li><code>common_version_active</code> – chaque version épinglée dans <code>versions.yml</code> tourne-t-elle vraiment ? N’affiche que ce qui n’est pas encore actif.</li>
   <li><code>common_aide_refresh</code> <em>toujours en dernier</em> – met à jour la base AIDE pour que la vérification
     nocturne ne signale pas comme alarme les changements voulus de l'exécution.</li>
 </ol>
@@ -492,6 +493,7 @@ des valeurs différentes, <code>stack</code> sélectionne un profil :</p>
   <tr><td><code>blog_visitor_stats</code></td><td>blog</td><td>statistiques de visites anonymes, calculées sur l'hôte</td></tr>
   <tr><td><code>blog_wordpress</code> / <code>next_config</code></td><td>chacun</td><td>réglages dans l'application via wp-cli ou occ</td></tr>
   <tr><td><code>blog_verify</code> / <code>nextcloud_verify</code> (+ <code>common_verify</code>)</td><td>chacun</td><td>tests de fumée, rapport, e-mail, contrôle strict des points critiques</td></tr>
+  <tr><td><code>common_version_active</code></td><td>les deux</td><td>les versions épinglées tournent-elles (kubelet, charts, images, redémarrage) ?</td></tr>
   <tr><td><code>common_aide_refresh</code></td><td>les deux</td><td>mettre à jour la base AIDE si quelque chose a changé</td></tr>
 </table>
 
@@ -580,7 +582,7 @@ La version détaillée, tâche par tâche, se trouve en commentaire en tête de 
 <p><strong>Quoi :</strong> K3s, Helm avec le plugin helm-diff, cert-manager (Let's Encrypt) et l'ingress F5 nginx.
 Les composants fournis avec K3s dont personne n'a besoin ici (Traefik, ServiceLB, local-storage) sont désactivés.
 <strong>Pourquoi :</strong> C'est la plateforme sur laquelle tournent le blog et Nextcloud. Ce qui ne tourne pas ne peut pas être attaqué.</p>
-<p class="wie"><strong>Comment :</strong> lire la version installée (<code>register</code>) → ne télécharger le binaire que s'il diffère de <code>k3s_version</code> (<code>get_url … when</code>, <code>notify</code>) → redémarrer tout de suite (<code>flush_handlers</code>) → attendre que l'API réponde (<code>until</code>) → Helm de la même façon → ne télécharger helm-diff que si la version diffère de <code>helm_diff_version</code> (somme de contrôle dans <code>get_url</code>) → installer les charts (<code>kubernetes.core.helm</code> ne modifie qu'en cas d'autre version de chart ou d'autres valeurs).</p>
+<p class="wie"><strong>Comment :</strong> lire la version installée (<code>register</code>) → ne télécharger le binaire que s'il diffère de <code>k3s_version</code> (<code>get_url force: true … when</code>, <code>notify</code>) → redémarrer tout de suite (<code>flush_handlers</code>) → attendre que l'API réponde (<code>until</code>) → Helm de la même façon → ne télécharger helm-diff que si la version diffère de <code>helm_diff_version</code> (somme de contrôle dans <code>get_url</code>) → installer les charts (<code>kubernetes.core.helm</code> ne modifie qu'en cas d'autre version de chart ou d'autres valeurs).</p>
 </div>
 
 <div class="rolle">
@@ -713,6 +715,13 @@ Les composants fournis avec K3s dont personne n'a besoin ici (Traefik, ServiceLB
 <p><strong>Quoi :</strong> Tests de fumée après l'exécution : services, pods, HTTPS, certificat, en-têtes, chemins bloqués, base de données/cache.
 <strong>Pourquoi :</strong> Une exécution qui affiche « ok » ne signifie pas encore que le site fonctionne.</p>
 <p class="wie"><strong>Comment :</strong> ne faire que collecter toutes les vérifications (<code>register _v_*</code>, <code>failed_when: false</code>) → les convertir en vrai/faux avec <code>set_fact</code> (<code>_r_*</code>) → compter, afficher le rapport, envoyer le mail → seulement tout à la fin, <code>assert</code> sur les points critiques. Même schéma que pour la vérification des versions : d'abord relever, puis préparer, puis juger.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_version_active</code></strong> (les deux)</p>
+<p><strong>Quoi :</strong> le pendant de la vérification des versions, à la fin : compare chaque version de <code>versions.yml</code> avec ce qui <em>tourne</em> – version du kubelet, charts déployés, images des conteneurs en cours, build info de Prometheus et des exportateurs, redémarrage en attente, services encore sur du code remplacé.
+<strong>Pourquoi :</strong> installé n’est pas actif : un nouveau binaire demande un redémarrage, une nouvelle image de nouveaux pods, un nouveau noyau un reboot (constaté le 19/10/2026 : une mise à jour de K3s n’avait jamais été installée).</p>
+<p class="wie"><strong>Comment :</strong> requêtes en lecture seule (<code>command</code>, <code>uri</code>, <code>check_mode: false</code>) → analyse du JSON en Jinja (<code>from_json</code>, <code>selectattr</code>, <code>map</code>) → une ligne par composant via <code>loop</code> + <code>set_fact</code> → n’affiche que les lignes qui ne correspondent pas. N’interrompt jamais le play.</p>
 </div>
 
 <div class="rolle">

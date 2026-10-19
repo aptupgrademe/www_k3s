@@ -421,6 +421,7 @@ entry below.</p>
   <li>Configuration <em>inside</em> the application (<code>blog_wordpress</code> or <code>next_config</code>, via
     <code>kubectl exec</code>) – by now the pods are ready.</li>
   <li><code>*_verify</code> – smoke tests with a coloured report and an e-mail.</li>
+  <li><code>common_version_active</code> – is every pin from <code>versions.yml</code> really running? Reports only what is not active yet.</li>
   <li><code>common_aide_refresh</code> <em>always last</em> – refreshes the AIDE baseline so the nightly check does not
     report the run's own, intended changes as an alarm.</li>
 </ol>
@@ -487,6 +488,7 @@ and Nextcloud need the same thing with different values, <code>stack</code> sele
   <tr><td><code>blog_visitor_stats</code></td><td>blog</td><td>anonymous visitor statistics, computed on the host</td></tr>
   <tr><td><code>blog_wordpress</code> / <code>next_config</code></td><td>each</td><td>settings inside the application via wp-cli or occ</td></tr>
   <tr><td><code>blog_verify</code> / <code>nextcloud_verify</code> (+ <code>common_verify</code>)</td><td>each</td><td>smoke tests, report, e-mail, hard check of critical items</td></tr>
+  <tr><td><code>common_version_active</code></td><td>both</td><td>are the pinned versions running (kubelet, charts, container images, reboot)?</td></tr>
   <tr><td><code>common_aide_refresh</code></td><td>both</td><td>refresh the AIDE baseline if anything changed</td></tr>
 </table>
 
@@ -575,7 +577,7 @@ The task-by-task version is the comment at the top of each file under <code>role
 <p><strong>What:</strong> K3s, Helm with the helm-diff plugin, cert-manager (Let's Encrypt) and the F5 nginx ingress.
 The bundled K3s components nobody needs here (Traefik, ServiceLB, local-storage) are switched off.
 <strong>Why:</strong> This is the platform the blog and Nextcloud run on. What does not run cannot be attacked.</p>
-<p class="wie"><strong>How:</strong> read the installed version (<code>register</code>) → download the binary only if it differs from <code>k3s_version</code> (<code>get_url … when</code>, <code>notify</code>) → restart right away (<code>flush_handlers</code>) → wait until the API answers (<code>until</code>) → Helm the same way → download helm-diff only if the version differs from <code>helm_diff_version</code> (checksum in <code>get_url</code>) → install the charts (<code>kubernetes.core.helm</code> only changes something on a different chart version or different values).</p>
+<p class="wie"><strong>How:</strong> read the installed version (<code>register</code>) → download the binary only if it differs from <code>k3s_version</code> (<code>get_url force: true … when</code>, <code>notify</code>) → restart right away (<code>flush_handlers</code>) → wait until the API answers (<code>until</code>) → Helm the same way → download helm-diff only if the version differs from <code>helm_diff_version</code> (checksum in <code>get_url</code>) → install the charts (<code>kubernetes.core.helm</code> only changes something on a different chart version or different values).</p>
 </div>
 
 <div class="rolle">
@@ -708,6 +710,13 @@ The bundled K3s components nobody needs here (Traefik, ServiceLB, local-storage)
 <p><strong>What:</strong> Smoke tests after the run: services, pods, HTTPS, certificate, headers, blocked paths, database/cache.
 <strong>Why:</strong> A run that reports "ok" does not mean the site works.</p>
 <p class="wie"><strong>How:</strong> only collect all checks (<code>register _v_*</code>, <code>failed_when: false</code>) → convert to true/false with <code>set_fact</code> (<code>_r_*</code>) → count, print the report, send the mail → only at the very end <code>assert</code> the critical points. Same pattern as the version check: gather first, then prepare, then judge.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_version_active</code></strong> (both)</p>
+<p><strong>What:</strong> The counterpart of the version check at the end: compares every pin in <code>versions.yml</code> with what is <em>running</em> – the kubelet version, the deployed charts, the images of running containers, Prometheus/exporter build info, a pending reboot and services still on replaced code.
+<strong>Why:</strong> Installed is not active: a new binary needs a restart, a new image new pods, a new kernel a reboot (found 2026-10-19: a K3s bump had silently never been installed).</p>
+<p class="wie"><strong>How:</strong> read-only queries (<code>command</code>, <code>uri</code>, <code>check_mode: false</code>) → parse the JSON in Jinja (<code>from_json</code>, <code>selectattr</code>, <code>map</code>) → collect one row per component with <code>loop</code> + <code>set_fact</code> → print only the rows that do not match. Never fails the play.</p>
 </div>
 
 <div class="rolle">

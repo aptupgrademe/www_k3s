@@ -303,7 +303,7 @@
 <div class="card-grid">
   <div class="card">
     <div class="label">Nextcloud</div>
-    <div class="value">34.0.4 (nextcloud:34.0.4-fpm)</div>
+    <div class="value">34.0.5 (nextcloud:34.0.5-fpm)</div>
   </div>
   <div class="card">
     <div class="label">Operating System</div>
@@ -430,13 +430,13 @@
   permissions. Without this step, Nextcloud cannot write anything to <code>/var/www/html</code>.</p>
 
   <h4>Container 1: <code>nextcloud-fpm</code></h4>
-  <p>The official <code>nextcloud:34.0.4-fpm</code> image. Runs PHP-FPM on port 9000.
+  <p>The official <code>nextcloud:34.0.5-fpm</code> image. Runs PHP-FPM on port 9000.
   If <code>/var/www/html</code> is empty, the Docker entrypoint automatically installs
   Nextcloud based on the environment variables (DB, Admin, Redis).
   During an update, <code>occ upgrade</code> runs automatically.</p>
 
   <h4>Container 2: <code>nginx</code></h4>
-  <p>nginx sidecar (<code>nginx:1.30.5-alpine</code>) on port 80. Serves
+  <p>nginx sidecar (<code>nginx:1.30.6-alpine</code>) on port 80. Serves
   static requests directly from the shared volume; PHP requests are forwarded via
   FastCGI to port 9000. TLS is already terminated by nginx-ingress (F5) –
   nginx only speaks plain HTTP.</p>
@@ -854,8 +854,8 @@ k3s kubectl get secret nextcloud-secrets -n nextcloud \
 </p>
 
 <pre><code># inventory/group_vars/all/versions.yml
-nextcloud_image_fpm:       "nextcloud:34.0.4-fpm"       # Nextcloud PHP-FPM
-nextcloud_image_nginx:     "nginx:1.30.5-alpine"        # nginx Sidecar
+nextcloud_image_fpm:       "nextcloud:34.0.5-fpm"       # Nextcloud PHP-FPM
+nextcloud_image_nginx:     "nginx:1.30.6-alpine"        # nginx Sidecar
 nextcloud_image_collabora: "collabora/code:26.04.5.1.1" # Collabora CODE
 nextcloud_image_busybox:   "busybox:1"                  # Init container</code></pre>
 
@@ -863,9 +863,9 @@ nextcloud_image_busybox:   "busybox:1"                  # Init container</code><
 <table>
   <tr><th>Tag Format</th><th>Meaning</th><th>Example</th></tr>
   <tr>
-    <td><code>34.0.4-fpm</code></td>
+    <td><code>34.0.5-fpm</code></td>
     <td>Exact Nextcloud patch pin; bumped in <code>versions.yml</code> once a newer build is checked (Renovate proposes it as a pull request)</td>
-    <td><code>nextcloud:34.0.4-fpm</code> (current)</td>
+    <td><code>nextcloud:34.0.5-fpm</code> (current)</td>
   </tr>
   <tr>
     <td><code>35.0.0-fpm</code></td>
@@ -875,7 +875,7 @@ nextcloud_image_busybox:   "busybox:1"                  # Init container</code><
   <tr>
     <td><code>1.30.4-alpine</code></td>
     <td>nginx stable branch, pinned to the exact patch so a rebuild under the same tag isn't silently skipped</td>
-    <td><code>nginx:1.30.5-alpine</code> (current)</td>
+    <td><code>nginx:1.30.6-alpine</code> (current)</td>
   </tr>
   <tr>
     <td><code>26.04.5.1.1</code></td>
@@ -886,10 +886,10 @@ nextcloud_image_busybox:   "busybox:1"                  # Init container</code><
 
 <div class="callout callout-warn">
   <strong>Rebuild Without Tag Change</strong>
-  If Docker Hub rebuilds <code>nextcloud:34.0.4-fpm</code> under the same tag
+  If Docker Hub rebuilds <code>nextcloud:34.0.5-fpm</code> under the same tag
   (e.g. a base-image security patch), <em>nothing happens automatically</em> on the
   server. The tag is cached locally. Force a refresh:
-  <pre style="margin-top:8px"><code>crictl pull docker.io/library/nextcloud:34.0.4-fpm
+  <pre style="margin-top:8px"><code>crictl pull docker.io/library/nextcloud:34.0.5-fpm
 k3s kubectl rollout restart deployment/nextcloud -n nextcloud</code></pre>
 </div>
 </section>
@@ -1003,8 +1003,8 @@ k3s kubectl exec -n nextcloud deployment/nextcloud -c nextcloud-fpm -- \
 <div class="callout callout-success">
   <strong>Deployment Verification (nextcloud_verify)</strong>
   At the end of <code>nextcloud-k3s.yml</code> the role <code>nextcloud_verify</code>
-  automatically runs 31 smoke tests: services, K8s pods, HTTPS reachability, security headers,
-  Nextcloud status. Failing tests are reported as Ansible errors.
+  automatically runs 33 smoke tests: services, K8s pods, HTTPS reachability, security headers,
+  Nextcloud status. Only critical failures (firewall, K3s, pods, HTTPS/TLS …) stop the play; the others are listed in the report and the mail. Afterwards <code>common_version_active</code> (since 2026-10-19) checks that every version from <code>versions.yml</code> is really running: kubelet, deployed charts, images of running containers, Prometheus and exporters, pending reboot, services on old code. It reports only what is not active yet and never stops the play.
 </div>
 
 <h3>Idempotent Re-Run (e.g. After Config Change)</h3>
@@ -1119,7 +1119,7 @@ redis-cli FLUSHALL</code></pre>
     <div class="label">Grafana</div>
     <div class="value"><code>https://nextcloud.*/grafana/</code></div>
     <p style="margin-top:8px;font-size:13px;color:var(--muted)">
-      Dashboards: Node Exporter Full (1860), MySQL Overview (7362), PHP-FPM (4912)<br>
+      Dashboards: Node Exporter Full (1860), MySQL Overview (7362), PHP-FPM (4912), Container-Ressourcen (our own, since 2026-10-19)<br>
       Login: Grafana admin password from vault.yml
     </p>
   </div>
@@ -1289,6 +1289,30 @@ k3s kubectl logs -n nextcloud deployment/nextcloud -c nextcloud-fpm -f | grep -i
     <td>Highest value since FPM started. Helps with sizing <code>pm.max_children</code>.</td>
   </tr>
 </table>
+
+<h4>Container-Ressourcen (own dashboard, since 2026-10-19)</h4>
+<p>
+  Node Exporter only sees the host as a whole. This dashboard shows every container against its own limits.
+  Data sources (role <code>common_kube_metrics</code>): <strong>cAdvisor</strong> in the kubelet
+  (<code>https://127.0.0.1:10250/metrics/cadvisor</code>, Prometheus job <code>kubelet_cadvisor</code>, using the token
+  of the ServiceAccount <code>prometheus-scraper</code>, which may only read <code>nodes/metrics</code>) and
+  <strong>kube-state-metrics</strong> v2.20.0 in <code>kube-system</code> (NodePort 30808, local only, job
+  <code>kube_state_metrics</code>). The dashboard lives in the repo (<code>roles/common_grafana/files/container-resources.json</code>).
+</p>
+<table>
+  <tr><th>Panel</th><th>What you read</th></tr>
+  <tr><td>CPU – share of limit</td><td>Usage divided by the CPU limit. Close to 100&nbsp;% the kernel throttles.</td></tr>
+  <tr><td>CPU – throttling</td><td>Share of 100&nbsp;ms periods in which the container had to wait. Constantly above 25&nbsp;%: the limit is too tight, even if the host is idle.</td></tr>
+  <tr><td>Memory – share of limit</td><td>Working set (what the OOM killer counts) divided by the memory limit. At 100&nbsp;% the container is killed.</td></tr>
+  <tr><td>Restarts and OOM kills</td><td>Per hour. Every value above 0 has a reason – see the next table.</td></tr>
+  <tr><td>Last termination reason</td><td>OOMKilled, Error or Completed per container.</td></tr>
+  <tr><td>Limits and requests</td><td>The configured values (CPU in cores, memory in bytes) for comparison.</td></tr>
+</table>
+<p>
+  Four Grafana mail alerts belong to it: memory above 90&nbsp;% of the limit, CPU throttling above 50&nbsp;%
+  (5&nbsp;min each), an OOM kill and more than two restarts in 15&nbsp;min.
+</p>
+
 <div class="callout callout-info">
   <strong>Grafana Dashboard Variables Are Initialized Automatically</strong>
   Dashboard 1860 (Node Exporter Full) is in the modern Grafana 11 format without an <code>__inputs</code> section.
@@ -1408,7 +1432,7 @@ k3s kubectl get pods -n nextcloud</code></pre>
 
 <h3>Container Update: Rebuild Within the Same Tag</h3>
 <p>
-  When Docker Hub rebuilds <code>nextcloud:34.0.4-fpm</code> itself (e.g. a
+  When Docker Hub rebuilds <code>nextcloud:34.0.5-fpm</code> itself (e.g. a
   base-image security patch) and the tag in Ansible remains unchanged:
 </p>
 <p><strong>Easiest:</strong> <code>nextcloud-update.yml</code> does exactly this for every image of every Deployment &ndash; pull, compare the digest with the running pods, restart only what was rebuilt, then <code>occ upgrade</code> and <code>app:update</code>:</p>
@@ -1424,7 +1448,7 @@ k3s kubectl get pods -n nextcloud</code></pre>
 <p>By hand, the same steps:</p>
 <ol class="steps">
   <li>Pull new image manually:
-    <pre><code>crictl pull docker.io/library/nextcloud:34.0.4-fpm</code></pre>
+    <pre><code>crictl pull docker.io/library/nextcloud:34.0.5-fpm</code></pre>
   </li>
   <li>Restart pod (now uses the freshly pulled image):
     <pre><code>k3s kubectl rollout restart deployment/nextcloud -n nextcloud
@@ -1438,7 +1462,7 @@ k3s kubectl rollout status  deployment/nextcloud -n nextcloud --timeout=300s</co
 <h3>Container Update: Version Bump (Patch or Major)</h3>
 <p>
   <code>nextcloud_image_fpm</code> is pinned to an exact patch, not a floating
-  major tag – so bumping to a newer patch (e.g. 34.0.4 → 34.0.5) or a new major
+  major tag – so bumping to a newer patch (e.g. 34.0.5 → 34.0.6) or a new major
   version (e.g. 34 → 35) both work the same way: check
   <code>https://hub.docker.com/_/nextcloud/tags</code> (filter: <code>*-fpm</code>)
   for the build to move to, then:
@@ -1452,7 +1476,7 @@ k3s kubectl rollout status  deployment/nextcloud -n nextcloud --timeout=300s</co
 
 <ol class="steps">
   <li>Change tag in <code>inventory/group_vars/all/versions.yml</code>:
-    <pre><code>nextcloud_image_fpm: "nextcloud:34.0.4-fpm"</code></pre>
+    <pre><code>nextcloud_image_fpm: "nextcloud:34.0.5-fpm"</code></pre>
   </li>
   <li>Run playbook – K3s pulls the new image automatically and rolls out the pod:
     <pre><code>ansible-playbook nextcloud-k3s.yml --limit test --ask-vault-pass</code></pre>
