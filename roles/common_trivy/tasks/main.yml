@@ -135,6 +135,9 @@
         Nice=19
         IOSchedulingClass=idle
         MemoryMax=2G
+        # journal then logs "Consumed ... CPU time, ... memory peak" per run
+        MemoryAccounting=yes
+        CPUAccounting=yes
         TimeoutStartSec=2h
         ProtectSystem=full
         ProtectHome=yes

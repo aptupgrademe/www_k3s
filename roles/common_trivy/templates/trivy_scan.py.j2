@@ -29,7 +29,10 @@ SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"]
 def running_images():
     jp = ('{range .items[*]}{range .status.containerStatuses[*]}{.image}{"\\n"}{end}'
           '{range .status.initContainerStatuses[*]}{.image}{"\\n"}{end}{end}')
-    out = subprocess.run(["/usr/local/bin/k3s", "kubectl", "get", "pods", "-A", "-o", f"jsonpath={jp}"],
+    # Running pods only: finished Job pods (helm-install, CronJob runs) do
+    # not run anything - their images showed up as findings before.
+    out = subprocess.run(["/usr/local/bin/k3s", "kubectl", "get", "pods", "-A",
+                          "--field-selector=status.phase=Running", "-o", f"jsonpath={jp}"],
                          check=True, capture_output=True, text=True).stdout
     return sorted({line.strip() for line in out.splitlines() if line.strip()})
 
