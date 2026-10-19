@@ -919,7 +919,6 @@ define('WP_SITEURL', 'https://www.apt-upgrade.me');</code></pre>
   installiert und aktiviert:
 </p>
 <pre><code>blog_wordpress_plugins:
-  - all-in-one-wp-migration       # Import/Export für Backups
   - classic-editor                # Klassischer Editor statt Gutenberg
   - limit-login-attempts-reloaded # Zusätzlicher Brute-Force-Schutz
   - compressx                     # Bildkomprimierung / WebP, AVIF
@@ -2254,7 +2253,7 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   </tr>
   <tr>
     <td>HTTP – Informations-Disclosure</td>
-    <td><code>/readme.html</code> und <code>/license.txt</code> geblockt, <code>?author=</code>-Parameter → 403 (Username-Enumeration), REST-API <code>/wp/v2/users</code> für nicht-angemeldete Benutzer deaktiviert; Sicherungsdateien werden nie ausgeliefert: Editor-/Backup-Endungen (<code>.bak</code>, <code>.sql</code>, <code>.save</code>, …), Kopien mit Bild-Endung (<code>name.bak.jpg</code>), Exporte von All-in-One WP Migration (<code>*.wpress</code>, <code>/wp-content/ai1wm-backups/</code>)</td>
+    <td><code>/readme.html</code> und <code>/license.txt</code> geblockt, <code>?author=</code>-Parameter → 403 (Username-Enumeration), REST-API <code>/wp/v2/users</code> für nicht-angemeldete Benutzer deaktiviert; Sicherungsdateien werden nie ausgeliefert: Editor-/Backup-Endungen (<code>.bak</code>, <code>.sql</code>, <code>.save</code>, …), Kopien mit Bild-Endung (<code>name.bak.jpg</code>), Exporte von All-in-One WP Migration (<code>*.wpress</code>, <code>/wp-content/ai1wm-backups/</code>; das Plugin ist seit 19.10.2026 entfernt, die Sperre bleibt – gesichert wird der Blog nachts von HP3, ein Umzug geht über <code>blog.yml</code> plus Rücksicherung)</td>
     <td><code>blog_k3s_deploy</code> (nginx), <code>blog_wordpress</code> (mu-plugin)</td>
   </tr>
   <tr>
