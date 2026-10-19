@@ -1,0 +1,14 @@
+---
+- name: restart loki
+  ansible.builtin.systemd:
+    name: loki
+    state: restarted
+    daemon_reload: true
+  ignore_errors: "{{ ansible_check_mode }}"   # first --check: unit not there yet
+
+- name: restart alloy
+  ansible.builtin.systemd:
+    name: alloy
+    state: restarted
+    daemon_reload: true
+  ignore_errors: "{{ ansible_check_mode }}"   # first --check: unit not there yet

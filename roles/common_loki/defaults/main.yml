@@ -1,0 +1,15 @@
+---
+# Retention: the compactor deletes chunks older than this (14 days).
+loki_retention: "336h"
+loki_data_dir: /var/lib/loki
+# Ports - both bound to 127.0.0.1 only; Grafana on the same host is the
+# only reader, Alloy on the same host the only writer.
+loki_http_port: 3100
+loki_grpc_port: 9096
+alloy_http_port: 12345
+
+# Files Alloy tails besides the journal and the pod logs. AVC denials are
+# NOT in the journal here (auditd owns the audit socket), hence audit.log.
+loki_file_sources:
+  - { path: /var/log/audit/audit.log, job: audit }
+  - { path: /var/log/fail2ban.log, job: fail2ban }

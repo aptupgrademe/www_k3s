@@ -45,6 +45,8 @@ monit_candidate_services:
   - prometheus
   - grafana-server
   - mysqld_exporter
+  - loki
+  - alloy
 
 # --- Mail relay for Monit's own SMTP ---
 # Reuses the same relay/credentials as msmtp (from the host vault: mail_smtphost

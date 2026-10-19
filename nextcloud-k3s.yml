@@ -102,6 +102,7 @@
     - { role: common_mysqld_exporter, tags: [common_mysqld_exporter] } # mysqld_exporter (MariaDB metrics, port 9104)
     - { role: common_prometheus,     tags: [common_prometheus] }     # Prometheus (scrapes localhost:9100/9104 + K3s NodePorts, port 9090)
     - { role: common_grafana,        tags: [common_grafana] }        # Grafana (dashboard, port 3000)
+    - { role: common_loki,           tags: [common_loki] }           # Loki + Alloy: journal, pod logs, audit/fail2ban log (14 days, local only) + log alerts
     - { role: common_fail2ban,       tags: [common_fail2ban] }       # Fail2Ban: SSH + Nextcloud login protection
     - { role: common_msmtp,          tags: [common_msmtp] }          # msmtp sendmail relay (used by rkhunter, cron, dnf-automatic)
     - { role: common_dnf_automatic,  tags: [common_dnf_automatic] }  # Automatic security-only updates via dnf-automatic

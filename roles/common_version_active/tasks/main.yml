@@ -101,7 +101,9 @@
   failed_when: false
   vars:
     _va_exporters: >-
-      {{ [{'name': 'node_exporter', 'port': 9100, 'want': node_exporter_version}]
+      {{ [{'name': 'node_exporter', 'port': 9100, 'want': node_exporter_version},
+          {'name': 'Loki', 'port': 3100, 'want': loki_version},
+          {'name': 'Alloy', 'port': 12345, 'want': 'v' ~ alloy_version}]
          + ([{'name': 'mysqld_exporter', 'port': 9104, 'want': mysqld_exporter_version}]
             if stack == 'nextcloud' else []) }}
 

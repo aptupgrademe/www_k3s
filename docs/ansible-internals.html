@@ -489,6 +489,7 @@ and Nextcloud need the same thing with different values, <code>stack</code> sele
   <tr><td><code>blog_wordpress</code> / <code>next_config</code></td><td>each</td><td>settings inside the application via wp-cli or occ</td></tr>
   <tr><td><code>blog_verify</code> / <code>nextcloud_verify</code> (+ <code>common_verify</code>)</td><td>each</td><td>smoke tests, report, e-mail, hard check of critical items</td></tr>
   <tr><td><code>common_version_active</code></td><td>both</td><td>are the pinned versions running (kubelet, charts, container images, reboot)?</td></tr>
+  <tr><td><code>common_loki</code></td><td>both</td><td>Loki + Grafana Alloy: journal, pod logs, audit/fail2ban log (14 days, local only), log alerts</td></tr>
   <tr><td><code>common_selinux_monitoring</code></td><td>both</td><td>own SELinux domains for Prometheus, the exporters and Grafana (permissive learning phase first)</td></tr>
   <tr><td><code>common_aide_refresh</code></td><td>both</td><td>refresh the AIDE baseline if anything changed</td></tr>
 </table>
@@ -623,6 +624,13 @@ The bundled K3s components nobody needs here (Traefik, ServiceLB, local-storage)
 <p><strong>What:</strong> Grafana with a Prometheus data source, four dashboards and alert mails, reachable at <code>/grafana/</code>.
 <strong>Why:</strong> Graphs and warnings without Prometheus itself having to face the outside.</p>
 <p class="wie"><strong>How:</strong> install the package, set single lines in <code>grafana.ini</code> (<code>lineinfile</code>) → start and wait until the API answers (<code>uri … until</code>) → via the HTTP API "look first, then create" (register the GET → POST only <code>when</code> it is missing) → download and import dashboards → alert rules via a small Python script.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_loki</code></strong> (both)</p>
+<p><strong>What:</strong> Loki stores logs (single binary, filesystem, 14 days), Grafana Alloy collects them: the systemd journal, every pod log under <code>/var/log/pods</code>, <code>audit.log</code> and <code>fail2ban.log</code>. Grafana gets a Loki datasource and four log alerts (blocked AVC, fail2ban error, kernel OOM, no logs arriving).
+<strong>Why:</strong> Metrics say <em>that</em> something happened, logs say <em>what</em> – and an AVC denial or a failed ban is only visible in a log.</p>
+<p class="wie"><strong>How:</strong> pinned packages from the Grafana repo (<code>loki_version</code>, <code>alloy_version</code>) → Loki config validated with <code>-verify-config</code>, Alloy config with <code>alloy fmt</code> → systemd drop-ins (read-only system; Alloy gets only <code>CAP_DAC_READ_SEARCH</code> to read root-owned logs, no root) → wait for <code>/ready</code> → datasource and rules via the Grafana API → self-test: a <code>logger</code> marker must show up in Loki. Alloy parses the timestamps of <code>audit.log</code> and <code>fail2ban.log</code>; without that the first start stamped the whole backlog "now" and the alerts fired on hours-old lines.</p>
 </div>
 
 <h3>Protection, mail and maintenance</h3>

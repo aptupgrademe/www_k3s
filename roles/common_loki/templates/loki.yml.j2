@@ -1,0 +1,61 @@
+# {{ ansible_managed }}
+# Single-binary Loki, filesystem storage, local only (common_loki).
+auth_enabled: false
+
+server:
+  http_listen_address: 127.0.0.1
+  http_listen_port: {{ loki_http_port }}
+  grpc_listen_address: 127.0.0.1
+  grpc_listen_port: {{ loki_grpc_port }}
+  log_level: warn
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: {{ loki_data_dir }}
+  storage:
+    filesystem:
+      chunks_directory: {{ loki_data_dir }}/chunks
+      rules_directory: {{ loki_data_dir }}/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+# memberlist is not used with the inmemory ring, but would still bind
+# 0.0.0.0:7946 - the firewall drops it anyway, this keeps it off the wire.
+memberlist:
+  bind_addr: [127.0.0.1]
+
+schema_config:
+  configs:
+    - from: 2026-10-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  retention_period: {{ loki_retention }}
+  max_query_lookback: {{ loki_retention }}
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+
+# The compactor is what actually deletes old data - retention_period alone
+# only hides it from queries.
+compactor:
+  working_directory: {{ loki_data_dir }}/compactor
+  retention_enabled: true
+  delete_request_store: filesystem
+  compaction_interval: 10m
+
+query_range:
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        max_size_mb: 50
+
+analytics:
+  reporting_enabled: false

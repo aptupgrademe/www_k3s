@@ -2134,6 +2134,11 @@ Both verified 2026-09-14.</p>
     <td><code>common_dnf_automatic</code></td>
   </tr>
   <tr>
+    <td>Logs</td>
+    <td>Loki + Grafana Alloy: systemd journal, all pod logs, <code>audit.log</code> and <code>fail2ban.log</code>, 14 days, 127.0.0.1 only; searchable in Grafana (Explore, datasource Loki). Log alerts: blocked SELinux access (AVC, permissive=0), fail2ban errors, kernel OOM killer, no logs arriving. Live on the blog since 2026-10-19; the Nextcloud servers follow.</td>
+    <td><code>common_loki</code></td>
+  </tr>
+  <tr>
     <td>Watchdog</td>
     <td>Monit checks every 2 min: services (fail2ban with auto-restart, sshd, k3s, exporters, Grafana), firewall (nftables default-drop), K3s pods, disk/load/RAM; e-mails only on state change (silent while healthy). Mail via the msmtp relay but on port 465/implicit SSL (Monit 6 has no STARTTLS) Since 2026-10-19 Monit runs in a systemd sandbox (no writes below /usr, /boot, /etc, no home directories, private /tmp, no kernel tunables/modules/logs; exposure 9.6 → 7.1), deliberately without NoNewPrivileges.</td>
     <td><code>common_monit</code></td>

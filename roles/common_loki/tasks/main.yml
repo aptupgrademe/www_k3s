@@ -1,0 +1,287 @@
+---
+# =============================================================================
+# Role: common_loki
+# Purpose: Searchable logs next to the metrics. Loki (single binary,
+#          filesystem storage, 14 days) stores them, Grafana Alloy collects
+#          them: the systemd journal, all pod logs and audit.log/fail2ban.log.
+#          Grafana gets a "Loki" datasource and four log-based alert rules.
+#          Everything listens on 127.0.0.1 only.
+# =============================================================================
+#
+# Order in the playbook: AFTER common_grafana (its repo file provides the
+# loki and alloy packages, its API takes the datasource and the rules) and
+# BEFORE common_monit (which watches both services once their units exist).
+#
+# Why Alloy needs CAP_DAC_READ_SEARCH: the package runs it as user "alloy"
+# in the groups adm and systemd-journal - enough for the journal, not for
+# audit.log (root 0600), fail2ban.log and the pod logs (root 0640). The
+# capability lets it READ any file, nothing else; it still cannot write
+# outside /var/lib/alloy. Running it as root would be the lazy alternative.
+#
+# Loki needs no capability: it only reads its config and owns its data dir.
+
+- name: Loki | Grafana repository present (comes from common_grafana)
+  ansible.builtin.stat:
+    path: /etc/yum.repos.d/grafana.repo
+  register: _loki_repo
+
+- name: Loki | Stop when common_grafana has not run yet
+  ansible.builtin.assert:
+    that: _loki_repo.stat.exists
+    fail_msg: "common_loki needs the Grafana repository - run common_grafana first."
+    quiet: true
+
+# Pinned like the other host binaries (versions.yml); state present never
+# upgrades, a new pin installs the newer package next time.
+- name: Loki | Install loki and alloy (pinned)
+  ansible.builtin.dnf:
+    name:
+      - "loki-{{ loki_version }}"
+      - "alloy-{{ alloy_version }}"
+    state: present
+  notify:
+    - restart loki
+    - restart alloy
+
+# -----------------------------------------------------------------------------
+# Loki
+# -----------------------------------------------------------------------------
+# The package ships a demo config with /tmp/loki as storage (lost on every
+# reboot) and log_level debug - replaced completely.
+- name: Loki | Data directory
+  ansible.builtin.file:
+    path: "{{ loki_data_dir }}"
+    state: directory
+    owner: loki
+    group: root
+    mode: "0750"
+  ignore_errors: "{{ ansible_check_mode }}"   # first --check: user loki not there yet
+
+# validate: Loki parses the candidate file before it replaces the real one.
+- name: Loki | Configuration
+  ansible.builtin.template:
+    src: loki.yml.j2
+    dest: /etc/loki/config.yml
+    owner: root
+    group: loki
+    mode: "0640"
+    validate: /usr/bin/loki -verify-config -config.file=%s
+  notify: restart loki
+  ignore_errors: "{{ ansible_check_mode }}"   # first --check: package not there yet
+
+- name: Loki | Drop-in directories
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}.service.d"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: [loki, alloy]
+
+# Same sandbox idea as Monit's drop-in (common_monit): read-only system,
+# writes only to the data dir. NoNewPrivileges is fine here - no domain
+# transition depends on it yet (see common_selinux_monitoring).
+- name: Loki | systemd hardening drop-in
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/loki.service.d/hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (common_loki) - do not edit by hand.
+      [Service]
+      NoNewPrivileges=yes
+      ProtectSystem=strict
+      ReadWritePaths={{ loki_data_dir }}
+      ProtectHome=yes
+      PrivateTmp=yes
+      PrivateDevices=yes
+      ProtectKernelTunables=yes
+      ProtectKernelModules=yes
+      ProtectKernelLogs=yes
+      ProtectControlGroups=yes
+      ProtectClock=yes
+      ProtectHostname=yes
+      RestrictSUIDSGID=yes
+      RestrictRealtime=yes
+      LockPersonality=yes
+      CapabilityBoundingSet=
+      RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+      SystemCallArchitectures=native
+  notify: restart loki
+  ignore_errors: "{{ ansible_check_mode }}"   # first --check: directory not there yet
+
+# -----------------------------------------------------------------------------
+# Alloy
+# -----------------------------------------------------------------------------
+# For the fail2ban timestamps in config.alloy (fail2ban logs local time).
+- name: Alloy | Host time zone
+  ansible.builtin.command: timedatectl show -p Timezone --value
+  register: _loki_tz
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+
+# alloy fmt parses the file (syntax only - unknown components show up at
+# start, the wait below catches that).
+- name: Alloy | Configuration
+  ansible.builtin.template:
+    src: config.alloy.j2
+    dest: /etc/alloy/config.alloy
+    owner: root
+    group: alloy
+    mode: "0640"
+    validate: /usr/bin/alloy fmt %s
+  notify: restart alloy
+  vars:
+    _loki_host_tz: "{{ _loki_tz.stdout | default('UTC', true) }}"
+  ignore_errors: "{{ ansible_check_mode }}"   # first --check: package not there yet
+
+# The wrapper appends --storage.path itself; the UI/metrics port stays on
+# loopback, no usage reports to Grafana Labs.
+- name: Alloy | Start arguments
+  ansible.builtin.lineinfile:
+    path: /etc/sysconfig/alloy
+    regexp: '^CUSTOM_ARGS='
+    line: 'CUSTOM_ARGS="--server.http.listen-addr=127.0.0.1:{{ alloy_http_port }} --disable-reporting"'
+  notify: restart alloy
+  ignore_errors: "{{ ansible_check_mode }}"   # first --check: package not there yet
+
+- name: Alloy | systemd drop-in (read capability + hardening)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/alloy.service.d/hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (common_loki) - do not edit by hand.
+      [Service]
+      AmbientCapabilities=CAP_DAC_READ_SEARCH
+      CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+      NoNewPrivileges=yes
+      ProtectSystem=strict
+      ReadWritePaths=/var/lib/alloy
+      ProtectHome=yes
+      PrivateTmp=yes
+      PrivateDevices=yes
+      ProtectKernelTunables=yes
+      ProtectKernelModules=yes
+      ProtectKernelLogs=yes
+      ProtectControlGroups=yes
+      ProtectClock=yes
+      ProtectHostname=yes
+      RestrictSUIDSGID=yes
+      RestrictRealtime=yes
+      LockPersonality=yes
+      RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+      SystemCallArchitectures=native
+  notify: restart alloy
+  ignore_errors: "{{ ansible_check_mode }}"   # first --check: directory not there yet
+
+- name: Loki | Apply configuration changes now
+  ansible.builtin.meta: flush_handlers
+
+- name: Loki | Enable and start loki and alloy
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+  loop: [loki, alloy]
+  ignore_errors: "{{ ansible_check_mode }}"   # first --check: units not there yet
+
+# Loki answers /ready with 503 for ~15 s after start (ingester warm-up).
+- name: Loki | Wait until Loki is ready
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ loki_http_port }}/ready"
+    status_code: 200
+  register: _loki_ready
+  until: _loki_ready.status == 200
+  retries: 30
+  delay: 5
+  when: not ansible_check_mode
+
+- name: Alloy | Wait until Alloy is ready
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ alloy_http_port }}/-/ready"
+    status_code: 200
+  register: _alloy_ready
+  until: _alloy_ready.status == 200
+  retries: 20
+  delay: 3
+  when: not ansible_check_mode
+
+# -----------------------------------------------------------------------------
+# Grafana: datasource and alert rules
+# -----------------------------------------------------------------------------
+- name: Loki | Check if the Loki datasource exists
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:3000/api/datasources/name/Loki"
+    method: GET
+    user: "{{ grafana_basic_auth_user }}"
+    password: "{{ grafana_admin_pass }}"
+    force_basic_auth: true
+    status_code: [200, 404]
+  register: _loki_ds
+  check_mode: false   # read-only API query, also runs in --check
+
+- name: Loki | Create the Loki datasource
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:3000/api/datasources"
+    method: POST
+    user: "{{ grafana_basic_auth_user }}"
+    password: "{{ grafana_admin_pass }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      name: "Loki"
+      uid: "loki"
+      type: "loki"
+      url: "http://127.0.0.1:{{ loki_http_port }}"
+      access: "proxy"
+      isDefault: false
+      jsonData:
+        maxLines: 1000
+    status_code: 200
+  when: _loki_ds.status == 404
+  changed_when: true
+
+# Same pattern as gf_alerts.py in common_grafana: PUT if the uid exists,
+# POST otherwise. Rules live in the folder "Homelab Alerts" created there.
+- name: Loki | Write the log alert script
+  ansible.builtin.template:
+    src: gf_loki_alerts.py.j2
+    dest: /usr/local/libexec/grafana/gf_loki_alerts.py
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Loki | Apply the log alert rules
+  ansible.builtin.command: python3 /usr/local/libexec/grafana/gf_loki_alerts.py
+  environment:
+    GF_USER: "{{ grafana_basic_auth_user }}"
+    GF_PASS: "{{ grafana_admin_pass }}"
+  changed_when: false
+  no_log: true
+  when: not ansible_check_mode
+
+# -----------------------------------------------------------------------------
+# Self-test: a marker line through the whole chain journal -> Alloy -> Loki
+# -----------------------------------------------------------------------------
+- name: Loki | Self-test - write a marker to the journal
+  ansible.builtin.command: "logger -t loki-selftest {{ _loki_marker }}"
+  changed_when: false
+  when: not ansible_check_mode
+  vars:
+    _loki_marker: "marker-{{ ansible_date_time.epoch }}"
+
+- name: Loki | Self-test - find the marker in Loki
+  ansible.builtin.uri:
+    url: >-
+      http://127.0.0.1:{{ loki_http_port }}/loki/api/v1/query_range?limit=5&since=10m&query={{
+      ('{job="journal"} |= "marker-' ~ ansible_date_time.epoch ~ '"') | urlencode }}
+    return_content: true
+  register: _loki_selftest
+  until: (_loki_selftest.json.data.result | default([])) | length > 0
+  retries: 12
+  delay: 5
+  when: not ansible_check_mode

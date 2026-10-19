@@ -494,6 +494,7 @@ des valeurs différentes, <code>stack</code> sélectionne un profil :</p>
   <tr><td><code>blog_wordpress</code> / <code>next_config</code></td><td>chacun</td><td>réglages dans l'application via wp-cli ou occ</td></tr>
   <tr><td><code>blog_verify</code> / <code>nextcloud_verify</code> (+ <code>common_verify</code>)</td><td>chacun</td><td>tests de fumée, rapport, e-mail, contrôle strict des points critiques</td></tr>
   <tr><td><code>common_version_active</code></td><td>les deux</td><td>les versions épinglées tournent-elles (kubelet, charts, images, redémarrage) ?</td></tr>
+  <tr><td><code>common_loki</code></td><td>les deux</td><td>Loki + Grafana Alloy&nbsp;: journal, journaux des pods, journaux audit/fail2ban (14 jours, local uniquement), alertes sur les journaux</td></tr>
   <tr><td><code>common_selinux_monitoring</code></td><td>les deux</td><td>domaines SELinux propres pour Prometheus, les exportateurs et Grafana (d’abord en phase d’apprentissage permissive)</td></tr>
   <tr><td><code>common_aide_refresh</code></td><td>les deux</td><td>mettre à jour la base AIDE si quelque chose a changé</td></tr>
 </table>
@@ -628,6 +629,13 @@ Les composants fournis avec K3s dont personne n'a besoin ici (Traefik, ServiceLB
 <p><strong>Quoi :</strong> Grafana avec une source de données Prometheus, quatre tableaux de bord et des alertes par mail, accessible sous <code>/grafana/</code>.
 <strong>Pourquoi :</strong> Des courbes et des alertes sans que Prometheus lui-même doive être exposé.</p>
 <p class="wie"><strong>Comment :</strong> installer le paquet, définir des lignes isolées dans <code>grafana.ini</code> (<code>lineinfile</code>) → démarrer et attendre que l'API réponde (<code>uri … until</code>) → via l'API HTTP « regarder d'abord, puis créer » (enregistrer le GET → POST seulement <code>when</code> il manque) → télécharger et importer les tableaux de bord → règles d'alerte via un petit script Python.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_loki</code></strong> (les deux)</p>
+<p><strong>Quoi :</strong> Loki stocke les journaux (un seul binaire, système de fichiers, 14 jours), Grafana Alloy les collecte&nbsp;: le journal systemd, chaque journal de pod sous <code>/var/log/pods</code>, <code>audit.log</code> et <code>fail2ban.log</code>. Grafana reçoit une source Loki et quatre alertes (AVC bloqué, erreur fail2ban, OOM du noyau, plus aucun journal).
+<strong>Pourquoi :</strong> les métriques disent <em>qu’</em>il s’est passé quelque chose, les journaux disent <em>quoi</em> – et un refus AVC ou un bannissement raté n’apparaît que dans un journal.</p>
+<p class="wie"><strong>Comment :</strong> paquets épinglés du dépôt Grafana (<code>loki_version</code>, <code>alloy_version</code>) → configuration Loki vérifiée par <code>-verify-config</code>, celle d’Alloy par <code>alloy fmt</code> → drop-ins systemd (système en lecture seule&nbsp;; Alloy reçoit seulement <code>CAP_DAC_READ_SEARCH</code> pour lire les journaux de root, sans être root) → attente de <code>/ready</code> → source et règles via l’API Grafana → auto-test&nbsp;: un marqueur <code>logger</code> doit arriver dans Loki. Alloy lit les horodatages de <code>audit.log</code> et <code>fail2ban.log</code>&nbsp;; sans cela, au premier démarrage, tout l’arriéré était daté «&nbsp;maintenant&nbsp;» et les alertes se déclenchaient sur des lignes vieilles de plusieurs heures.</p>
 </div>
 
 <h3>Protection, mail et maintenance</h3>

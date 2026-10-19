@@ -1,0 +1,114 @@
+# {{ ansible_managed }}
+# Log-based alert rules on the Loki datasource (common_loki). Same
+# PUT-or-POST pattern as gf_alerts.py from common_grafana; no secrets in
+# here - credentials come via the environment.
+import json, urllib.request, base64, os
+
+BASE = "http://127.0.0.1:3000"
+USER = os.environ["GF_USER"]
+PASS = os.environ["GF_PASS"]
+FOLDER_UID = "homelab-alerts"
+DS_UID = "loki"
+
+
+def api(path, method="GET", body=None):
+    req = urllib.request.Request(f"{BASE}{path}", method=method)
+    creds = base64.b64encode(f"{USER}:{PASS}".encode()).decode()
+    req.add_header("Authorization", f"Basic {creds}")
+    req.add_header("Content-Type", "application/json")
+    data = json.dumps(body).encode() if body else None
+    with urllib.request.urlopen(req, data=data, timeout=10) as r:
+        return json.load(r)
+
+
+def make_rule(uid, title, expr, threshold, op, summary, no_data="OK", for_="0s"):
+    # An empty LogQL result is "no data": OK for "count the bad lines"
+    # rules, but Alerting for the "are logs still arriving?" rule.
+    return {
+        "uid": uid,
+        "title": title,
+        "condition": "B",
+        "ruleGroup": "homelab-logs",
+        "folderUID": FOLDER_UID,
+        "noDataState": no_data,
+        "execErrState": "Error",
+        "for": for_,
+        "annotations": {"summary": summary},
+        "labels": {"severity": "warning"},
+        "data": [
+            {
+                "refId": "A",
+                "datasourceUid": DS_UID,
+                "queryType": "instant",
+                "relativeTimeRange": {"from": 900, "to": 0},
+                "model": {"expr": expr, "queryType": "instant", "refId": "A"},
+            },
+            {
+                "refId": "B",
+                "datasourceUid": "-100",
+                "relativeTimeRange": {"from": 900, "to": 0},
+                "model": {
+                    "conditions": [{
+                        "evaluator": {"params": [threshold], "type": op},
+                        "operator": {"type": "and"},
+                        "query": {"params": ["A"]},
+                        "reducer": {"params": [], "type": "last"},
+                        "type": "query",
+                    }],
+                    "datasource": {"type": "__expr__", "uid": "-100"},
+                    "refId": "B",
+                    "type": "classic_conditions",
+                },
+            },
+        ],
+    }
+
+
+rules = [
+    # permissive=0 = really blocked. The homelab_* domains of the learning
+    # phase log permissive=1 and do not count here.
+    make_rule(
+        "alert-log-avc",
+        "SELinux hat etwas blockiert (AVC)",
+        'sum(count_over_time({job="audit"} |= "type=AVC" |= "permissive=0" [15m]))',
+        0, "gt",
+        "SELinux hat in den letzten 15 min einen Zugriff verweigert – in Grafana Explore: {job=\"audit\"} |= \"type=AVC\".",
+    ),
+    # The KeyError is fail2ban's polling backend losing a pod log that was
+    # removed on a pod restart - the jail carries on. Everything else
+    # (e.g. "Failed to execute ban") means a ban did not happen.
+    make_rule(
+        "alert-log-fail2ban-error",
+        "fail2ban meldet Fehler",
+        'sum(count_over_time({job="fail2ban"} |= "]: ERROR" != "KeyError(\'/var/log/pods/" [15m]))',
+        0, "gt",
+        "fail2ban hat einen Fehler geloggt (Aktion/Filter kaputt?) – {job=\"fail2ban\"} |= \"ERROR\".",
+    ),
+    # Global and cgroup OOM ("Memory cgroup out of memory: Killed process")
+    # - also covers processes outside the pods.
+    make_rule(
+        "alert-log-oom",
+        "OOM-Killer (Kernel)",
+        'sum(count_over_time({job="journal", transport="kernel"} |~ "(?i)out of memory: killed process" [15m]))',
+        0, "gt",
+        "Der Kernel hat einen Prozess wegen Speichermangel beendet – {job=\"journal\", transport=\"kernel\"} |~ \"(?i)out of memory\".",
+    ),
+    make_rule(
+        "alert-log-pipeline",
+        "Keine Logs mehr in Loki",
+        'sum(count_over_time({job="journal"}[15m]))',
+        1, "lt",
+        "Seit 15 min kommen keine Journal-Zeilen mehr in Loki an – Alloy oder Loki prüfen.",
+        no_data="Alerting", for_="5m",
+    ),
+]
+
+for rule in rules:
+    uid = rule["uid"]
+    try:
+        api(f"/api/v1/provisioning/alert-rules/{uid}")
+        api(f"/api/v1/provisioning/alert-rules/{uid}", method="PUT", body=rule)
+        print(f"  updated: {rule['title']}")
+    except Exception:
+        api("/api/v1/provisioning/alert-rules", method="POST", body=rule)
+        print(f"  created: {rule['title']}")

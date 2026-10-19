@@ -382,6 +382,7 @@ ansible-vault encrypt inventory/host_vars/<host>/vault.yml
 | `common_ssh` | SSH hardening (port 10022, key-only, PermitRootLogin without-password) |
 | `common_prometheus` | Prometheus metrics collector (dashboards/history only – see note below) |
 | `common_grafana` | Grafana dashboards (incl. our own "Container-Ressourcen") |
+| `common_loki` | Loki + Grafana Alloy: journal, pod logs, audit.log/fail2ban.log (14 days, 127.0.0.1 only), Loki datasource + log alerts (AVC, fail2ban error, OOM, no logs) – blog since 2026-10-19 |
 | `common_node_exporter` | Host metrics exporter |
 | `common_mysqld_exporter` | MariaDB metrics exporter |
 | `common_monit` | Watchdog (systemd-sandboxed since 2026-10-19) and **the actual alerting path** – e-mails on resource/service/firewall/pod/TLS-certificate problems, auto-restarts fail2ban |
