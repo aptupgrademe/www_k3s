@@ -70,7 +70,6 @@ blog_admin_email: "{{ email }}"
 
 # --- Plugins ---
 blog_wordpress_plugins:
-  - all-in-one-wp-migration
   - classic-editor
   - limit-login-attempts-reloaded
 

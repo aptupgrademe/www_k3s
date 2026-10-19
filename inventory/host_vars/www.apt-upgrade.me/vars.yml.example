@@ -37,7 +37,9 @@ blog_admin_email: "{{ email }}"
 
 # --- Plugins ---
 blog_wordpress_plugins:
-  - all-in-one-wp-migration
+  # all-in-one-wp-migration removed 2026-10-19: the nightly HP3 pull (files + DB dump)
+  # is the backup, a move to a new server is blog.yml + restore; its .wpress files
+  # in the web root were only protected by .htaccess (nginx blocks them, 403)
   - classic-editor
   - limit-login-attempts-reloaded
 
