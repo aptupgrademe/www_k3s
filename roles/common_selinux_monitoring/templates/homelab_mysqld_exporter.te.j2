@@ -1,0 +1,19 @@
+# Managed by Ansible (common_selinux_monitoring) - local SELinux module.
+# Gives mysqld_exporter its own domain instead of unconfined_service_t.
+policy_module(homelab_mysqld_exporter, 1.0.0)
+
+type homelab_mysqld_exporter_t;
+type homelab_mysqld_exporter_exec_t;
+# systemd (init_t) starts the binary -> transition into the domain
+init_daemon_domain(homelab_mysqld_exporter_t, homelab_mysqld_exporter_exec_t)
+# The units run with NoNewPrivileges; under NNP the policy refuses the
+# transition unless it is granted explicitly (the MariaDB lesson): without
+# this the service stays in init_t and cannot read its own data.
+init_nnp_daemon_domain(homelab_mysqld_exporter_t)
+
+# Allow rules from the reviewed AVCs of the learning phase go here.
+
+{% if selinux_monitoring_permissive | bool %}
+# Learning phase: log denials, do not enforce (selinux_monitoring_permissive)
+permissive homelab_mysqld_exporter_t;
+{% endif %}

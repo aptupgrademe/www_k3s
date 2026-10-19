@@ -1,0 +1,25 @@
+# Managed by Ansible (common_selinux_monitoring) - local SELinux module.
+# Gives grafana its own domain instead of unconfined_service_t.
+policy_module(homelab_grafana, 1.0.0)
+
+type homelab_grafana_t;
+type homelab_grafana_exec_t;
+# systemd (init_t) starts the binary -> transition into the domain
+init_daemon_domain(homelab_grafana_t, homelab_grafana_exec_t)
+# The units run with NoNewPrivileges; under NNP the policy refuses the
+# transition unless it is granted explicitly (the MariaDB lesson): without
+# this the service stays in init_t and cannot read its own data.
+init_nnp_daemon_domain(homelab_grafana_t)
+
+# database, plugins (/var/lib/grafana) and logs (/var/log/grafana)
+type homelab_grafana_var_lib_t;
+files_type(homelab_grafana_var_lib_t)
+type homelab_grafana_log_t;
+logging_log_file(homelab_grafana_log_t)
+
+# Allow rules from the reviewed AVCs of the learning phase go here.
+
+{% if selinux_monitoring_permissive | bool %}
+# Learning phase: log denials, do not enforce (selinux_monitoring_permissive)
+permissive homelab_grafana_t;
+{% endif %}

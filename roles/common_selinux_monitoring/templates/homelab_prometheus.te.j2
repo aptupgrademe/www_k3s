@@ -1,0 +1,23 @@
+# Managed by Ansible (common_selinux_monitoring) - local SELinux module.
+# Gives prometheus its own domain instead of unconfined_service_t.
+policy_module(homelab_prometheus, 1.0.0)
+
+type homelab_prometheus_t;
+type homelab_prometheus_exec_t;
+# systemd (init_t) starts the binary -> transition into the domain
+init_daemon_domain(homelab_prometheus_t, homelab_prometheus_exec_t)
+# The units run with NoNewPrivileges; under NNP the policy refuses the
+# transition unless it is granted explicitly (the MariaDB lesson): without
+# this the service stays in init_t and cannot read its own data.
+init_nnp_daemon_domain(homelab_prometheus_t)
+
+# TSDB in /var/lib/prometheus
+type homelab_prometheus_var_lib_t;
+files_type(homelab_prometheus_var_lib_t)
+
+# Allow rules from the reviewed AVCs of the learning phase go here.
+
+{% if selinux_monitoring_permissive | bool %}
+# Learning phase: log denials, do not enforce (selinux_monitoring_permissive)
+permissive homelab_prometheus_t;
+{% endif %}

@@ -1,0 +1,111 @@
+---
+# =============================================================================
+# Role: common_selinux_monitoring
+# Purpose: Own SELinux domains for the monitoring services (since 2026-10-19).
+#          Prometheus, node_exporter, mysqld_exporter and Grafana ran as
+#          unconfined_service_t: the targeted policy has no module for them,
+#          and their binaries are plain bin_t. Each gets a small local module
+#          with a domain, an exec type and types for its own data, built
+#          with the policy's standard macros (selinux-policy-devel).
+#          Monit gets no domain on purpose - it runs arbitrary checks and
+#          restarts services as root; it is hardened with systemd instead
+#          (common_monit).
+#          Learning phase first: selinux_monitoring_permissive (defaults)
+#          keeps the new domains permissive, so denials are logged but not
+#          enforced. The reviewed allow rules then go into the templates.
+# Target:  both stacks, after the monitoring roles (the binaries and data
+#          directories must exist before they can be labelled).
+# =============================================================================
+#
+# Steps per module: render the .te (permissive or not) and copy the .fc ->
+# build the .pp with the devel Makefile only when a source changed -> load it
+# -> restorecon the files named in the .fc -> restart the service when its
+# executable got a new label (a running process keeps its old domain).
+
+- name: SELinux monitoring | Policy build tools (selinux-policy-devel)
+  ansible.builtin.dnf:
+    name: selinux-policy-devel
+    state: present
+
+- name: SELinux monitoring | Source directory
+  ansible.builtin.file:
+    path: /etc/selinux/local/monitoring
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: SELinux monitoring | Module source (.te)
+  ansible.builtin.template:
+    src: "homelab_{{ item }}.te.j2"
+    dest: "/etc/selinux/local/monitoring/homelab_{{ item }}.te"
+    owner: root
+    group: root
+    mode: "0600"
+  loop: "{{ selinux_monitoring_modules }}"
+  register: sm_te
+
+- name: SELinux monitoring | File contexts (.fc)
+  ansible.builtin.copy:
+    src: "homelab_{{ item }}.fc"
+    dest: "/etc/selinux/local/monitoring/homelab_{{ item }}.fc"
+    owner: root
+    group: root
+    mode: "0600"
+  loop: "{{ selinux_monitoring_modules }}"
+  register: sm_fc
+
+- name: SELinux monitoring | Loaded modules
+  ansible.builtin.command: semodule -l
+  register: sm_loaded
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+
+# Build and load a module when its source changed or it is not loaded yet.
+# "make -f .../devel/Makefile <name>.pp" expands the macros (init_daemon_domain,
+# files_type ...) the same way the distribution's own modules are built.
+- name: SELinux monitoring | Build and load the modules
+  ansible.builtin.shell: |
+    set -e
+    cd /etc/selinux/local/monitoring
+    make -f /usr/share/selinux/devel/Makefile homelab_{{ item }}.pp >/dev/null
+    semodule -i homelab_{{ item }}.pp
+  loop: "{{ selinux_monitoring_modules }}"
+  when: >-
+    (sm_te.results | selectattr('item', 'equalto', item) | first).changed
+    or (sm_fc.results | selectattr('item', 'equalto', item) | first).changed
+    or ('homelab_' ~ item) not in sm_loaded.stdout_lines
+  changed_when: true
+
+# -v prints a line per file whose label changed; -F also resets the user part.
+- name: SELinux monitoring | Apply the file contexts
+  ansible.builtin.shell: |
+    set -o pipefail
+    awk '{print $1}' /etc/selinux/local/monitoring/homelab_{{ item }}.fc \
+      | sed -e 's|(/\.\*)?$||' | while read -r p; do
+          [ -e "$p" ] && restorecon -RFv "$p"
+        done
+  loop: "{{ selinux_monitoring_modules }}"
+  register: sm_restorecon
+  changed_when: sm_restorecon.stdout | trim | length > 0
+
+- name: SELinux monitoring | Restart the services whose labels changed
+  ansible.builtin.systemd:
+    name: "{{ selinux_monitoring_units[item.item] }}"
+    state: restarted
+  loop: "{{ sm_restorecon.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.changed
+
+- name: SELinux monitoring | Domains the services run in now
+  ansible.builtin.shell: |
+    set -o pipefail
+    ps -eZ | awk '$1 ~ /homelab_/ {print $1, $NF}' | sed -E 's/:s0.*//' | sort -u
+  register: sm_domains
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+
+- name: SELinux monitoring | Show them
+  ansible.builtin.debug:
+    msg: "{{ sm_domains.stdout_lines }}"

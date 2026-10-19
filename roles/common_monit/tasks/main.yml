@@ -123,6 +123,47 @@
 # No failed_when here on purpose: a config error must stop the play
 # before the (notified) restart would take Monit down with a broken
 # config.
+# systemd sandboxing (since 2026-10-19; "systemd-analyze security monit" was
+# 9.6 UNSAFE with the plain distro unit). Monit runs as root and must keep
+# doing its job: systemctl start/stop (fail2ban), nft list, k3s kubectl,
+# fail2ban-client, openssl to the certificate endpoints, mail via msmtp.
+# None of that writes below /usr, /boot or /etc, reads home directories or
+# touches kernel tunables, modules or logs - so those are locked. Not set on
+# purpose: NoNewPrivileges (would also stop the SELinux domain transitions
+# of every program Monit starts, the MariaDB lesson) and ProtectSystem=strict
+# (state, mail queue and check scripts write in several places under /var).
+- name: Monit | Drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/monit.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Monit | Deploy systemd hardening drop-in
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/monit.service.d/hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (common_monit) - see the task comment for the why.
+      [Service]
+      ProtectSystem=full
+      ProtectHome=yes
+      PrivateTmp=yes
+      ProtectKernelTunables=yes
+      ProtectKernelModules=yes
+      ProtectKernelLogs=yes
+      ProtectClock=yes
+      ProtectHostname=yes
+      ProtectControlGroups=yes
+      RestrictRealtime=yes
+      RestrictSUIDSGID=yes
+      LockPersonality=yes
+      SystemCallArchitectures=native
+  notify: restart monit
+
 - name: Monit | Validate configuration syntax
   ansible.builtin.command: monit -t
   register: monit_validate

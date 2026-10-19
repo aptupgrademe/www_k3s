@@ -1,0 +1,24 @@
+---
+# Own SELinux domains for the monitoring services (since 2026-10-19).
+# The targeted policy has no module for Prometheus, the exporters or
+# Grafana, so they ran as unconfined_service_t. Each gets a small local
+# module (templates/homelab_*.te.j2 + files/homelab_*.fc).
+#
+# selinux_monitoring_permissive: true = the domains exist and the services
+# run in them, but denials are only logged (AVC ... permissive=1), not
+# enforced. That is the learning phase: collect the AVCs for some days,
+# turn them into reviewed allow rules in the .te templates, then set this
+# to false. Never generate the rules blindly with audit2allow.
+selinux_monitoring_permissive: true
+
+# Which modules a host gets: mysqld_exporter runs on the Nextcloud hosts
+# only (the blog has it as a sidecar in the MariaDB pod).
+selinux_monitoring_modules: "{{ ['prometheus', 'node_exporter', 'grafana'] + (['mysqld_exporter'] if stack == 'nextcloud' else []) }}"
+
+# Service unit per module (restarted once its executable got the new label,
+# so the running process enters the domain).
+selinux_monitoring_units:
+  prometheus: prometheus
+  node_exporter: node_exporter
+  grafana: grafana-server
+  mysqld_exporter: mysqld_exporter

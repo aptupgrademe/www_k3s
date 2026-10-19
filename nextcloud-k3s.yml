@@ -110,6 +110,7 @@
     - { role: common_auditd,         tags: [common_auditd] }         # Linux Audit Daemon with security-relevant rules
     - { role: common_logrotate,      tags: [common_logrotate] }      # Log rotation for Grafana, Prometheus, fail2ban, rkhunter
     - { role: common_monit,          tags: [common_monit] }          # Watchdog: emails on service/resource failures, auto-restarts fail2ban
+    - { role: common_selinux_monitoring, tags: [common_selinux_monitoring] }  # Own SELinux domains for Prometheus/exporters/Grafana (permissive learning phase)
 
     # occ configuration inside the running Nextcloud pod (ready since next_k3s_deploy).
     - { role: next_config,           tags: [next_config] }           # Post-install: occ config via kubectl exec

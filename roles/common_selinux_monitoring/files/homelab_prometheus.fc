@@ -1,0 +1,2 @@
+/usr/local/bin/prometheus	--	gen_context(system_u:object_r:homelab_prometheus_exec_t,s0)
+/var/lib/prometheus(/.*)?		gen_context(system_u:object_r:homelab_prometheus_var_lib_t,s0)
