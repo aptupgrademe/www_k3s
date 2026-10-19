@@ -381,7 +381,7 @@ read-only.</div>
 <!-- ===================================================================== -->
 <h2 id="versions">Versions in one place</h2>
 <p><code>inventory/group_vars/all/versions.yml</code> holds every version that gets installed or deployed: K3s, Helm,
-Calico, the Helm charts, all container images, WP-CLI (with checksum), the monitoring binaries and the MariaDB
+the Helm charts, all container images, WP-CLI (with checksum), the monitoring binaries and the MariaDB
 repository series of the Nextcloud servers. The values are listed compactly at the top, the reasons and history per
 entry below.</p>
 <ul>
@@ -414,7 +414,7 @@ entry below.</p>
   <li>Packages, SSH, firewall, sysctl, CIS hardening – the base, before anything listens.</li>
   <li><code>common_selinux</code> <em>before</em> the deploy – the HostPath directories need their SELinux label before a
     container uses them.</li>
-  <li><code>common_k3s</code>, <code>common_calico</code>, then the application deploy (<code>blog_k3s_deploy</code> or
+  <li><code>common_k3s</code> (<code>common_calico</code> now only removes Calico), then the application deploy (<code>blog_k3s_deploy</code> or
     <code>next_k3s_deploy</code>). The pods start in the background.</li>
   <li>Monitoring, fail2ban, mail, automatic updates, rkhunter, ClamAV, auditd, Monit – run while the pods come up
     (saves minutes).</li>
@@ -479,7 +479,7 @@ and Nextcloud need the same thing with different values, <code>stack</code> sele
   <tr><td><code>common_selinux</code></td><td>both</td><td>SELinux enforcing, labels for HostPath directories</td></tr>
   <tr><td><code>next_mariadb</code>, <code>next_redis</code></td><td>Nextcloud</td><td>database and cache on the host</td></tr>
   <tr><td><code>common_k3s</code></td><td>both</td><td>K3s, Helm, cert-manager, F5 nginx-ingress, ServiceAccount hardening</td></tr>
-  <tr><td><code>common_calico</code></td><td>both</td><td>Calico in policy-only mode: NetworkPolicies are enforced</td></tr>
+  <tr><td><code>common_calico</code></td><td>both</td><td>removes Calico – it never enforced anything here; K3s's policy controller enforces the NetworkPolicies</td></tr>
   <tr><td><code>common_kube_metrics</code></td><td>both</td><td>Container metrics: cAdvisor (in the kubelet) and kube-state-metrics for Prometheus</td></tr>
   <tr><td><code>blog_k3s_deploy</code> / <code>next_k3s_deploy</code></td><td>each</td><td>the application's Kubernetes objects (Deployments, Secrets, Ingress, CronJobs, policies)</td></tr>
   <tr><td><code>common_node_exporter</code>, <code>common_prometheus</code>, <code>common_grafana</code>, <code>common_mysqld_exporter</code></td><td>both / Nextcloud</td><td>monitoring, local only, Grafana via Ingress</td></tr>
@@ -582,9 +582,9 @@ The bundled K3s components nobody needs here (Traefik, ServiceLB, local-storage)
 
 <div class="rolle">
 <p><strong><code>common_calico</code></strong> (both)</p>
-<p><strong>What:</strong> Calico in policy-only mode – Flannel keeps doing the networking, Calico enforces the NetworkPolicies.
-<strong>Why:</strong> Without Calico, every NetworkPolicy would be silently ignored.</p>
-<p class="wie"><strong>How:</strong> render the template on the controller (<code>lookup('template')</code>) → split it into Kubernetes objects (<code>from_yaml_all</code>) → apply via the API (<code>kubernetes.core.k8s apply</code>, "changed" only on a real difference) → only then wait for the pods (<code>rollout status … when changed</code>). This <strong>K8s apply pattern</strong> is used by 27 tasks in the repo.</p>
+<p><strong>What:</strong> Since 2026-10-19 it <em>removes</em> Calico: the cluster objects (same template, <code>state: absent</code>) and what Felix leaves on the host (<code>files/calico-cleanup.sh</code>).
+<strong>Why:</strong> Calico ran in policy-only mode to enforce the NetworkPolicies, but Felix only matches pod interfaces named <code>cali*</code> and K3s's Flannel creates <code>veth*</code> – it never enforced anything. The policies are enforced by K3s's built-in controller (kube-router), tested with a pod from another namespace.</p>
+<p class="wie"><strong>How:</strong> the K8s apply pattern (now explained in <code>common_k3s</code>, used by 26 tasks) with <code>state: absent</code> → wait until no <code>calico-node</code> pod is left (<code>k8s_info</code> + <code>until</code>) → the cleanup script removes only Calico's rules, chains, ipsets and the <code>calico-arp</code> table and prints a line per object, which <code>changed_when</code> reads.</p>
 </div>
 
 <div class="rolle">
@@ -786,7 +786,7 @@ K3s API with the <code>kubernetes.core.k8s</code> module:</p>
   <li><code>apply: true</code> behaves like <code>kubectl apply</code> (via the <code>last-applied-configuration</code>
     annotation), so it is compatible with the existing objects.</li>
   <li><strong>One call or one per object:</strong> on normal runs all objects of a template go to the API in
-    <em>one</em> call (Calico: under 2 instead of ~30 seconds). Only with <code>--diff</code> (i.e. in
+    <em>one</em> call (the former Calico manifest with 34 objects: under 2 instead of ~30 seconds). Only with <code>--diff</code> (i.e. in
     <code>check-drift.sh</code>) does the loop run per object – only then does the diff show each object's change, and
     the output names <code>Deployment/redis</code>, <code>Service/redis</code>.</li>
   <li>The module only reports <code>changed</code> when the object really changes. Follow-up tasks such as "wait for the
@@ -861,7 +861,7 @@ change. A task that reports <code>changed</code> every time turns every run into
   <tr><td>Renovate</td><td><code>renovate.json5</code></td><td>proposes version updates as pull requests (needs the Renovate app on GitHub)</td></tr>
 </table>
 <p>Renovate is set up cautiously: weekly, at most five open PRs, nothing merged automatically. Major versions
-(Nextcloud 35, MariaDB 11+, Redis 8 …) and K3s/Calico minor jumps only come after approval on the "Dependency
+(Nextcloud 35, MariaDB 11+, Redis 8 …) and K3s minor jumps only come after approval on the "Dependency
 Dashboard", with a note in the PR. nginx stays on the stable branch (even minor). A WP-CLI PR reminds you to update the
 SHA-512 checksum too.</p>
 <pre><code>ansible-lint                      # whole repo

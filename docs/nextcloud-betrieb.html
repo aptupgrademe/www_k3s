@@ -660,18 +660,26 @@ $OCC notify_push:metrics       # "Active connection count" &gt; 0, sobald Client
 # Clients bemerken Push erst, wenn sie ihre Server-Fähigkeiten neu abfragen
 # (Browser neu laden, Desktop-Client neu starten). Rückweg: $OCC app:disable notify_push</code></pre>
 
-<h3>NetworkPolicy (Calico)</h3>
+<h3>NetworkPolicy</h3>
 <p>
-  K3s's Standard-CNI (Flannel) setzt Kubernetes-<code>NetworkPolicy</code>-Objekte
-  überhaupt nicht durch – sie können im Cluster existieren, ohne irgendeine
-  Wirkung zu haben (live verifiziert: eine Deny-All-Policy hat nichts verändert,
-  bis Calico installiert wurde). Die Rolle <code>common_calico</code> installiert
-  Calico im <strong>Policy-Only-Modus</strong>: es laufen nur Felix (die
-  Policy-Engine) und kube-controllers, die Pods und NetworkPolicy-Objekte direkt
-  über die Kubernetes-API lesen. Flannel übernimmt weiterhin unverändert das
-  gesamte Pod-Networking, die IP-Vergabe und den CNI-Plugin-Aufruf – Calico
-  ergänzt nur die Durchsetzung obendrauf.
+  Flannel allein setzt Kubernetes-<code>NetworkPolicy</code>-Objekte nicht durch.
+  K3s bringt dafür aber einen eigenen <strong>Network-Policy-Controller</strong>
+  mit (kube-router, Chains <code>KUBE-ROUTER</code>/<code>KUBE-NWPLCY</code>), der
+  standardmäßig läuft – er setzt die Policies hier durch. Niemals
+  <code>disable-network-policy</code> setzen.
 </p>
+<div class="callout callout-warn">
+  <strong>Korrektur 19.10.2026: Calico hat hier nie etwas durchgesetzt</strong>
+  Bis zum 19.10.2026 stand hier, eine Deny-All-Policy habe vor Calico nichts
+  bewirkt und erst <code>common_calico</code> (Policy-Only-Modus) setze die
+  Policies durch. Das kann nicht gestimmt haben: Calicos Felix erkennt Pods nur
+  an Schnittstellen namens <code>cali*</code>, die Calicos eigenes CNI-Plugin
+  anlegt; das Flannel von K3s nennt sie <code>veth*</code>, also passte keine
+  seiner Regeln je auf einen Pod. Getestet (Blog): Mit abgeschaltetem
+  K3s-Controller erreichte ein Pod in <code>default</code> MariaDB, mit
+  eingeschaltetem wird er blockiert – mit oder ohne Calico. Calico ist auf
+  allen Hosts entfernt; <code>common_calico</code> räumt nur noch die Reste weg.
+</div>
 <p>
   <code>next_k3s_deploy</code> wendet eine Policy an, <code>collabora-netpol</code>,
   die den Collabora-Pod einschränkt: anders als <code>nextcloud-fpm</code> hat
@@ -680,28 +688,27 @@ $OCC notify_push:metrics       # "Active connection count" &gt; 0, sobald Client
   80/443) und sonst nichts beschränkt. Ingress ist auf nginx-ingress
   (Host-IP) und den Nextcloud-Pod beschränkt.
 </p>
-<pre><code># Prüfen, ob die Policy vorhanden ist, und Calicos Pods ansehen
+<pre><code># Prüfen, ob die Policy vorhanden ist und der Controller von K3s arbeitet
 kubectl get networkpolicy -n nextcloud
-kubectl get pods -n kube-system -l 'k8s-app in (calico-node,calico-kube-controllers)'
+iptables-nft-save | grep -c KUBE-NWPLCY      # &gt; 0: die Chains des Controllers sind da
 
-# Durchsetzung tatsächlich nachweisen (temporäre Testpolicy)
-kubectl exec -n nextcloud deployment/collabora -- nc -z -w4 &lt;mariadb-host-ip&gt; 3306
-# → sollte fehlschlagen/Timeout; klappt es doch, setzt Calico nicht durch</code></pre>
+# Durchsetzung tatsächlich nachweisen: ein Pod aus einem fremden Namespace
+kubectl -n default run nptest --image=busybox:1 --restart=Never --rm -i -- \
+  sh -c "nc -w3 -z collabora.nextcloud.svc.cluster.local 9980 &amp;&amp; echo OPEN || echo BLOCKED"
+# → BLOCKED erwartet</code></pre>
 <div class="callout callout-info">
-  <strong>Nur Nextcloud ist abgedeckt, WordPress nicht</strong>
-  Das ist Absicht: WordPress' realistischer Kompromittierungsweg (eine
-  verwundbare Plugin-Lücke innerhalb von <code>wordpress-fpm</code>) braucht
-  ohnehin schon legitimen direkten DB-Zugriff – eine NetworkPolicy würde das
-  dort nicht verhindern. Collaboras Bedrohungsmodell ist anders: es verarbeitet
-  beliebige hochgeladene Dokumente und hat keinen legitimen DB-/Redis-Zugriff
-  zu verlieren – die Einschränkung ist also ein echter, durchsetzbarer
-  Sicherheitsgewinn und keine Show-Maßnahme.
+  <strong>In <code>nextcloud</code> ist nur Collabora eingeschränkt</strong>
+  Das ist Absicht: Collabora verarbeitet beliebige hochgeladene Dokumente und
+  hat keinen legitimen DB-/Redis-Zugriff zu verlieren – die Einschränkung ist
+  also ein echter Sicherheitsgewinn. <code>nextcloud-fpm</code> braucht den
+  DB-Zugriff ohnehin. (Der Blog hat seit 20.08.2026 eigene Policies für
+  WordPress, MariaDB und Redis, siehe WordPress-Betriebshandbuch.)
 </div>
 <div class="callout callout-warn">
   <strong>Neuen Pod/Service im Namespace <code>nextcloud</code> hinzugefügt?</strong>
   Nur der Collabora-Pod ist eingeschränkt; alles andere im Namespace bleibt
   weiterhin standardmäßig erlaubt. Wird eine NetworkPolicy für einen weiteren
-  Pod ergänzt: Calico setzt pro <em>Pod-Label-Selector</em> durch, nicht nach
+  Pod ergänzt: Policies greifen pro <em>Pod-Label-Selector</em>, nicht nach
   Pod-Name – unbedingt prüfen, ob der <code>podSelector</code> passt, bevor man
   annimmt, eine Policy greife.
 </div>
@@ -758,7 +765,7 @@ kubectl exec -n nextcloud deployment/collabora -- nc -z -w4 &lt;mariadb-host-ip&
   <tr><td><code>common_selinux</code> (<code>stack: nextcloud</code>)</td><td>SELinux enforcing, <code>container_file_t</code> für HostPath-Verzeichnisse (gemeinsam mit dem Blog)</td></tr>
   <tr><td><code>next_k3s_deploy</code></td><td>K8s-Manifeste: Namespace, Secrets, ConfigMaps, Deployments, Ingress, CronJob, NetworkPolicy</td></tr>
   <tr><td><code>next_config</code></td><td>Post-Deploy via <code>kubectl exec occ</code>: trusted_domains, Apps, WOPI-Config</td></tr>
-  <tr><td><code>common_calico</code></td><td>Calico Policy-Only-Modus (Felix + kube-controllers) – nötig, damit NetworkPolicy überhaupt durchgesetzt wird</td></tr>
+  <tr><td><code>common_calico</code></td><td>Entfernt Calico (hat hier nie etwas durchgesetzt; die NetworkPolicies setzt der Controller von K3s durch) – kann gelöscht werden, sobald kein Host mehr Calico hat</td></tr>
 </table>
 
 <h3>Templates (erzeugen die K8s-Manifeste)</h3>
@@ -802,7 +809,7 @@ kubectl exec -n nextcloud deployment/collabora -- nc -z -w4 &lt;mariadb-host-ip&
   <tr>
     <td><code>networkpolicy.yml.j2</code></td>
     <td>NetworkPolicy <code>collabora-netpol</code></td>
-    <td>Schränkt Collaboras Ingress/Egress ein – braucht <code>common_calico</code> zur Durchsetzung</td>
+    <td>Schränkt Collaboras Ingress/Egress ein – durchgesetzt vom Network-Policy-Controller von K3s</td>
   </tr>
 </table>
 </section>
@@ -2218,7 +2225,7 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   gibt es bei Nextcloud keine eigene NetworkPolicy (nur
   <code>collabora-netpol</code> existiert, unverändert) – MariaDB/Redis
   laufen hier als Host-Services, nicht als Pods, daher greift der
-  "Calico-Startup-Race"-Befund von der WordPress-Seite aktuell nicht. Falls
+  "Policy-Startup-Race"-Befund von der WordPress-Seite aktuell nicht. Falls
   später eine <code>nextcloud-netpol</code> eingeführt wird, die den
   nextcloud-/Cron-Pod selbst einschränkt, diesen Befund erneut prüfen (siehe
   WP-Cron-Abschnitt im WordPress-Betriebshandbuch).
@@ -2380,10 +2387,9 @@ systemctl stop ssh-login-alert.timer ; systemctl start ssh-login-alert.timer</co
 </p>
 <div class="callout callout-danger">
   <strong>K3s-Regeln können auch in nftables liegen: niemals <code>flush ruleset</code></strong>
-  Ob kube-proxy, flannel und Calico ihre <code>KUBE-*</code>-Chains in
-  iptables-legacy oder in nftables schreiben, hängt vom Host ab. Auf dem
-  Nextcloud-Host liegen sie in nftables (<code>nft list tables</code> zeigt
-  <code>ip nat</code>, <code>ip filter</code>, <code>calico-arp</code>, …). Der
+  kube-proxy, flannel und der Policy-Controller von K3s schreiben ihre
+  <code>KUBE-*</code>-Chains über iptables-nft in eigene nftables-Tabellen
+  (<code>nft list tables</code> zeigt <code>ip nat</code>, <code>ip filter</code>, …). Der
   mitgelieferte <code>nftables.service</code> lädt mit <code>flush ruleset</code>
   neu und hat diese Tabellen mitgelöscht. Bei jeder Firewall-Änderung brach
   dadurch der Service-Verkehr (Nextcloud → MariaDB/Redis) für 30–90 s ab, bis die

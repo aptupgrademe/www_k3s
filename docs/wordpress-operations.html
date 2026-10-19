@@ -610,16 +610,27 @@ real_ip_recursive on;</code></pre>
   <code>server-snippets</code> annotation in the WordPress ingress.
 </div>
 
-<h3>NetworkPolicy (Calico) – Pod-to-Pod Traffic Inside the Cluster</h3>
+<h3>NetworkPolicy – Pod-to-Pod Traffic Inside the Cluster</h3>
 <p>
-  Everything above governs traffic <em>arriving at</em> the cluster. Since
-  2026-08-20, <code>common_calico</code> (Felix + kube-controllers,
-  policy-only mode – no BGP, no own IPAM/CNI, Flannel still does all actual
-  pod networking) also enforces three <code>NetworkPolicy</code> objects
-  <em>inside</em> the <code>wordpress</code> namespace. Flannel alone
-  silently <strong>ignores</strong> NetworkPolicy objects – Calico only adds
-  the missing enforcement layer.
+  Everything above governs traffic <em>arriving at</em> the cluster. Inside
+  the <code>wordpress</code> namespace, three <code>NetworkPolicy</code>
+  objects (since 2026-08-20) limit who may talk to whom. They are enforced by
+  the <strong>network policy controller built into K3s</strong> (kube-router,
+  chains <code>KUBE-ROUTER</code>/<code>KUBE-NWPLCY</code>), which runs by
+  default next to Flannel. Never set <code>disable-network-policy</code> –
+  nothing else enforces them.
 </p>
+<div class="callout callout-warn">
+  <strong>Correction 2026-10-19: Calico never enforced anything here</strong>
+  Until 2026-10-19 this section credited Calico (<code>common_calico</code>,
+  policy-only mode). Calico's Felix only matches pod interfaces named
+  <code>cali*</code>, which Calico's own CNI plugin creates; K3s's Flannel
+  names them <code>veth*</code>, so none of its rules ever matched a pod.
+  Tested: with K3s's controller switched off a pod in <code>default</code>
+  reached MariaDB:3306; with it on the connection is blocked, with or without
+  Calico. Calico was removed; <code>common_calico</code> only deletes its
+  leftovers.
+</div>
 <table>
   <tr><th>Policy</th><th>Applies to</th><th>Allowed ingress</th><th>Allowed egress</th></tr>
   <tr>
@@ -643,9 +654,9 @@ real_ip_recursive on;</code></pre>
 </table>
 <div class="callout callout-info">
   <strong>Known limitation: no domain-based egress filtering</strong>
-  Standard <code>NetworkPolicy</code> matches by IP/CIDR only, and Calico
-  runs here in policy-only OSS mode (no FQDN-aware network sets – that's a
-  Calico Enterprise feature). WordPress core, its plugins, and the WP-CLI
+  Standard <code>NetworkPolicy</code> matches by IP/CIDR only, and K3s's
+  policy controller implements exactly that standard (no FQDN rules).
+  WordPress core, its plugins, and the WP-CLI
   init container all need outbound HTTPS to CDN-backed, non-enumerable IP
   ranges (wordpress.org, github.com/objects.githubusercontent.com). Port
   443 to <code>0.0.0.0/0</code> is therefore left open on
@@ -655,13 +666,14 @@ real_ip_recursive on;</code></pre>
   over HTTPS.
 </div>
 <div class="callout callout-warn">
-  <strong>New pods and the Felix startup race</strong>
+  <strong>New pods and the policy startup race</strong>
   A brand-new pod's very first outbound connection attempt (within roughly
   the first second of container start) can fail with "Connection refused"
-  if Calico's Felix hasn't finished programming that pod's policy rules
-  yet. Long-lived pods never notice – they are kept out of rotation by their
+  if the policy controller hasn't finished programming that pod's rules
+  yet (first seen 2026-08-20 and blamed on Calico; the controller that
+  actually enforces is K3s's own). Long-lived pods never notice – they are kept out of rotation by their
   <code>startupProbe</code>/<code>readinessProbe</code> until the app actually
-  listens (FPM on 9000, nginx on 80), well after Felix has programmed the
+  listens (FPM on 9000, nginx on 80), well after the controller has programmed the
   rules – but short-lived Jobs that connect immediately can hit it reliably. This is why
   <code>wordpress-cron</code>'s container command starts with
   <code>sleep 5 &amp;&amp;</code> – see WP-Cron below. Keep this in mind
@@ -712,7 +724,7 @@ real_ip_recursive on;</code></pre>
   <tr><th>Role</th><th>Task</th></tr>
   <tr><td><code>blog_packages</code></td><td>Install packages (e.g. SELinux tools)</td></tr>
   <tr><td><code>common_selinux</code> (<code>stack: wordpress</code>)</td><td>SELinux enforcing, <code>container_file_t</code> for HostPath directories (shared with Nextcloud)</td></tr>
-  <tr><td><code>common_k3s</code></td><td>K3s, Helm, cert-manager, nginx-ingress (F5), Calico (policy-only, for NetworkPolicy enforcement), audit logging, EventRateLimit/NodeRestriction admission plugins, pod PID limit, PKI file permissions, default-ServiceAccount hardening cluster-wide – common base, shared with Nextcloud</td></tr>
+  <tr><td><code>common_k3s</code></td><td>K3s, Helm, cert-manager, nginx-ingress (F5), K3s's network policy controller (enforces the NetworkPolicies), audit logging, EventRateLimit/NodeRestriction admission plugins, pod PID limit, PKI file permissions, default-ServiceAccount hardening cluster-wide – common base, shared with Nextcloud</td></tr>
   <tr><td><code>blog_k3s_deploy</code></td><td>K8s manifests: namespace (+ Pod Security Standards labels, default-SA hardening), secrets, ConfigMaps, deployments, ingress, CronJob, NetworkPolicy, image allowlist</td></tr>
   <tr><td><code>blog_wordpress</code></td><td>Post-deploy: WP-CLI commands (admin, plugins, settings)</td></tr>
 </table>
@@ -1503,11 +1515,11 @@ k3s kubectl create job --from=cronjob/wordpress-cron wordpress-cron-manual-test 
       block as the main Deployment.
     </li>
     <li>
-      <strong>Calico/Felix startup race (introduced by adding <code>wordpress-netpol</code>).</strong>
+      <strong>NetworkPolicy startup race (introduced by adding <code>wordpress-netpol</code>; attributed to Calico/Felix at the time, it is K3s's policy controller).</strong>
       Once the NetworkPolicy above was live, a brand-new cron pod's very
       first Redis connection attempt (within its first second of life)
-      could still get "Connection refused" even with #1 fixed – Felix
-      hadn't finished programming the pod's egress rule yet. Fixed with a
+      could still get "Connection refused" even with #1 fixed – the policy
+      controller hadn't finished programming the pod's egress rule yet. Fixed with a
       <code>sleep 5 &amp;&amp;</code> prefix on the container command. See
       the NetworkPolicy callout in Network &amp; TLS for why this doesn't
       self-heal via <code>restartPolicy: OnFailure</code>.
@@ -1857,7 +1869,7 @@ k3s kubectl exec -n wordpress deployment/wordpress -c wordpress-fpm -- \
   If the logs show an HTML page with "Error establishing a Redis
   connection": this was a real bug, fixed 2026-08-20 (see the callout in the
   WP-Cron section above) – a missing <code>WORDPRESS_CONFIG_EXTRA</code> env
-  var on the cron container, plus a Calico policy-programming race for the
+  var on the cron container, plus a NetworkPolicy programming race for the
   brand-new pod's first connection attempt. If it recurs after a future
   <code>cronjob.yml.j2</code> change, check both: (1) does the cron
   container's env block still match the main Deployment's
@@ -2279,10 +2291,11 @@ Both verified 2026-09-14.</p>
   </tr>
   <tr>
     <td>NetworkPolicy</td>
-    <td>Calico (policy-only) enforces MariaDB/Redis reachable from
+    <td>K3s's network policy controller enforces MariaDB/Redis reachable from
         WordPress pods only, and caps WordPress's own lateral egress inside
-        the cluster – see Network &amp; TLS for the full topology</td>
-    <td><code>common_calico</code>, <code>blog_k3s_deploy</code></td>
+        the cluster – see Network &amp; TLS for the full topology (Calico,
+        named here until 2026-10-19, never enforced anything and was removed)</td>
+    <td><code>common_k3s</code> (controller on by default), <code>blog_k3s_deploy</code></td>
   </tr>
   <tr>
     <td>Image allowlist</td>
@@ -2338,13 +2351,11 @@ Both verified 2026-09-14.</p>
   <ul>
     <li><strong>etcd-cafile</strong> – false positive, this cluster uses
         embedded SQLite, not etcd, so the check doesn't apply.</li>
-    <li><strong>Wildcard RBAC</strong> – Calico's own
-        <code>calico-kube-controllers</code> ClusterRole needs wildcard
-        grants to manage its CRDs (IPPools, NetworkPolicies, etc.); hand-trimming
-        it risks calico-node/kube-controllers failing to start. This is the
-        visible cost of the NetworkPolicy enforcement above.</li>
+    <li><strong>Wildcard RBAC</strong> – came from Calico's
+        <code>calico-kube-controllers</code> ClusterRole; with Calico removed
+        (2026-10-19) this finding should disappear on the next kube-bench run.</li>
     <li><strong>SA tokens still mounted</strong> – only on cert-manager,
-        ingress-nginx and Calico's own pods, all of which genuinely need API
+        ingress-nginx and kube-state-metrics (Calico's pods until 2026-10-19), all of which genuinely need API
         access to do their job (watching Certificates/Ingress/NetworkPolicy
         objects). k3s's built-in exception list only covers its own core
         components, not these add-ons.</li>
@@ -2388,7 +2399,7 @@ Both verified 2026-09-14.</p>
         SYN cookies, <code>ptrace_scope</code> restricted to descendants,
         full ASLR, kernel log for root only (<code>dmesg_restrict</code>), RFC 1337 protection against TIME-WAIT assassination, protected FIFOs/files in <code>/tmp</code> (<code>protected_fifos/regular = 2</code>). Deliberately excludes
         <code>ip_forward</code>/<code>rp_filter</code> – required as-is by
-        k3s/Calico, see the callout below</td>
+        k3s/Flannel, see the callout below</td>
     <td><code>common_sysctl</code></td>
   </tr>
   <tr>
@@ -2438,7 +2449,7 @@ Both verified 2026-09-14.</p>
   <ul>
     <li><strong><code>net.ipv4.ip_forward</code> and <code>rp_filter</code>
         left untouched</strong> – CIS wants forwarding off and strict
-        reverse-path filtering on; k3s/Flannel/Calico need forwarding on to
+        reverse-path filtering on; k3s/Flannel need forwarding on to
         route pod traffic at all, and this host's <code>rp_filter</code> was
         already <code>0</code> instead of the distro default <code>1</code>
         (strict rp_filter is a documented way to make a Kubernetes node drop
@@ -2618,9 +2629,9 @@ systemctl stop ssh-login-alert.timer ; systemctl start ssh-login-alert.timer</co
 </p>
 <div class="callout callout-danger">
   <strong>Never <code>flush ruleset</code>: K3s rules may live in nftables</strong>
-  Whether kube-proxy/flannel/Calico write their <code>KUBE-*</code> chains to
-  iptables-legacy or to nftables depends on the host. On the blog host they are
-  in iptables-legacy, on the Nextcloud host in nftables. There the stock
+  kube-proxy, flannel and K3s's policy controller write their <code>KUBE-*</code>
+  chains through iptables-nft into nftables tables of their own (all hosts since
+  2026-10-19; the blog used iptables-legacy before). The stock
   <code>nftables.service</code> reload (<code>flush ruleset</code>) wiped them and broke
   Service traffic for 30–90 s. The ruleset therefore replaces only
   <code>table inet filter</code> atomically, and the drop-in

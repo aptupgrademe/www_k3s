@@ -381,7 +381,7 @@ Sie sind schnell und rein lesend.</div>
 <!-- ===================================================================== -->
 <h2 id="versionen">Versionen an einer Stelle</h2>
 <p><code>inventory/group_vars/all/versions.yml</code> enthält jede Version, die installiert oder ausgerollt wird:
-K3s, Helm, Calico, die Helm-Charts, alle Container-Images, WP-CLI (mit Prüfsumme), die Monitoring-Programme und die
+K3s, Helm, die Helm-Charts, alle Container-Images, WP-CLI (mit Prüfsumme), die Monitoring-Programme und die
 MariaDB-Repository-Serie der Nextcloud-Server. Oben stehen die Werte kompakt, darunter die Begründungen und die
 Historie je Eintrag.</p>
 <ul>
@@ -414,7 +414,7 @@ Historie je Eintrag.</p>
   <li>Pakete, SSH, Firewall, sysctl, CIS-Härtung – die Basis, bevor irgendetwas lauscht.</li>
   <li><code>common_selinux</code> <em>vor</em> dem Deploy – die HostPath-Verzeichnisse brauchen ihr SELinux-Label, bevor
     ein Container sie benutzt.</li>
-  <li><code>common_k3s</code>, <code>common_calico</code>, dann das Deploy der Anwendung (<code>blog_k3s_deploy</code>
+  <li><code>common_k3s</code> (<code>common_calico</code> entfernt nur noch Calico), dann das Deploy der Anwendung (<code>blog_k3s_deploy</code>
     bzw. <code>next_k3s_deploy</code>). Die Pods starten im Hintergrund.</li>
   <li>Monitoring, fail2ban, Mail, automatische Updates, rkhunter, ClamAV, auditd, Monit – laufen, während die Pods
     hochfahren (spart Minuten).</li>
@@ -481,7 +481,7 @@ Profil:</p>
   <tr><td><code>common_selinux</code></td><td>beide</td><td>SELinux enforcing, Labels für HostPath-Verzeichnisse</td></tr>
   <tr><td><code>next_mariadb</code>, <code>next_redis</code></td><td>Nextcloud</td><td>Datenbank und Cache auf dem Host</td></tr>
   <tr><td><code>common_k3s</code></td><td>beide</td><td>K3s, Helm, cert-manager, F5 nginx-ingress, ServiceAccount-Härtung</td></tr>
-  <tr><td><code>common_calico</code></td><td>beide</td><td>Calico im Policy-Modus: NetworkPolicies werden durchgesetzt</td></tr>
+  <tr><td><code>common_calico</code></td><td>beide</td><td>entfernt Calico – es hat hier nie etwas durchgesetzt; die NetworkPolicies setzt der Policy-Controller von K3s durch</td></tr>
   <tr><td><code>common_kube_metrics</code></td><td>beide</td><td>Container-Metriken: cAdvisor (im Kubelet) und kube-state-metrics für Prometheus</td></tr>
   <tr><td><code>blog_k3s_deploy</code> / <code>next_k3s_deploy</code></td><td>je</td><td>Kubernetes-Objekte der Anwendung (Deployments, Secrets, Ingress, CronJobs, Policies)</td></tr>
   <tr><td><code>common_node_exporter</code>, <code>common_prometheus</code>, <code>common_grafana</code>, <code>common_mysqld_exporter</code></td><td>beide / Nextcloud</td><td>Monitoring, nur lokal erreichbar, Grafana per Ingress</td></tr>
@@ -584,9 +584,9 @@ Die mitgelieferten K3s-Bausteine, die hier keiner braucht (Traefik, ServiceLB, l
 
 <div class="rolle">
 <p><strong><code>common_calico</code></strong> (beide)</p>
-<p><strong>Was:</strong> Calico nur im Policy-Modus – das Netz macht weiter Flannel, Calico setzt die NetworkPolicies durch.
-<strong>Warum:</strong> Ohne Calico würden alle NetworkPolicies still ignoriert.</p>
-<p class="wie"><strong>Wie:</strong> Vorlage auf dem Controller rendern (<code>lookup('template')</code>) → in Kubernetes-Objekte zerlegen (<code>from_yaml_all</code>) → per API anwenden (<code>kubernetes.core.k8s apply</code>, „changed“ nur bei echter Abweichung) → nur dann auf die Pods warten (<code>rollout status … when changed</code>). Dieses <strong>K8s-Apply-Muster</strong> nutzen 27 Tasks im Repo.</p>
+<p><strong>Was:</strong> Seit dem 19.10.2026 <em>entfernt</em> sie Calico: die Objekte im Cluster (dieselbe Vorlage, <code>state: absent</code>) und das, was Felix auf dem Host hinterlässt (<code>files/calico-cleanup.sh</code>).
+<strong>Warum:</strong> Calico lief im Policy-Modus, um die NetworkPolicies durchzusetzen, aber Felix erkennt Pods nur an Schnittstellen namens <code>cali*</code>, und das Flannel von K3s legt <code>veth*</code> an – es hat nie etwas durchgesetzt. Die Policies setzt der eingebaute Controller von K3s (kube-router) durch, getestet mit einem Pod aus einem fremden Namespace.</p>
+<p class="wie"><strong>Wie:</strong> das K8s-Apply-Muster (jetzt in <code>common_k3s</code> erklärt, von 26 Tasks genutzt) mit <code>state: absent</code> → warten, bis kein <code>calico-node</code>-Pod mehr da ist (<code>k8s_info</code> + <code>until</code>) → das Aufräumskript entfernt nur Calicos Regeln, Ketten, IP-Sets und die Tabelle <code>calico-arp</code> und gibt pro Objekt eine Zeile aus, die <code>changed_when</code> auswertet.</p>
 </div>
 
 <div class="rolle">
@@ -789,7 +789,7 @@ die Unterschiede. Damit das hier aussagekräftig ist:</p>
   <li><code>apply: true</code> verhält sich wie <code>kubectl apply</code> (über die Annotation
     <code>last-applied-configuration</code>), ist also mit den bestehenden Objekten kompatibel.</li>
   <li><strong>Ein Aufruf oder einer pro Objekt:</strong> Bei normalen Läufen gehen alle Objekte eines Templates in
-    <em>einem</em> Aufruf an die API (Calico: unter 2 statt ~30 Sekunden). Nur mit <code>--diff</code> (also bei
+    <em>einem</em> Aufruf an die API (das frühere Calico-Manifest mit 34 Objekten: unter 2 statt ~30 Sekunden). Nur mit <code>--diff</code> (also bei
     <code>check-drift.sh</code>) läuft die Schleife pro Objekt – nur so zeigt der Diff die Änderung jedes Objekts, und die
     Ausgabe nennt <code>Deployment/redis</code>, <code>Service/redis</code>.</li>
   <li>Das Modul meldet <code>changed</code> nur, wenn sich am Objekt wirklich etwas ändert. Folgetasks wie
@@ -864,7 +864,7 @@ ist hier beseitigt; <code>scripts/check-drift.sh</code> zeigt sofort, wenn so et
   <tr><td>Renovate</td><td><code>renovate.json5</code></td><td>schlägt Versions-Updates als Pull Request vor (braucht die Renovate-App auf GitHub)</td></tr>
 </table>
 <p>Renovate ist vorsichtig eingestellt: wöchentlich, höchstens fünf offene PRs, nichts wird automatisch gemergt.
-Major-Versionen (Nextcloud 35, MariaDB 11+, Redis 8 …) sowie Minor-Sprünge von K3s und Calico kommen nur nach Freigabe
+Major-Versionen (Nextcloud 35, MariaDB 11+, Redis 8 …) sowie Minor-Sprünge von K3s kommen nur nach Freigabe
 im „Dependency Dashboard“, mit Hinweis im PR. nginx bleibt auf dem stabilen Zweig (gerade Minor-Version). Ein WP-CLI-PR
 erinnert daran, dass die SHA-512-Prüfsumme mit angepasst werden muss.</p>
 <pre><code>ansible-lint                      # ganzes Repo

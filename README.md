@@ -41,7 +41,7 @@ Internet
 │  │                                                     │    │
 │  │  nginx-ingress  (F5, hostNetwork, ports 80/443)    │    │  ← TLS, Brotli, HTTP/2
 │  │  cert-manager   (Let's Encrypt – auto TLS)         │    │
-│  │  Calico policy-only (NetworkPolicy, both stacks)   │    │
+│  │  NetworkPolicy: K3s policy controller (kube-router)│    │
 │  │                                                     │    │
 │  │  ┌──────────────────┐  ┌─────────────────────────┐ │    │
 │  │  │  Nextcloud stack │  │   WordPress stack        │ │    │
@@ -65,10 +65,11 @@ Internet
 
 - **Nextcloud 34** with PHP-FPM, nginx sidecar, Redis (host service) and MariaDB 10.11
 - **Collabora CODE** (online office) with WOPI integration
-- **Calico (policy-only mode)** – NetworkPolicy enforcement on both stacks, since
-  K3s's default Flannel CNI does not enforce NetworkPolicy objects at all: on
-  Nextcloud, Collabora can never reach MariaDB/Redis directly; on the blog,
-  MariaDB/Redis only accept the WordPress pods and WordPress's own egress is capped
+- **NetworkPolicies on both stacks**, enforced by K3s's embedded policy controller
+  (kube-router): on Nextcloud, Collabora can never reach MariaDB/Redis directly; on
+  the blog, MariaDB/Redis only accept the WordPress pods and WordPress's own egress
+  is capped. (Calico ran next to it until 2026-10-19 but never enforced anything –
+  see below.)
 - **WordPress 7.1** (core 7.1.3 via the nightly minor updates, on the pinned `wordpress:7.1.3` image) with PHP-FPM,
   nginx sidecar, MariaDB pod and **Redis Object Cache** pod
 - Automatic installation on first pod start via container env vars and WP-CLI
@@ -141,8 +142,8 @@ Internet
   deliberately rate-limited
 - **Reload touches only `table inet filter`**: the ruleset replaces its own
   table atomically, and a systemd drop-in scopes `reload`/`stop` the same way.
-  kube-proxy, flannel and Calico keep their rules in nftables too on hosts where
-  they use iptables-nft (the Nextcloud hosts; the blog uses iptables-legacy),
+  kube-proxy, flannel and K3s's policy controller keep their rules in nftables
+  too (iptables-nft on all hosts; the blog used iptables-legacy until 2026-10-19),
   and the stock `flush ruleset` wiped them, breaking Service traffic for up to
   90 s on every firewall change
 - The template is checked with `nft -c` before it replaces the live file
@@ -156,11 +157,17 @@ Internet
   For Germany: ~8,700 IPv4 + 3,100 IPv6 blocks, ~1.5 MB kernel memory. Details
   and the emergency path: [`roles/common_firewall/readme.md`](roles/common_firewall/readme.md)
 
-#### NetworkPolicy – Calico (both stacks)
+#### NetworkPolicy – K3s's policy controller (both stacks)
 
-- Installed in **policy-only mode**: only Felix + kube-controllers run,
-  reading Pods/NetworkPolicy objects from the Kubernetes API. Flannel keeps
-  doing all pod networking/IPAM/CNI plugin duties unchanged.
+- Enforced by the **network policy controller built into K3s** (kube-router,
+  chains `KUBE-ROUTER`/`KUBE-NWPLCY`), which runs by default next to Flannel.
+  Never set `disable-network-policy` – nothing else enforces the policies.
+- **Calico was removed on 2026-10-19:** it ran in "policy-only" mode since
+  August, but Felix only matches pod interfaces named `cali*` (created by
+  Calico's own CNI plugin); K3s's Flannel names them `veth*`, so none of its
+  rules ever matched a pod. Verified: with K3s's controller disabled a pod in
+  `default` reached MariaDB:3306, with it enabled the connection is blocked,
+  with or without Calico. `common_calico` now only removes Calico's leftovers.
 - `collabora-netpol` restricts the Collabora pod to DNS + the Nextcloud pod
   only – it can no longer reach MariaDB or Redis by any path, direct or via
   the host IP, even though it previously could (verified live both ways).
@@ -305,7 +312,7 @@ www_k3s/
 │       └── vault.yml.example  # Template with placeholder values (committed)
 │
 ├── roles/
-│   ├── common_*/              # Shared roles (K3s, SSH, Firewall, Monitoring, Calico, ClamAV, SELinux, …)
+│   ├── common_*/              # Shared roles (K3s, SSH, Firewall, Monitoring, ClamAV, SELinux, …)
 │   ├── next_*/                # Nextcloud-specific roles
 │   └── blog_*/                # WordPress-specific roles
 │
@@ -369,7 +376,7 @@ ansible-vault encrypt inventory/host_vars/<host>/vault.yml
 | `common_version_check` | Pre-flight: K3s, Helm, chart and image versions vs. latest |
 | `common_version_active` | Last check: is every pin from versions.yml really running (kubelet, deployed charts, images of running containers, Prometheus/exporters, pending reboot, services on old code)? Reports only what is not active |
 | `common_k3s` | K3s, Helm, cert-manager, F5 nginx-ingress (HTTP/2, Brotli, OCSP) |
-| `common_calico` | Calico policy-only mode: NetworkPolicy enforcement (both stacks) |
+| `common_calico` | Removes Calico (it never enforced anything here, see NetworkPolicy above); deleted once no host has it |
 | `common_kube_metrics` | Container metrics: read-only scraper token for the kubelet's cAdvisor + kube-state-metrics (NodePort 30808, local only) |
 | `common_firewall` | nftables (table inet, banned/scan-ban sets, port-scan detection, K3s exceptions, table-scoped reload, optional SSH country allowlist) |
 | `common_ssh` | SSH hardening (port 10022, key-only, PermitRootLogin without-password) |
@@ -411,7 +418,7 @@ ansible-vault encrypt inventory/host_vars/<host>/vault.yml
 
 All pinned versions live in one file, [`inventory/group_vars/all/versions.yml`](inventory/group_vars/all/versions.yml)
 – values on top, reasons and history below. Renovate (`renovate.json5`) proposes bumps as pull requests (majors and
-K3s/Calico minors only after approval); the `common_version_check` role also compares them against the latest releases
+K3s minors only after approval); the `common_version_check` role also compares them against the latest releases
 at every playbook run. Before rolling a bump out: `scripts/check-drift.sh <playbook> <host>`.
 
 ```yaml
@@ -423,13 +430,10 @@ cert_manager_chart_version:  "1.21.2"
 blog_image_wordpress: "wordpress:7.1.3-php8.4-fpm"
 nextcloud_image_fpm:  "nextcloud:34.0.5-fpm"
 
-# Calico (policy-only NetworkPolicy enforcement)
-calico_version: "v3.33.0"
 ```
 
-Calico upgrade: bump `calico_version`, run `scripts/calico-derive-manifest.py <version>` – it regenerates
-`roles/common_calico/templates/calico-policy-only.yml.j2` from the upstream Canal manifest (the edits are listed in
-its docstring) – review the diff, then `tests/k8s/run.sh` and a drift check per host.
+(`calico_version` and `scripts/calico-derive-manifest.py` only remain so `common_calico` can name the objects it
+deletes; both go away together with that role.)
 
 ---
 
