@@ -111,6 +111,22 @@
     state: present
   notify: restart grafana
 
+# Log level warn instead of info: at info Grafana writes a line for every
+# datasource query ("Plugin Request Completed") and every feature-flag check
+# - about 1500 lines an hour into the journal/Loki (found 2026-10-19 with
+# common_loki). ini_file instead of lineinfile: "level" exists in five
+# sections of grafana.ini, this has to hit [log] only.
+- name: Grafana | Log level warn
+  community.general.ini_file:
+    path: /etc/grafana/grafana.ini
+    section: log
+    option: level
+    value: warn
+    mode: "0640"
+    owner: root
+    group: grafana
+  notify: restart grafana
+
 
 # Handlers notified above (restart grafana) only run at the end of the
 # play - this task makes sure Grafana runs NOW, because the next files

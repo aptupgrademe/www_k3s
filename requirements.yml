@@ -5,8 +5,8 @@
 #
 # Used by:
 #   community.mysql  → next_mariadb          (mysql_user, mysql_db)
-#   community.general → next_packages        (ini_file - was written as
-#                                             ansible.builtin.ini_file, which
+#   community.general → next_packages,       (ini_file - was written as
+#                       common_grafana        ansible.builtin.ini_file, which
 #                                             only resolved through a legacy
 #                                             redirect to this collection)
 #   kubernetes.core  → common_k3s, common_calico, blog_k3s_deploy,
