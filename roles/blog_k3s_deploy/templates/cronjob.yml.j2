@@ -51,7 +51,9 @@ spec:
               # download_url()/tempnam() using PHP's default temp dir - same
               # tmp mount as wordpress-fpm in the main Deployment.
               readOnlyRootFilesystem: true
-            # 5s startup delay: Calico/Felix needs a moment after pod creation
+            # 5s startup delay: the network policy controller needs a moment
+            # after pod creation (written for Calico/Felix, which turned out
+            # to enforce nothing; K3s's controller has the same kind of lag)
             # to program this pod's NetworkPolicy rules (egress to
             # MariaDB/Redis, see wordpress-netpol). Long-lived pods never hit
             # this - their readinessProbe initialDelaySeconds (20s+) covers
@@ -214,7 +216,7 @@ spec:
             - -c
             - |
               set -e
-              sleep 5   # Calico/Felix egress rules, see wp-cron above
+              sleep 5   # NetworkPolicy egress rules, see wp-cron above
               wget -q -O /wp-cli/wp-cli.phar \
                 https://github.com/wp-cli/wp-cli/releases/download/v{{ blog_wp_cli_version }}/wp-cli-{{ blog_wp_cli_version }}.phar
               echo "{{ blog_wp_cli_sha512 }}  /wp-cli/wp-cli.phar" | sha512sum -c -

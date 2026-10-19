@@ -5,9 +5,9 @@
 #          /etc/sysconfig/nftables.conf is the file read by the nftables systemd
 #          service on AlmaLinux 9 at boot (ExecStart) and on reload (ExecReload).
 #          The commonly referenced /etc/nftables.conf is NOT used by the service.
-#          K3s (kube-proxy, flannel, Calico) writes its rules either to
-#          iptables-legacy (blog) or through iptables-nft into its OWN
-#          nftables tables (both Nextcloud hosts, checked 2026-10-16). For
+#          K3s (kube-proxy, flannel, its network policy controller) writes
+#          its rules through iptables-nft into its OWN nftables tables (all
+#          hosts since 2026-10-19; the blog used iptables-legacy before). For
 #          the second case this role only ever replaces table
 #          "inet filter" ("delete table" + recreate in fw.nft.j2, and the
 #          systemd drop-in below scopes reload/stop the same way) - never
@@ -209,7 +209,7 @@
         - /etc/nftables/ssh-geo.nft
 
 # The stock unit reloads with 'flush ruleset; include ...' and stops with
-# 'flush ruleset'. That also wipes kube-proxy's / flannel's / Calico's tables,
+# 'flush ruleset'. That also wipes kube-proxy's / flannel's / K3s's tables,
 # which live in nftables too, and breaks Service traffic until they re-sync.
 # Scope reload/stop to our own table. It must be in place before the reload
 # handler fires at the end of the play.
@@ -301,7 +301,8 @@
   when: _legacy_fw.changed
 
 # nftables only (2026-10-19): with iptables-legacy installed, /usr/sbin/iptables
-# points to the legacy backend (alternatives), and K3s, Flannel and Calico,
+# points to the legacy backend (alternatives), and K3s and Flannel (and then
+# still Calico),
 # which use the host's iptables, put all their rules into the legacy tables -
 # that was the case on the blog (EPEL packages from its first install, never
 # used: iptables.service was disabled). Without these packages iptables is

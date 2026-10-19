@@ -2,14 +2,14 @@
 # =============================================================================
 # NetworkPolicy – Collabora egress/ingress restriction
 # =============================================================================
-# Requires Calico (common_calico) for enforcement – Flannel alone accepts
-# but ignores NetworkPolicy objects, so applying this without common_calico
-# would be a silent no-op, not a broken deploy.
+# Enforced by K3s's embedded network policy controller (kube-router, on by
+# default - never set disable-network-policy). Calico, which these comments
+# used to name, enforced nothing here and was removed 2026-10-19 (see
+# common_calico); Flannel alone would indeed ignore NetworkPolicies.
 #
-# Uses THE K8S APPLY PATTERN (explained in common_calico/tasks/main.yml): the
+# Uses THE K8S APPLY PATTERN (explained in common_k3s/tasks/main.yml): the
 # template is rendered on the controller, parsed into objects and applied via
 # the API; "changed" only when a live object really differs.
-# Enforced only because Calico runs in policy-only mode (common_calico).
 
 - name: NetworkPolicy | Apply Collabora NetworkPolicy
   kubernetes.core.k8s:
@@ -20,7 +20,7 @@
   # With --diff (check-drift.sh): one loop item per object, so the diff shows
   # each object's change (a list definition reports no diff). Otherwise one
   # call for all objects of the template - one module run instead of one per
-  # object (Calico alone has 34), same apply semantics.
+  # object (a template can hold dozens), same apply semantics.
   loop: "{{ k8s_objects if ansible_diff_mode else [k8s_objects] }}"
   loop_control:
     label: "{{ (item.kind ~ '/' ~ item.metadata.name) if item is mapping else ((item | length) ~ ' objects') }}"

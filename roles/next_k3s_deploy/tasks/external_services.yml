@@ -10,7 +10,7 @@
 # pod CIDR ({{ k3s_pod_cidr }}) only.
 # =============================================================================
 #
-# Uses THE K8S APPLY PATTERN (explained in common_calico/tasks/main.yml): the
+# Uses THE K8S APPLY PATTERN (explained in common_k3s/tasks/main.yml): the
 # template is rendered on the controller, parsed into objects and applied via
 # the API; "changed" only when a live object really differs.
 # Points the Services "mariadb", "redis" and the Grafana service at the host
@@ -25,7 +25,7 @@
   # With --diff (check-drift.sh): one loop item per object, so the diff shows
   # each object's change (a list definition reports no diff). Otherwise one
   # call for all objects of the template - one module run instead of one per
-  # object (Calico alone has 34), same apply semantics.
+  # object (a template can hold dozens), same apply semantics.
   loop: "{{ k8s_objects if ansible_diff_mode else [k8s_objects] }}"
   loop_control:
     label: "{{ (item.kind ~ '/' ~ item.metadata.name) if item is mapping else ((item | length) ~ ' objects') }}"

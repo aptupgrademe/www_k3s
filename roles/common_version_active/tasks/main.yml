@@ -135,8 +135,7 @@
          | selectattr('state.running', 'defined') | map(attribute='image')
          | map('regex_replace', '^docker[.]io/(library/)?', '') | unique | list }}
     _va_expected: >-
-      {{ (['quay.io/calico/node:' ~ calico_version, 'quay.io/calico/calico:' ~ calico_version]
-          + ([kube_state_metrics_image] if kube_state_metrics_image is defined else [])
+      {{ (([kube_state_metrics_image] if kube_state_metrics_image is defined else [])
           + ([blog_image_wordpress, blog_image_nginx, blog_image_mariadb, blog_image_redis,
               blog_image_mysqld_exporter, blog_image_fpm_exporter] if stack == 'wordpress' else [])
           + ([nextcloud_image_fpm, nextcloud_image_nginx, nextcloud_image_collabora,
@@ -190,8 +189,12 @@
     _k3s: "{{ (((_va_nodes.stdout | default('') | trim or '{\"items\": [{}]}') | from_json)['items'] | first).status.nodeInfo.kubeletVersion | default('?') }}"
     _helm: "{{ _va_helm.stdout | default('') | regex_search('v[0-9]+[.][0-9]+[.][0-9]+') | default('?', true) }}"
     _releases: "{{ (_va_releases.stdout | default('') | trim or '[]') | from_json | selectattr('status', 'equalto', 'deployed') }}"
-    _ingress: "{{ _releases | selectattr('name', 'equalto', 'ingress-nginx') | map(attribute='chart') | first | default('?') | regex_replace('^nginx-ingress-', '') }}"
-    _certmgr: "{{ _releases | selectattr('name', 'equalto', 'cert-manager') | map(attribute='chart') | first | default('?') | regex_replace('^cert-manager-v?', '') }}"
+    _ingress: >-
+      {{ _releases | selectattr('name', 'equalto', 'ingress-nginx') | map(attribute='chart')
+         | first | default('?') | regex_replace('^nginx-ingress-', '') }}
+    _certmgr: >-
+      {{ _releases | selectattr('name', 'equalto', 'cert-manager') | map(attribute='chart')
+         | first | default('?') | regex_replace('^cert-manager-v?', '') }}
     _prom: "{{ (_va_prometheus.json | default({})).data.version | default('?') }}"
     _old: "{{ _va_services.stdout_lines | default([]) | select('match', '.*[.]service$') | map('trim') | list }}"
 

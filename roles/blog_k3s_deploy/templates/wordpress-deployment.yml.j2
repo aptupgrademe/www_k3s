@@ -67,6 +67,11 @@ spec:
           # Only ever writes into the two mounted volumes below (wordpress-www,
           # wp-cli) - chown/chmod/wget/sha512sum need no other writable path.
           readOnlyRootFilesystem: true
+        # Note: the "Calico/Felix" in the script below is history - Calico
+        # enforced nothing and is gone (2026-10-19); the startup lag is K3s's
+        # network policy controller. The text stays inside the script on
+        # purpose: changing it would change the pod template and restart
+        # WordPress on every host for a comment.
         command:
         - sh
         - -c

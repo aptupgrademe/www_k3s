@@ -1,7 +1,6 @@
 # NetworkPolicies for the WordPress stack – managed by Ansible (blog_k3s_deploy)
-# Enforced by Calico Felix (installed via common_calico) – Flannel alone
-# silently ignores standard NetworkPolicy objects (same as verified on the
-# Nextcloud host: a deny-all policy had zero effect before Calico was added).
+# Enforced by K3s's embedded network policy controller (kube-router) - not by
+# Calico, which never matched a pod here and was removed 2026-10-19.
 #
 # Threat model: wordpress-fpm is the component that parses untrusted input
 # (HTTP requests, plugin/theme code, file uploads) — by far the most likely
@@ -17,9 +16,9 @@
 # Known limitation: WordPress core, its plugins, and the WP-CLI init
 # container all need outbound HTTPS to CDN-backed, non-enumerable IP ranges
 # (wordpress.org, github.com/objects.githubusercontent.com, ...). Standard
-# NetworkPolicy is IP/CIDR-only — it cannot match by domain name, and this
-# cluster runs Calico in policy-only OSS mode (no FQDN-aware network sets,
-# that's an Enterprise feature). So egress port 443 to the internet is left
+# NetworkPolicy is IP/CIDR-only — it cannot match by domain name, and K3s's
+# policy controller (kube-router) implements exactly that standard, no
+# FQDN rules. So egress port 443 to the internet is left
 # open below; what this restricts is lateral movement *inside* the cluster
 # (kube-system, cert-manager, ingress-nginx admin ports, any future pod),
 # which is still a real reduction in blast radius, just not a full

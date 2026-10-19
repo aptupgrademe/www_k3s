@@ -158,7 +158,7 @@
       # containerd with SELinux support: every pod runs as container_t with
       # its own MCS categories and may only write container_file_t
       # (common_selinux labels the HostPath directories). Privileged pods
-      # (Calico) get spc_t. Needs the k3s-selinux policy above. Pods started
+      # get spc_t. Needs the k3s-selinux policy above. Pods started
       # before this was set keep their old domain until they are recreated.
       selinux: true
       # NO "disable-network-policy": K3s's own controller (kube-router,

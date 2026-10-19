@@ -1,8 +1,8 @@
 #!/usr/sbin/nft -f
 # Managed by Ansible (common_firewall) – do not edit manually.
 
-# Replace ONLY our own table. kube-proxy, flannel and Calico keep their rules
-# in nftables too (ip nat/filter/mangle, calico-arp, ...); the old
+# Replace ONLY our own table. kube-proxy, flannel and K3s's policy controller
+# keep their rules in nftables too (ip nat/filter/mangle, ...); the old
 # "flush ruleset" wiped those on every firewall reload, breaking Service
 # ClusterIP traffic (Nextcloud -> MariaDB/Redis) for 30-90 s until they
 # re-synced. Declaring the table first makes the delete safe on a fresh boot.
@@ -268,10 +268,10 @@ table inet filter {
 
   # ===========================================================================
   # FORWARD – K3s inter-pod and pod-to-service traffic
-  # K3s (kube-proxy, flannel, its network policy controller) and Calico keep
-  # their own KUBE-*/cali-* chains outside this table - depending on the host
-  # in iptables-legacy (blog, checked 2026-10-16) or in nftables tables of
-  # their own via iptables-nft (both Nextcloud hosts). Either way the kernel
+  # K3s (kube-proxy, flannel, its network policy controller) keeps its own
+  # KUBE-* chains outside this table, in nftables tables of their own via
+  # iptables-nft (all hosts since 2026-10-19; the blog used iptables-legacy
+  # before, and Calico's cali-* chains are gone). Either way the kernel
   # evaluates them alongside this table at the same hooks, so this chain only
   # needs to pass pod CIDR traffic.
   # ===========================================================================

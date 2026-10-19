@@ -14,7 +14,7 @@
 # WordPress, Ingress, CronJob, exporter NodePorts, NetworkPolicy, image
 # policy. Each component is rendered from a Jinja template in templates/ and
 # applied with kubernetes.core.k8s - see THE K8S APPLY PATTERN in
-# common_calico/tasks/main.yml. Where a later component needs an earlier one
+# common_k3s/tasks/main.yml. Where a later component needs an earlier one
 # RUNNING (WordPress needs MariaDB), a "kubectl rollout status" task waits.
 #
 # Pods are only restarted by Kubernetes itself when their pod template
@@ -66,7 +66,7 @@
 - name: blog_k3s_deploy | Exporter NodePort Services
   ansible.builtin.import_tasks: exporters.yml
 
-- name: blog_k3s_deploy | NetworkPolicy (requires common_calico)
+- name: blog_k3s_deploy | NetworkPolicy (enforced by K3s's policy controller)
   ansible.builtin.import_tasks: networkpolicy.yml
 
 - name: blog_k3s_deploy | Image registry allowlist (ValidatingAdmissionPolicy)

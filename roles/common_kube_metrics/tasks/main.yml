@@ -14,11 +14,11 @@
 #          common_prometheus writes the scraper token to
 #          /etc/prometheus/kubelet-token and scrapes both; common_grafana
 #          imports the "Container resources" dashboard and the alert rules.
-# Target:  both stacks (blog.yml, nextcloud-k3s.yml), after common_calico and
+# Target:  both stacks (blog.yml, nextcloud-k3s.yml), after common_k3s and
 #          before common_prometheus.
 # =============================================================================
 #
-# Same K8s apply pattern as common_calico (explained there).
+# Same K8s apply pattern as everywhere (explained in common_k3s/tasks/main.yml).
 
 - name: Kube metrics | Apply scraper account and kube-state-metrics
   kubernetes.core.k8s:

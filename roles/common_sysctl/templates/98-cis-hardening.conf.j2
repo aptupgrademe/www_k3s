@@ -3,13 +3,13 @@
 # CIS AlmaLinux 9 Benchmark Level 1 (Server) – network kernel hardening
 # =============================================================================
 # Deliberately NOT included here, unlike a stock CIS profile:
-#   - net.ipv4.ip_forward / net.ipv4.conf.all.forwarding: K3s/Flannel/Calico
+#   - net.ipv4.ip_forward / net.ipv4.conf.all.forwarding: K3s/Flannel
 #     require IP forwarding to route pod-to-pod and pod-to-internet traffic.
 #     Disabling this would break the entire cluster network.
 #   - net.ipv4.conf.all.rp_filter / net.ipv4.conf.default.rp_filter: verified
 #     live (2026-08-20) that all.rp_filter is already 0 on this host despite
-#     the distro default of 1 for default.rp_filter - something in the k3s/
-#     Calico stack already manages this for CNI compatibility (strict reverse
+#     the distro default of 1 for default.rp_filter - something in the k3s
+#     stack (then still with Calico) already manages this for CNI compatibility (strict reverse
 #     path filtering is a well-known cause of dropped pod traffic on
 #     Kubernetes nodes). Left alone rather than overridden.
 

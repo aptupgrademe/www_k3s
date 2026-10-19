@@ -16,7 +16,7 @@
 # reach them through "external services" - a Service without selector +
 # an Endpoints object with the host IP. Every component is a Jinja template
 # in templates/, applied with kubernetes.core.k8s (THE K8S APPLY PATTERN,
-# see common_calico/tasks/main.yml). "rollout status" waits run only
+# see common_k3s/tasks/main.yml). "rollout status" waits run only
 # "when: <apply>.changed", so an unchanged run never waits.
 
 - name: next_k3s_deploy | HostPath directories
@@ -29,7 +29,7 @@
   ansible.builtin.import_tasks: nextcloud.yml
 - name: next_k3s_deploy | Collabora Deployment + Service
   ansible.builtin.import_tasks: collabora.yml
-- name: next_k3s_deploy | NetworkPolicy (requires common_calico)
+- name: next_k3s_deploy | NetworkPolicy (enforced by K3s's policy controller)
   ansible.builtin.import_tasks: networkpolicy.yml
 - name: next_k3s_deploy | Image registry allowlist (ValidatingAdmissionPolicy)
   ansible.builtin.import_tasks: image_policy.yml

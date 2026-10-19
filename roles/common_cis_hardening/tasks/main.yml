@@ -227,6 +227,33 @@
       blacklist jffs2
       blacklist usb-storage
 
+# nftables only (2026-10-19): the legacy iptables tables must never come back.
+# With them loaded, an iptables-legacy binary (or a container image that brings
+# one) can write rules the nftables view does not show, which is how the blog
+# ran on iptables-legacy for months. Blocked are the legacy TABLE modules;
+# ip_tables and ip6_tables themselves must stay loadable: iptables-nft takes
+# some matches from them through nft_compat (the "icmp"/"icmp6" match lives in
+# ip_tables/ip6_tables). Blocking them too made K3s's network policy
+# controller panic on its ICMP rule after a reboot ("failed to run iptables
+# command ... --icmp-type", 2026-10-19 on the blog, ~5 min down). K3s logs a
+# harmless "Failed to load kernel module iptable_nat/iptable_filter" warning.
+# Takes effect on the next load, i.e. a running host keeps modules that are
+# already loaded until its next reboot.
+- name: CIS | Block the legacy iptables kernel modules (nftables only)
+  ansible.builtin.copy:
+    dest: /etc/modprobe.d/no-iptables-legacy.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (common_cis_hardening) - nftables only, no legacy
+      # iptables tables. ip_tables/ip6_tables stay: iptables-nft uses their
+      # icmp matches (K3s's policy controller fails without them).
+      {% for m in ['iptable_filter', 'iptable_nat', 'iptable_mangle', 'iptable_raw', 'iptable_security',
+                   'ip6table_filter', 'ip6table_nat', 'ip6table_mangle', 'ip6table_raw', 'ip6table_security'] %}
+      install {{ m }} /bin/false
+      {% endfor %}
+
 # -----------------------------------------------------------------------------
 # journald: persistent storage + compression
 # -----------------------------------------------------------------------------
