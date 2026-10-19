@@ -221,6 +221,11 @@
   ansible.builtin.get_url:
     url: "https://github.com/k3s-io/k3s/releases/download/{{ k3s_version }}/k3s"
     dest: /usr/local/bin/k3s
+    # force: without it get_url skips the download whenever the destination
+    # already exists - an upgrade then silently did nothing (found
+    # 2026-10-19: the drift check listed no K3s change for v1.37.1). The
+    # "when" below already limits this to a version mismatch.
+    force: true
     mode: "0755"
     owner: root
     group: root
