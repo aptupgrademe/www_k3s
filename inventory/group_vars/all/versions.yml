@@ -52,6 +52,8 @@ prometheus_version:            "3.15.0"   # github.com/prometheus/prometheus/rel
 mysqld_exporter_version:       "0.20.0"   # host MariaDB of the Nextcloud servers
 loki_version:                  "3.7.8"    # rpm.grafana.com (common_loki); github.com/grafana/loki/releases
 alloy_version:                 "1.20.1"   # rpm.grafana.com (common_loki); github.com/grafana/alloy/releases
+trivy_version:                 "0.75.0"   # github.com/aquasecurity/trivy/releases (common_trivy) - see notes
+trivy_sha256:                  "c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f"   # trivy_<v>_Linux-64bit.tar.gz, from trivy_<v>_checksums.txt
 nextcloud_mariadb_repo_version: "10.11"   # MariaDB Community repo series on the Nextcloud hosts
 
 
@@ -91,6 +93,13 @@ nextcloud_mariadb_repo_version: "10.11"   # MariaDB Community repo series on the
 #   plugin's own download hook is not needed). The SHA-256 is computed from
 #   diff-<version>-linux-amd64.tgz - update both together.
 #   2026-10-14 added at 3.15.15 (supports Helm v4.3).
+#
+# trivy_version
+#   2026-10-19 0.75.0 (0.76.0 was 5 days old). Pinned AND checksummed on
+#   purpose: in March 2026 the Trivy release pipeline was compromised and
+#   shipped a malicious build (GHSA-69fq-xp46-6x23). Update only to a
+#   release that is at least two weeks old, copy the sha256 from the
+#   release's checksums file.
 #
 # calico_version
 #   2026-10-19 REMOVED: Calico never enforced anything here (Felix only matches

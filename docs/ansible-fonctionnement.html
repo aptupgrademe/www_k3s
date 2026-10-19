@@ -495,6 +495,7 @@ des valeurs différentes, <code>stack</code> sélectionne un profil :</p>
   <tr><td><code>blog_verify</code> / <code>nextcloud_verify</code> (+ <code>common_verify</code>)</td><td>chacun</td><td>tests de fumée, rapport, e-mail, contrôle strict des points critiques</td></tr>
   <tr><td><code>common_version_active</code></td><td>les deux</td><td>les versions épinglées tournent-elles (kubelet, charts, images, redémarrage) ?</td></tr>
   <tr><td><code>common_loki</code></td><td>les deux</td><td>Loki + Grafana Alloy&nbsp;: journal, journaux des pods, journaux audit/fail2ban (14 jours, local uniquement), alertes sur les journaux</td></tr>
+  <tr><td><code>common_trivy</code></td><td>les deux</td><td>scan Trivy nocturne de toutes les images en cours, métriques Grafana, e-mail pour les nouvelles vulnérabilités corrigeables</td></tr>
   <tr><td><code>common_selinux_monitoring</code></td><td>les deux</td><td>domaines SELinux propres pour Prometheus, les exportateurs et Grafana (d’abord en phase d’apprentissage permissive)</td></tr>
   <tr><td><code>common_aide_refresh</code></td><td>les deux</td><td>mettre à jour la base AIDE si quelque chose a changé</td></tr>
 </table>
@@ -614,7 +615,7 @@ Les composants fournis avec K3s dont personne n'a besoin ici (Traefik, ServiceLB
 <p><strong><code>common_node_exporter</code></strong> / <strong><code>common_mysqld_exporter</code></strong> (les deux / Nextcloud uniquement)</p>
 <p><strong>Quoi :</strong> Exposent localement les métriques de l'hôte ou de la MariaDB de l'hôte (<code>127.0.0.1:9100</code> / <code>:9104</code>).
 <strong>Pourquoi :</strong> Prometheus les récupère là ; rien n'est joignable de l'extérieur.</p>
-<p class="wie"><strong>Comment :</strong> lire la version installée → ne télécharger, décompresser et installer l'archive qu'en cas de version différente (<code>get_url</code> → <code>unarchive</code> → <code>copy</code>, ignorés en mode check) → écrire l'unité systemd + le drop-in de bac à sable (<code>notify</code>) → les handlers rechargent systemd et redémarrent le service une fois. L'exporteur MariaDB lit son mot de passe dans un fichier que lui seul peut lire (<code>no_log</code>).</p>
+<p class="wie"><strong>Comment :</strong> lire la version installée → ne télécharger, décompresser et installer l'archive qu'en cas de version différente (<code>get_url</code> → <code>unarchive</code> → <code>copy</code>, ignorés en mode check) → écrire l'unité systemd + le drop-in de bac à sable (<code>notify</code>) → les handlers rechargent systemd et redémarrent le service une fois. L'exporteur MariaDB lit son mot de passe dans un fichier que lui seul peut lire (<code>no_log</code>). Depuis le 19/10/2026, node_exporter sert aussi les fichiers <code>*.prom</code> de <code>/var/lib/node_exporter/textfile</code> (collecteur textfile, écrits par <code>common_trivy</code>&nbsp;; type SELinux propre <code>homelab_node_exporter_textfile_t</code>, en lecture seule pour l’exportateur).</p>
 </div>
 
 <div class="rolle">
@@ -673,6 +674,13 @@ Les composants fournis avec K3s dont personne n'a besoin ici (Traefik, ServiceLB
 <p><strong>Quoi :</strong> Analyse antivirus nocturne des fichiers envoyés (blog : uploads, Nextcloud : données des utilisateurs), mail seulement en cas de découverte.
 <strong>Pourquoi :</strong> Un logiciel malveillant dans des fichiers envoyés par d'autres est repéré au plus tard le lendemain matin.</p>
 <p class="wie"><strong>Comment :</strong> choisir le profil (<code>set_fact clamav: clamav_profiles[stack]</code>) → télécharger une fois les signatures (<code>creates:</code>), ensuite le service freshclam les tient à jour → générer avec Jinja les motifs d'exclusion pour les fichiers multimédias → écrire le script d'analyse (<code>copy</code> avec un <code>{% if %}</code> Jinja) → entrée <code>cron</code>.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_trivy</code></strong> (les deux)</p>
+<p><strong>Quoi :</strong> un timer systemd (05:15) lance un petit script Python&nbsp;: mise à jour unique de la base Trivy, analyse de chaque image des pods directement depuis le containerd de K3s, décomptes par image et gravité pour le collecteur textfile du node_exporter et un rapport JSON par image sous <code>/var/lib/trivy</code>.
+<strong>Pourquoi :</strong> les images épinglées vieillissent. Le scan montre lesquelles portent des vulnérabilités connues déjà corrigées – le plus souvent une image reconstruite sous le même tag (rafraîchissement dans les playbooks de mise à jour) ou une nouvelle version épinglée.</p>
+<p class="wie"><strong>Comment :</strong> binaire de la release GitHub avec version <em>et</em> sha256 épinglés (la chaîne de publication de Trivy a été compromise en mars 2026) → <code>restorecon</code> → script, <code>.trivyignore</code> issu de <code>trivy_ignore</code> (chaque entrée avec justification), service + timer (nice, E/S idle, plafond 2 Go) → premier scan en arrière-plan. E-mail seulement pour les vulnérabilités CRITICAL/HIGH corrigeables absentes la nuit précédente&nbsp;; alerte Grafana seulement si le scan échoue ou date de plus de 36 h. Leçons du premier passage&nbsp;: containerd avait supprimé les couches de deux images (second essai depuis le registre), et <code>NoNewPrivileges</code> bloquait la transition de <code>k3s kubectl</code> vers <code>container_runtime_t</code> – trouvé par la nouvelle alerte AVC via Loki.</p>
 </div>
 
 <div class="rolle">

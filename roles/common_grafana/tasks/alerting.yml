@@ -300,6 +300,25 @@
               "Ein Container ist in 15 min mehr als zweimal neu gestartet (Crash-Schleife?).",
               "container_restarts",
           ),
+          # Trivy (common_trivy). No rule on the findings themselves - the
+          # scan mails new ones once; these two say the scan is broken.
+          # Hosts without Trivy have no such series -> no data -> OK.
+          make_rule(
+              "alert-trivy-stale",
+              "Trivy-Scan veraltet",
+              "time() - max(trivy_last_run_timestamp_seconds)",
+              129600, "gt",
+              "Der nächtliche Trivy-Scan ist seit über 36 h nicht gelaufen (systemctl status trivy-scan).",
+              "trivy_age_s",
+          ),
+          make_rule(
+              "alert-trivy-failed",
+              "Trivy-Scan fehlgeschlagen",
+              'min({__name__=~"trivy_image_scan_ok|trivy_db_update_ok"})',
+              1, "lt",
+              "Trivy konnte die Datenbank nicht laden oder ein Image nicht scannen (journalctl -u trivy-scan).",
+              "trivy_ok",
+          ),
       ]
 
       for rule in rules:

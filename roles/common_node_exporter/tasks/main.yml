@@ -109,6 +109,7 @@
       # exporter but logged "Ignoring unknown escape sequences" on every reload.
       ExecStart=/usr/local/bin/node_exporter \
         --web.listen-address=127.0.0.1:9100 \
+        --collector.textfile.directory=/var/lib/node_exporter/textfile \
         --collector.netdev.device-exclude=^(veth.*|cni[0-9]+|flannel\\.[0-9]+|docker[0-9]+|br-.*|kube-ipvs.*|dummy.*|lo|nodelocaldns)$
       Restart=on-failure
       RestartSec=5s
@@ -118,6 +119,17 @@
   notify:
     - reload systemd
     - restart node_exporter
+
+# Textfile collector: *.prom files in here are served as metrics. Written by
+# root jobs (common_trivy), only read by node_exporter - hence root-owned.
+# Its own SELinux type comes from common_selinux_monitoring.
+- name: Node Exporter | Textfile collector directory
+  ansible.builtin.file:
+    path: /var/lib/node_exporter/textfile
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
 
 - name: Node Exporter | Ensure node_exporter.service.d drop-in directory exists
   ansible.builtin.file:

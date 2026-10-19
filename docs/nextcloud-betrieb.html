@@ -2162,6 +2162,11 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
     <td><code>common_loki</code></td>
   </tr>
   <tr>
+    <td>Image-Scan</td>
+    <td>Trivy (gepinnte Version + sha256) scannt jede Nacht um 05:15 alle laufenden Images direkt aus containerd (Registry nur als Rückfall); Zahlen pro Image/Schweregrad in Grafana (<code>trivy_image_vulnerabilities</code>, Textfile-Collector des node_exporter). Mail nur, wenn ein behebbarer CRITICAL/HIGH-Befund <em>neu</em> ist; Grafana-Alarm nur bei fehlgeschlagenem oder veraltetem Scan. Akzeptierte Befunde mit Begründung: <code>trivy_ignore</code>. Auf dem Blog seit 19.10.2026; die Nextcloud-Server folgen.</td>
+    <td><code>common_trivy</code></td>
+  </tr>
+  <tr>
     <td>Watchdog</td>
     <td>Monit prüft alle 2 Min.: Dienste (fail2ban mit Auto-Neustart, sshd, k3s, Exporter, Grafana), Firewall (nftables default-drop), K3s-Pods, Disk/Load/RAM; mailt nur bei Statuswechsel (still solange gesund). Mailversand über den msmtp-Relay, aber Port 465/impliziertes SSL (Monit 6 kennt kein STARTTLS) Seit 19.10.2026 läuft Monit in einer systemd-Sandbox (kein Schreiben unter /usr, /boot, /etc, keine Home-Verzeichnisse, eigenes /tmp, keine Kernel-Parameter/-Module/-Logs; Bewertung 9.6 → 7.1), bewusst ohne NoNewPrivileges.</td>
     <td><code>common_monit</code></td>

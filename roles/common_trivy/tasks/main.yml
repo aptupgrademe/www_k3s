@@ -1,0 +1,192 @@
+---
+# =============================================================================
+# Role: common_trivy
+# Purpose: Nightly Trivy scan of every image the cluster runs. Results go
+#          to node_exporter's textfile collector (-> Prometheus -> Grafana)
+#          and to one JSON report per image; a mail goes out only when a
+#          fixable CRITICAL/HIGH finding is NEW since the previous night.
+# =============================================================================
+#
+# Why a timer on the host and not the Trivy Operator in the cluster: one
+# binary, one script, no CRDs, no scan pods that need image-policy and
+# NetworkPolicy exceptions - and it reads the images straight from K3s's
+# containerd, so almost nothing is pulled again from the registries.
+#
+# Why no "critical vulnerability" alert in Grafana: many findings can only
+# be fixed upstream (e.g. the Go stdlib inside gosu in the MariaDB image).
+# An alert would repeat every 4 h for days; the "only new findings" mail
+# says the same once. Grafana alerts only when the scan itself is broken
+# or stale (common_grafana: alert-trivy-*).
+#
+# Supply chain: binary from the GitHub release, pinned version AND sha256
+# (versions.yml, see the trivy_version note there).
+
+- name: Trivy | Installed version
+  ansible.builtin.shell: |
+    set -o pipefail
+    /usr/local/bin/trivy version 2>/dev/null | awk '/^Version:/ {print $2}'
+  register: _trivy_installed
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false  # not installed yet -> empty, so it gets installed
+
+# /root, not /tmp: /tmp is mounted noexec (common_cis_hardening) - only the
+# archive lands here, the binary is copied to /usr/local/bin.
+- name: Trivy | Download the release archive (checksum pinned)
+  when: (_trivy_installed.stdout | trim) != trivy_version
+  ansible.builtin.get_url:
+    url: "https://github.com/aquasecurity/trivy/releases/download/\
+          v{{ trivy_version }}/trivy_{{ trivy_version }}_Linux-64bit.tar.gz"
+    dest: "/root/trivy_{{ trivy_version }}.tar.gz"
+    checksum: "sha256:{{ trivy_sha256 }}"
+    mode: "0600"
+
+- name: Trivy | Unpack the binary
+  when:
+    - (_trivy_installed.stdout | trim) != trivy_version
+    - not ansible_check_mode   # --check downloads nothing
+  ansible.builtin.unarchive:
+    src: "/root/trivy_{{ trivy_version }}.tar.gz"
+    dest: /usr/local/bin
+    remote_src: true
+    include: [trivy]
+    owner: root
+    group: root
+    mode: "0755"
+
+# unarchive writes through a temp file like get_url - the binary would keep
+# the label of that file instead of bin_t (same lesson as the k3s binary).
+- name: Trivy | Restore the SELinux label of the binary
+  when:
+    - (_trivy_installed.stdout | trim) != trivy_version
+    - not ansible_check_mode
+  ansible.builtin.command: restorecon -v /usr/local/bin/trivy
+  register: _trivy_restorecon
+  changed_when: _trivy_restorecon.stdout | length > 0
+
+- name: Trivy | Remove the downloaded archive
+  ansible.builtin.file:
+    path: "/root/trivy_{{ trivy_version }}.tar.gz"
+    state: absent
+
+# -----------------------------------------------------------------------------
+# Script, ignore file, directories
+# -----------------------------------------------------------------------------
+- name: Trivy | Directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  loop:
+    - "{{ trivy_cache_dir }}"
+    - "{{ trivy_cache_dir }}/tmp"
+    - "{{ trivy_report_dir }}"
+    - /usr/local/libexec/trivy
+
+- name: Trivy | Accepted findings (.trivyignore)
+  ansible.builtin.copy:
+    dest: "{{ trivy_report_dir }}/.trivyignore"
+    owner: root
+    group: root
+    mode: "0600"
+    content: |
+      # Managed by Ansible (common_trivy: trivy_ignore) - every entry needs a reason.
+      {% for i in trivy_ignore %}
+      # {{ i.reason }}
+      {{ i.id }}
+      {% endfor %}
+
+- name: Trivy | Scan script
+  ansible.builtin.template:
+    src: trivy_scan.py.j2
+    dest: /usr/local/libexec/trivy/trivy_scan.py
+    owner: root
+    group: root
+    mode: "0700"
+
+# Nice/idle I/O: the scan must never slow down the sites. MemoryMax caps a
+# runaway scan. The read-only system is fine: it writes only its own dirs
+# and the textfile directory.
+- name: Trivy | systemd service and timer
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}"
+    owner: root
+    group: root
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: trivy-scan.service
+      content: |
+        # Managed by Ansible (common_trivy) - do not edit by hand.
+        [Unit]
+        Description=Trivy scan of the running container images
+        After=k3s.service network-online.target
+        Wants=network-online.target
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/local/libexec/trivy/trivy_scan.py
+        Environment=HOME={{ trivy_report_dir }}
+        # Trivy exports each image to a temp file (the WordPress image is
+        # ~700 MB) - on disk, not in a RAM-backed /tmp.
+        Environment=TMPDIR={{ trivy_cache_dir }}/tmp
+        Nice=19
+        IOSchedulingClass=idle
+        MemoryMax=2G
+        TimeoutStartSec=2h
+        ProtectSystem=full
+        ProtectHome=yes
+        PrivateTmp=yes
+        # No NoNewPrivileges: the script calls "k3s kubectl", and the k3s
+        # binary transitions into container_runtime_t - under NNP SELinux
+        # refuses that (AVC nnp_transition, found by the Loki AVC alert on
+        # the first run). Same reason as in Monit's drop-in.
+        ProtectKernelTunables=yes
+        ProtectKernelModules=yes
+        ProtectControlGroups=yes
+    - name: trivy-scan.timer
+      content: |
+        # Managed by Ansible (common_trivy) - do not edit by hand.
+        [Unit]
+        Description=Nightly Trivy image scan
+
+        [Timer]
+        OnCalendar={{ trivy_schedule }}
+        RandomizedDelaySec=10m
+        Persistent=true
+
+        [Install]
+        WantedBy=timers.target
+  loop_control:
+    label: "{{ item.name }}"
+  notify: reload systemd
+
+- name: Trivy | Apply systemd changes now
+  ansible.builtin.meta: flush_handlers
+
+- name: Trivy | Enable the timer
+  ansible.builtin.systemd:
+    name: trivy-scan.timer
+    state: started
+    enabled: true
+  ignore_errors: "{{ ansible_check_mode }}"   # first --check: unit not there yet
+
+# The first run fills the metrics right away instead of waiting for the
+# night (and sends the first mail with everything open). Later runs: only
+# when the metrics file is missing.
+- name: Trivy | Metrics file present?
+  ansible.builtin.stat:
+    path: "{{ trivy_textfile_dir }}/trivy.prom"
+  register: _trivy_prom
+
+# no_block: queue the oneshot and return - the scan runs on in the background.
+- name: Trivy | First scan (in the background, ~5-10 min)
+  ansible.builtin.systemd:
+    name: trivy-scan.service
+    state: started
+    no_block: true
+  when:
+    - not _trivy_prom.stat.exists
+    - not ansible_check_mode

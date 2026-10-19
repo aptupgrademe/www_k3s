@@ -1,0 +1,19 @@
+---
+# Inputs from host_vars - keep in sync with inventory/host_vars/*/*.example.
+#
+# meta/argument_specs.yml: the role's declared inputs, checked by Ansible when
+# the role starts (type, required). How it works in detail: see
+# roles/common_mysqld_exporter/meta/argument_specs.yml.
+
+argument_specs:
+  main:
+    short_description: Nightly Trivy scan of all running images - metrics for Grafana, mail on new fixable findings
+    description:
+      - Host-specific inputs of this role (inventory/host_vars/<host>/vars.yml and vault.yml).
+      - Role defaults (defaults/main.yml) and group_vars/all/ are not repeated here.
+    options:
+      email:
+        description: Admin e-mail address for alerts, reports and Let's Encrypt
+        type: str
+        required: true
+        no_log: true

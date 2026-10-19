@@ -1,6 +1,6 @@
 # Managed by Ansible (common_selinux_monitoring) - local SELinux module.
 # Gives node_exporter its own domain instead of unconfined_service_t.
-policy_module(homelab_node_exporter, 1.0.0)
+policy_module(homelab_node_exporter, 1.1.0)
 
 type homelab_node_exporter_t;
 type homelab_node_exporter_exec_t;
@@ -10,6 +10,14 @@ init_daemon_domain(homelab_node_exporter_t, homelab_node_exporter_exec_t)
 # transition unless it is granted explicitly (the MariaDB lesson): without
 # this the service stays in init_t and cannot read its own data.
 init_nnp_daemon_domain(homelab_node_exporter_t)
+
+# Textfile collector (/var/lib/node_exporter/textfile, written by root
+# jobs such as the Trivy scan): own type, node_exporter may only read it.
+type homelab_node_exporter_textfile_t;
+files_type(homelab_node_exporter_textfile_t)
+files_search_var_lib(homelab_node_exporter_t)
+allow homelab_node_exporter_t homelab_node_exporter_textfile_t:dir list_dir_perms;
+allow homelab_node_exporter_t homelab_node_exporter_textfile_t:file read_file_perms;
 
 # Allow rules from the reviewed AVCs of the learning phase go here.
 

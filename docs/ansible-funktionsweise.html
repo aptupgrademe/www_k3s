@@ -492,6 +492,7 @@ Profil:</p>
   <tr><td><code>blog_verify</code> / <code>nextcloud_verify</code> (+ <code>common_verify</code>)</td><td>je</td><td>Rauchtests, Bericht, Mail, harte Prüfung kritischer Punkte</td></tr>
   <tr><td><code>common_version_active</code></td><td>beide</td><td>laufen die gepinnten Versionen (Kubelet, Charts, Container-Images, Reboot)?</td></tr>
   <tr><td><code>common_loki</code></td><td>beide</td><td>Loki + Grafana Alloy: Journal, Pod-Logs, Audit-/fail2ban-Log (14 Tage, nur lokal), Log-Alarme</td></tr>
+  <tr><td><code>common_trivy</code></td><td>beide</td><td>nächtlicher Trivy-Scan aller laufenden Images, Grafana-Metriken, Mail bei neuen behebbaren Befunden</td></tr>
   <tr><td><code>common_selinux_monitoring</code></td><td>beide</td><td>eigene SELinux-Domains für Prometheus, die Exporter und Grafana (zuerst Permissive-Lernphase)</td></tr>
   <tr><td><code>common_aide_refresh</code></td><td>beide</td><td>AIDE-Basis erneuern, wenn sich etwas geändert hat</td></tr>
 </table>
@@ -611,7 +612,7 @@ Die mitgelieferten K3s-Bausteine, die hier keiner braucht (Traefik, ServiceLB, l
 <p><strong><code>common_node_exporter</code></strong> / <strong><code>common_mysqld_exporter</code></strong> (beide / nur Nextcloud)</p>
 <p><strong>Was:</strong> Stellen Kennzahlen des Hosts bzw. der Host-MariaDB lokal bereit (<code>127.0.0.1:9100</code> / <code>:9104</code>).
 <strong>Warum:</strong> Prometheus holt sie dort ab; von außen ist nichts erreichbar.</p>
-<p class="wie"><strong>Wie:</strong> installierte Version lesen → Archiv nur bei abweichender Version laden, entpacken, installieren (<code>get_url</code> → <code>unarchive</code> → <code>copy</code>, im Probelauf übersprungen) → systemd-Unit + Sandbox-Drop-in schreiben (<code>notify</code>) → Handler laden systemd neu und starten den Dienst einmal neu. Der MariaDB-Exporter liest sein Passwort aus einer Datei, die nur er lesen darf (<code>no_log</code>).</p>
+<p class="wie"><strong>Wie:</strong> installierte Version lesen → Archiv nur bei abweichender Version laden, entpacken, installieren (<code>get_url</code> → <code>unarchive</code> → <code>copy</code>, im Probelauf übersprungen) → systemd-Unit + Sandbox-Drop-in schreiben (<code>notify</code>) → Handler laden systemd neu und starten den Dienst einmal neu. Der MariaDB-Exporter liest sein Passwort aus einer Datei, die nur er lesen darf (<code>no_log</code>). Seit 19.10.2026 liefert node_exporter auch die <code>*.prom</code>-Dateien aus <code>/var/lib/node_exporter/textfile</code> aus (Textfile-Collector, geschrieben von <code>common_trivy</code>; eigener SELinux-Typ <code>homelab_node_exporter_textfile_t</code>, für den Exporter nur lesbar).</p>
 </div>
 
 <div class="rolle">
@@ -670,6 +671,13 @@ Die mitgelieferten K3s-Bausteine, die hier keiner braucht (Traefik, ServiceLB, l
 <p><strong>Was:</strong> Nächtlicher Virenscan der hochgeladenen Dateien (Blog: Uploads, Nextcloud: Nutzerdaten), Mail nur bei Funden.
 <strong>Warum:</strong> Schadsoftware in fremden Uploads fällt spätestens am nächsten Morgen auf.</p>
 <p class="wie"><strong>Wie:</strong> Profil wählen (<code>set_fact clamav: clamav_profiles[stack]</code>) → Signaturen einmalig laden (<code>creates:</code>), danach aktualisiert sie der freshclam-Dienst → Ausschluss-Muster für Mediendateien per Jinja erzeugen → Scan-Skript schreiben (<code>copy</code> mit Jinja-<code>{% if %}</code>) → <code>cron</code>-Eintrag.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_trivy</code></strong> (beide)</p>
+<p><strong>Was:</strong> Ein systemd-Timer (05:15) startet ein kleines Python-Skript: Trivy-DB einmal aktualisieren, jedes Image der Pods direkt aus dem containerd von K3s scannen, Zahlen pro Image und Schweregrad für den Textfile-Collector des node_exporter schreiben und einen JSON-Bericht pro Image unter <code>/var/lib/trivy</code>.
+<strong>Warum:</strong> Gepinnte Images altern. Der Scan zeigt, welche davon bekannte Lücken tragen, für die es schon einen Fix gibt – meist ein neu gebautes Image unter demselben Tag (Image-Refresh in den Update-Playbooks) oder ein neuer Pin.</p>
+<p class="wie"><strong>Wie:</strong> Binary aus dem GitHub-Release mit gepinnter Version <em>und</em> sha256 (die Trivy-Pipeline war im März 2026 kompromittiert) → <code>restorecon</code> → Skript, <code>.trivyignore</code> aus <code>trivy_ignore</code> (jeder Eintrag mit Begründung), Service + Timer (nice, Idle-I/O, 2 GB Obergrenze) → erster Scan im Hintergrund. Mail nur für behebbare CRITICAL/HIGH-Befunde, die in der Nacht davor noch nicht da waren; Grafana-Alarm nur, wenn der Scan scheitert oder älter als 36 h ist. Lehren aus dem ersten Lauf: containerd hatte die Layer zweier Images verworfen (zweiter Versuch aus der Registry), und <code>NoNewPrivileges</code> blockierte den Wechsel von <code>k3s kubectl</code> nach <code>container_runtime_t</code> – gefunden vom neuen AVC-Alarm über Loki.</p>
 </div>
 
 <div class="rolle">

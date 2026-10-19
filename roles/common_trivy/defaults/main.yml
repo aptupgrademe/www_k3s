@@ -1,0 +1,16 @@
+---
+# Nightly scan of every image the cluster runs (containerd, no registry
+# pulls). 05:15 is after dnf-automatic (01-02), the reboot window (03:30)
+# and the 03:45/04:30 jobs.
+trivy_schedule: "*-*-* 05:15:00"
+trivy_cache_dir: /var/cache/trivy
+trivy_report_dir: /var/lib/trivy
+trivy_textfile_dir: /var/lib/node_exporter/textfile
+trivy_mail: "{{ email }}"
+# Only findings of these severities WITH a fixed version count as
+# "actionable" - they go into the mail when they are new.
+trivy_mail_severities: [CRITICAL, HIGH]
+# Accepted findings, each with a reason: [{id: CVE-..., reason: "..."}]
+# Trivy skips them (written to .trivyignore). Empty on purpose - every
+# entry is a decision, not a default.
+trivy_ignore: []
