@@ -72,8 +72,6 @@ data:
         # that nginx ignores; image
         # optimisers keep originals as name.bak.jpg, which the rule above
         # misses because the name ends in an image extension.
-        # The plugin was removed on 2026-10-19 (the nightly HP3 pull is the
-        # backup); the rules stay, in case it or a similar one comes back.
         location ^~ /wp-content/ai1wm-backups/ { deny all; }
         location ~* (\.wpress|\.bak\.[a-z0-9]+)$ { deny all; }
         # Block username enumeration via ?author= parameter

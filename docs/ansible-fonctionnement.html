@@ -547,7 +547,7 @@ La version détaillée, tâche par tâche, se trouve en commentaire en tête de 
 
 <div class="rolle">
 <p><strong><code>common_cis_hardening</code></strong> (les deux)</p>
-<p><strong>Quoi :</strong> Les points du benchmark CIS applicables sans risque : AIDE, modules du noyau bloqués, journal, pas de core dumps, droits cron/sudo, options de montage.
+<p><strong>Quoi :</strong> Les points du benchmark CIS applicables sans risque : AIDE (avec le module SELinux local <code>aide_dosfs</code> pour <code>/boot/efi</code>), modules du noyau bloqués (depuis le 19/10/2026 aussi les modules de tables iptables legacy), journal, pas de core dumps, droits cron/sudo, options de montage.
 <strong>Pourquoi :</strong> Moins de surface d'attaque ; les points risqués (PAM, GRUB, politique crypto) restent volontairement de côté.</p>
 <p class="wie"><strong>Comment :</strong> une série de petits groupes indépendants, chacun selon le schéma « vérifier l'état → ne modifier que si nécessaire » : p. ex. ne créer la base AIDE que si elle manque (<code>stat</code> → <code>when</code>) → n'écrire sudoers qu'après vérification (<code>validate: visudo -cf</code>) → écrire les options de montage dans fstab et les activer aussitôt (<code>mount state: mounted</code>).</p>
 </div>
@@ -555,7 +555,7 @@ La version détaillée, tâche par tâche, se trouve en commentaire en tête de 
 <div class="rolle">
 <p><strong><code>common_selinux</code></strong> (les deux, profil via <code>stack</code>)</p>
 <p><strong>Quoi :</strong> SELinux en mode « enforcing » et les répertoires de l'hôte montés comme stockage dans les pods.
-<strong>Pourquoi :</strong> Les conteneurs ne peuvent écrire que dans des fichiers de type <code>container_file_t</code>.</p>
+<strong>Pourquoi :</strong> Les conteneurs ne peuvent écrire que dans des fichiers de type <code>container_file_t</code> – à condition que les pods tournent vraiment en <code>container_t</code>&nbsp;: K3s a besoin pour cela de la politique <code>k3s-selinux</code> et de <code>selinux: true</code> (posés par <code>common_k3s</code> depuis le 19/10/2026&nbsp;; avant, les pods tournaient sans confinement).</p>
 <p class="wie"><strong>Comment :</strong> choisir le profil (<code>selinux_profiles[stack]</code>) → créer les répertoires avec propriétaire et droits (<code>file</code>, <code>loop</code>) → enregistrer la règle de façon permanente (<code>semanage fcontext</code> ; « already defined » ne compte ni comme erreur ni comme modification) → l'appliquer aux fichiers existants (<code>restorecon</code>).</p>
 </div>
 

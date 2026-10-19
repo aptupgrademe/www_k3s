@@ -2239,11 +2239,16 @@ Both verified 2026-09-14.</p>
   </tr>
   <tr>
     <td>SELinux</td>
-    <td>Enforcing, <code>container_file_t</code> for HostPath volumes</td>
+    <td>Enforcing, <code>container_file_t</code> for HostPath volumes. Since 2026-10-19 the pods themselves run confined as <code>container_t</code> with their own MCS categories (K3s with the <code>k3s-selinux</code> policy and <code>selinux: true</code>; before that they ran as <code>spc_t</code>/<code>unconfined_service_t</code> although SELinux was enforcing – check with <code>ps -eZ</code>). The local module <code>aide_dosfs</code> lets AIDE <code>statfs()</code> the vfat <code>/boot/efi</code>, the last source of AVC denials.</td>
     <td><code>common_selinux</code></td>
   </tr>
   <tr>
-    <td>Audit</td>
+    <td>nftables only</td>
+    <td>Since 2026-10-19 all hosts run without iptables-legacy: the packages <code>iptables-legacy</code>/<code>-libs</code>/<code>iptables-services</code> are removed (with them <code>/usr/sbin/iptables</code> was the legacy backend, and K3s wrote its rules there on the blog), and the legacy table modules <code>iptable_*</code>/<code>ip6table_*</code> are blocked (<code>/etc/modprobe.d/no-iptables-legacy.conf</code>). <code>ip_tables</code>/<code>ip6_tables</code> stay loadable – iptables-nft takes the ICMP match from them, and K3s’s policy controller fails without it.</td>
+    <td><code>common_firewall</code>, <code>common_cis_hardening</code></td>
+  </tr>
+  <tr>
+    <td><code>common_selinux</code>, <code>common_k3s</code>, <code>common_cis_hardening</code></td>
     <td>auditd with hardening rules (sudo, SSH, cron, kernel modules)</td>
     <td><code>common_auditd</code></td>
   </tr>

@@ -391,7 +391,7 @@ ansible-vault encrypt inventory/host_vars/<host>/vault.yml
 | `common_cis_hardening` | CIS AlmaLinux 9 Benchmark: AIDE, kernel modules, cron/sudo, mount options |
 | `common_aide_refresh` | Refreshes the AIDE baseline after approved changes, so the nightly check isn't a false alarm |
 | `common_clamav` | Nightly ClamAV scan – WordPress uploads or Nextcloud data (`clamav_target`) |
-| `common_selinux` | SELinux enforcing + `container_file_t` for the stack's HostPath dirs (`selinux_target`) |
+| `common_selinux` | SELinux enforcing + `container_file_t` for the stack's HostPath dirs (`selinux_target`); the pods run as `container_t` since `common_k3s` sets `selinux: true` with the `k3s-selinux` policy (2026-10-19) |
 | `common_verify` | Smoke checks shared by `blog_verify` and `nextcloud_verify` |
 | `common_image_refresh` | Update playbooks: which Deployments run an outdated build of their tag |
 

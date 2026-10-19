@@ -542,7 +542,7 @@ The task-by-task version is the comment at the top of each file under <code>role
 
 <div class="rolle">
 <p><strong><code>common_cis_hardening</code></strong> (both)</p>
-<p><strong>What:</strong> The CIS benchmark items that are safe to apply: AIDE, blocked kernel modules, journal, no core dumps, cron/sudo permissions, mount options.
+<p><strong>What:</strong> The CIS benchmark items that are safe to apply: AIDE (with the local SELinux module <code>aide_dosfs</code> for <code>/boot/efi</code>), blocked kernel modules (since 2026-10-19 also the legacy iptables table modules), journal, no core dumps, cron/sudo permissions, mount options.
 <strong>Why:</strong> Less attack surface; risky items (PAM, GRUB, crypto policy) are deliberately left out.</p>
 <p class="wie"><strong>How:</strong> a series of small, independent groups, each following "check the state → change only if needed": e.g. create the AIDE database only if it is missing (<code>stat</code> → <code>when</code>) → write sudoers only after checking it (<code>validate: visudo -cf</code>) → write mount options to fstab and activate them right away (<code>mount state: mounted</code>).</p>
 </div>
@@ -550,7 +550,7 @@ The task-by-task version is the comment at the top of each file under <code>role
 <div class="rolle">
 <p><strong><code>common_selinux</code></strong> (both, profile via <code>stack</code>)</p>
 <p><strong>What:</strong> SELinux in enforcing mode and the host directories that are mounted into the pods as storage.
-<strong>Why:</strong> Containers may only write to files of type <code>container_file_t</code>.</p>
+<strong>Why:</strong> Containers may only write to files of type <code>container_file_t</code> – which only holds when the pods really run as <code>container_t</code>: K3s needs the <code>k3s-selinux</code> policy and <code>selinux: true</code> for that (both set by <code>common_k3s</code> since 2026-10-19; before, the pods ran unconfined).</p>
 <p class="wie"><strong>How:</strong> pick the profile (<code>selinux_profiles[stack]</code>) → create directories with owner and mode (<code>file</code>, <code>loop</code>) → register the rule persistently (<code>semanage fcontext</code>; "already defined" counts neither as an error nor as a change) → apply it to existing files (<code>restorecon</code>).</p>
 </div>
 

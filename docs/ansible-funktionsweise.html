@@ -544,7 +544,7 @@ Ausführlicher, Task für Task, steht es als Kommentar am Anfang jeder Datei unt
 
 <div class="rolle">
 <p><strong><code>common_cis_hardening</code></strong> (beide)</p>
-<p><strong>Was:</strong> Die gefahrlos umsetzbaren Punkte des CIS-Benchmarks: AIDE, gesperrte Kernel-Module, Journal, keine Core-Dumps, cron/sudo-Rechte, Mount-Optionen.
+<p><strong>Was:</strong> Die gefahrlos umsetzbaren Punkte des CIS-Benchmarks: AIDE (mit dem lokalen SELinux-Modul <code>aide_dosfs</code> für <code>/boot/efi</code>), gesperrte Kernel-Module (seit 19.10.2026 auch die legacy-iptables-Tabellenmodule), Journal, keine Core-Dumps, cron/sudo-Rechte, Mount-Optionen.
 <strong>Warum:</strong> Weniger Angriffsfläche; riskante Punkte (PAM, GRUB, Krypto-Richtlinie) bleiben bewusst draußen.</p>
 <p class="wie"><strong>Wie:</strong> eine Reihe kleiner, unabhängiger Gruppen, jede nach dem Muster „Zustand prüfen → nur bei Bedarf ändern“: z. B. AIDE-Datenbank nur anlegen, wenn sie fehlt (<code>stat</code> → <code>when</code>) → sudoers nur nach Prüfung schreiben (<code>validate: visudo -cf</code>) → Mount-Optionen in fstab schreiben und sofort aktiv machen (<code>mount state: mounted</code>).</p>
 </div>
@@ -552,7 +552,7 @@ Ausführlicher, Task für Task, steht es als Kommentar am Anfang jeder Datei unt
 <div class="rolle">
 <p><strong><code>common_selinux</code></strong> (beide, Profil über <code>stack</code>)</p>
 <p><strong>Was:</strong> SELinux im Modus „enforcing“ und die Host-Verzeichnisse, die als Speicher in die Pods kommen.
-<strong>Warum:</strong> Container dürfen nur in Dateien mit dem Typ <code>container_file_t</code> schreiben.</p>
+<strong>Warum:</strong> Container dürfen nur in Dateien mit dem Typ <code>container_file_t</code> schreiben – das gilt aber nur, wenn die Pods wirklich als <code>container_t</code> laufen: Dafür braucht K3s die Policy <code>k3s-selinux</code> und <code>selinux: true</code> (beides setzt <code>common_k3s</code> seit 19.10.2026; vorher liefen die Pods unbeschränkt).</p>
 <p class="wie"><strong>Wie:</strong> Profil wählen (<code>selinux_profiles[stack]</code>) → Verzeichnisse mit Besitzer und Rechten anlegen (<code>file</code>, <code>loop</code>) → Regel dauerhaft eintragen (<code>semanage fcontext</code>; „already defined“ gilt weder als Fehler noch als Änderung) → auf vorhandene Dateien anwenden (<code>restorecon</code>).</p>
 </div>
 
