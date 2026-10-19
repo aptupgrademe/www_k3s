@@ -13,8 +13,14 @@
 # =============================================================================
 #
 # How it works: SELinux labels every file with a type; a confined process
-# may only touch the types its policy allows. Containers run as
-# container_t and may write files labelled container_file_t. The HostPath
+# may only touch the types its policy allows. Containers are MEANT to run as
+# container_t, which may write files labelled container_file_t.
+# CAUTION (found 2026-10-19): K3s starts containerd with enable_selinux =
+# false unless config.yaml sets "selinux: true" (with the k3s-selinux
+# policy). That is the case on all hosts today, so the pods do NOT run as
+# container_t but as spc_t (blog) or unconfined_service_t (Nextcloud) - not
+# confined by SELinux at all. The labels below are prepared for the switch.
+# The HostPath
 # directories (host folders mounted into pods) are created by this role
 # and labelled that way:
 #   1. "semanage fcontext -a"  adds a RULE: "<path>(/.*)? = container_file_t"
@@ -108,9 +114,11 @@
 # connections" - that is not what this boolean does. container_manage_cgroup
 # lets container processes manage cgroups ("Allow container to manage
 # cgroup" in semanage boolean -l). Outbound connections (pod -> host MariaDB/
-# Redis, SMTP, WordPress HTTP calls) work without any boolean: checked
-# 2026-10-13, container_connect_any is off and all of them work. Whether
-# anything here still needs this boolean is open; it is left on as before.
+# Redis, SMTP, WordPress HTTP calls) were checked on 2026-10-13 with
+# container_connect_any off - but the pods were not running as container_t
+# then (see CAUTION above), so that check proves nothing; repeat it once
+# K3s runs with selinux: true. Whether anything here needs this boolean is
+# open; it is left on as before.
 - name: SELinux | Allow container processes to manage cgroups (container_manage_cgroup)
   ansible.posix.seboolean:
     name: container_manage_cgroup
