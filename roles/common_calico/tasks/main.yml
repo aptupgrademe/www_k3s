@@ -5,11 +5,17 @@
 #          only, reading Pod/NetworkPolicy objects straight from the
 #          Kubernetes API (DATASTORE_TYPE=kubernetes,
 #          CALICO_NETWORKING_BACKEND=none, no BGP, no IPAM, no CNI plugin
-#          install). K3s's built-in Flannel keeps doing all pod networking –
-#          this only adds the NetworkPolicy *enforcement* Flannel alone
-#          silently ignores (empirically verified on the test host: a
-#          deny-all NetworkPolicy had zero effect until Calico was
-#          installed, and worked immediately afterwards).
+#          install). K3s's built-in Flannel keeps doing all pod networking.
+#
+#          CAUTION (found 2026-10-19): in this setup Calico enforces NOTHING.
+#          Felix only programs policy for pod interfaces named cali*, which
+#          its own CNI plugin creates; K3s's Flannel names them veth*, so
+#          the cali-* chains never match a pod. The NetworkPolicies are
+#          enforced by K3s's embedded controller (kube-router, chains
+#          KUBE-ROUTER/KUBE-NWPLCY): with it disabled, a pod in "default"
+#          reached MariaDB:3306 on the blog. The earlier note here ("deny-all
+#          had no effect until Calico was installed") cannot have been right.
+#          Whether to remove Calico is an open decision (docs + tour too).
 #
 #          The template is GENERATED from the official Canal manifest
 #          (Calico for policy + Flannel for networking) by
