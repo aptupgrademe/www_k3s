@@ -79,3 +79,17 @@ controller:
         # wp_login: WordPress /wp-login.php endpoint
         limit_req_zone $binary_remote_addr zone=nc_login:10m rate=5r/s;
         limit_req_zone $binary_remote_addr zone=wp_login:10m rate=5r/s;
+        # wp_search: WordPress search (?s=... and /search/...). Search results
+        # are never served from the page cache, so every request costs a PHP
+        # worker and a database query. The key is empty for everything else -
+        # nginx does not count requests with an empty key - so this zone only
+        # ever limits searches (2 per second per address, burst 10).
+        map $arg_s $wp_search_by_arg {
+            ""      "";
+            default $binary_remote_addr;
+        }
+        map $uri $wp_search_by_path {
+            "~^(/[a-z][a-z])?/search/"  $binary_remote_addr;
+            default                     "";
+        }
+        limit_req_zone "$wp_search_by_arg$wp_search_by_path" zone=wp_search:10m rate=2r/s;

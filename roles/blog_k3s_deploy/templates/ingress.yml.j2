@@ -35,6 +35,11 @@ metadata:
       if ($scheme = http)                       { set $redirect_https 1; }
       if ($request_uri ~ "^/.well-known/")      { set $redirect_https 0; }
       if ($redirect_https = 1)                  { return 301 https://$host$request_uri; }
+      # Search requests only (key is empty otherwise, see wp_search in
+      # common_k3s/templates/ingress-nginx-values.yml.j2). Server level, so
+      # it applies to every location that does not set its own limit_req.
+      limit_req zone=wp_search burst=10 nodelay;
+      limit_req_status 429;
       location = /xmlrpc.php  { deny all; return 403; }
       location = /readme.html { deny all; return 403; }
       location = /license.txt { deny all; return 403; }
