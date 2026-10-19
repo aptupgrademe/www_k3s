@@ -22,7 +22,8 @@ instead of hand-editing 13,000 lines:
      (cni-plugins/install-cni/ebpf-bootstrap), only the volumes it uses -
      and cni-net-dir as an emptyDir, so Calico never touches K3s's real
      /etc/cni/net.d;
-     CLUSTER_TYPE=k8s, NO_DEFAULT_POOLS=true, no USE_POD_CIDR, no envFrom,
+     CLUSTER_TYPE=k8s, NO_DEFAULT_POOLS=true, FELIX_IPTABLESBACKEND=NFT, no
+     USE_POD_CIDR, no envFrom,
      a CPU request of 100m instead of 250m
   4. kube-controllers: ENABLED_CONTROLLERS=node (no load balancer controller)
   5. image tags become {{ calico_version }}
@@ -104,6 +105,9 @@ def transform(docs):
             env_set(c['env'], 'USE_POD_CIDR', drop=True)
             env_set(c['env'], 'CLUSTER_TYPE', 'k8s')
             env_set(c['env'], 'NO_DEFAULT_POOLS', 'true')
+            # nftables only: never fall back to iptables-legacy, even if a
+            # host still has legacy rules (the auto-detection followed them)
+            env_set(c['env'], 'FELIX_IPTABLESBACKEND', 'NFT')
             c['resources'] = {'requests': {'cpu': '100m'}}
             c['volumeMounts'] = [m for m in c['volumeMounts'] if m['name'] in KEEP_VOLUMES]
             spec['volumes'] = [{'name': 'cni-net-dir', 'emptyDir': {}} if v['name'] == 'cni-net-dir' else v

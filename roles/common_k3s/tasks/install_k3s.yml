@@ -161,6 +161,12 @@
       # (Calico) get spc_t. Needs the k3s-selinux policy above. Pods started
       # before this was set keep their old domain until they are recreated.
       selinux: true
+      # NO "disable-network-policy": K3s's own controller (kube-router,
+      # chains KUBE-ROUTER/KUBE-NWPLCY) is what actually enforces the
+      # NetworkPolicies here. Calico's Felix only matches pod interfaces
+      # named cali*, which its own CNI plugin creates; K3s's Flannel names
+      # them veth*, so Calico enforced nothing (2026-10-19: with the K3s
+      # controller disabled, a pod in "default" reached MariaDB on 3306).
       kube-apiserver-arg:
         # CIS 1.2.16-1.2.19: API audit log, rotated.
         - "audit-log-path=/var/lib/rancher/k3s/server/logs/audit.log"

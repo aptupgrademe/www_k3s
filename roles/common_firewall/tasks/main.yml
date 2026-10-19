@@ -300,6 +300,22 @@
       next reboot - reboot this host at a convenient time.
   when: _legacy_fw.changed
 
+# nftables only (2026-10-19): with iptables-legacy installed, /usr/sbin/iptables
+# points to the legacy backend (alternatives), and K3s, Flannel and Calico,
+# which use the host's iptables, put all their rules into the legacy tables -
+# that was the case on the blog (EPEL packages from its first install, never
+# used: iptables.service was disabled). Without these packages iptables is
+# iptables-nft on every host. Removing them changes nothing that is running;
+# the switch of a running K3s needs the one-time migration in the docs
+# ("nftables only"). Checked with dnf --assumeno: nothing depends on them.
+- name: Firewall | Remove the legacy iptables packages (iptables is iptables-nft)
+  ansible.builtin.dnf:
+    name:
+      - iptables-services
+      - iptables-legacy
+      - iptables-legacy-libs
+    state: absent
+
 # firewalld ships installed-but-inactive on this image and is never used to
 # manage packet filtering here - nftables rules above are applied directly.
 # Masking (not removing the package) prevents it from ever being started by
