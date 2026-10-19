@@ -16,6 +16,15 @@
 # =============================================================================
 set -uo pipefail
 
+# cron starts with PATH=/usr/bin:/bin - ausearch lives in /usr/sbin. Without
+# this line every run failed with "command not found", hidden by the
+# "|| true" below: from 2026-08-16 to 2026-10-19 the notifier never wrote a
+# checkpoint and never mailed (found when Loki made the audit log visible).
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+command -v ausearch >/dev/null || { echo "auditd-notify: ausearch not found" >&2; exit 1; }
+# --input-logs: without a terminal ausearch reads stdin instead of the audit
+# log - from a pipe it waits forever (seen 2026-10-19 over ssh).
+
 # High-signal keys only. k3s_manifests is the important one: k3s auto-deploys
 # anything written into its manifests dir, so a change there = potential
 # cluster backdoor, and this repo never writes it (it uses `kubectl apply`).
@@ -35,12 +44,12 @@ for key in $KEYS; do
     if [ ! -f "$ckpt" ]; then
         # First run for this key: establish the checkpoint at the current end
         # of the log WITHOUT alerting on pre-existing history.
-        ausearch -k "$key" --checkpoint "$ckpt" >/dev/null 2>&1 || true
+        ausearch --input-logs -k "$key" --checkpoint "$ckpt" >/dev/null 2>&1 || true
         continue
     fi
 
     # Only events recorded since the last checkpoint, human-readable.
-    new="$(ausearch -k "$key" --checkpoint "$ckpt" --start checkpoint -i 2>/dev/null)" || true
+    new="$(ausearch --input-logs -k "$key" --checkpoint "$ckpt" --start checkpoint -i 2>/dev/null)" || true
     if [ -n "$new" ]; then
         report="${report}
 
