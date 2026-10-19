@@ -1,0 +1,6 @@
+---
+# WordPress login and admin only from the SSH country list (common_firewall:
+# fw_ssh_geo_countries) - on automatically wherever that list is enabled.
+# ssh-geo-update writes the same blocks as an nginx geo file into
+# blog_admin_geo_dir (group_vars) and reloads nginx after the weekly refresh.
+blog_admin_geo_enabled: "{{ fw_ssh_geo_countries | default([]) | length > 0 }}"

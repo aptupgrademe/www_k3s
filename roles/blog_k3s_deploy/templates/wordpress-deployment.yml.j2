@@ -312,6 +312,13 @@ spec:
           mountPath: /run
         - name: nginx-cache
           mountPath: /var/cache/nginx
+{% if blog_admin_geo_enabled | bool %}
+        # country list for the admin filter (nginx-cm.yml.j2); a directory,
+        # not a file mount, so the weekly refresh reaches the running pod
+        - name: admin-geo
+          mountPath: /etc/nginx/admin-geo
+          readOnly: true
+{% endif %}
         resources:
           requests:
             memory: "32Mi"
@@ -350,6 +357,12 @@ spec:
       - name: nginx-config
         configMap:
           name: wordpress-nginx-config
+{% if blog_admin_geo_enabled | bool %}
+      - name: admin-geo
+        hostPath:
+          path: {{ blog_admin_geo_dir }}
+          type: Directory
+{% endif %}
       - name: php-config
         configMap:
           name: wordpress-php-config

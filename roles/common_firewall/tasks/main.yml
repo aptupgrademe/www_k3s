@@ -106,8 +106,15 @@
         owner: root
         group: root
         mode: "0644"
-        content: "{{ {'countries': fw_ssh_geo_countries, 'extra': fw_ssh_geo_extra} | to_nice_json }}\n"
+        content: "{{ ({'countries': fw_ssh_geo_countries, 'extra': fw_ssh_geo_extra}
+                      | combine(_geo_nginx if stack == 'wordpress' else {})) | to_nice_json }}\n"
       register: _geo_conf
+      vars:
+        # Blog: the same list as an nginx geo file for the WordPress admin
+        # filter (blog_k3s_deploy), reloaded in the running nginx container.
+        _geo_nginx:
+          nginx_out: "{{ blog_admin_geo_dir }}/admin-geo.conf"
+          nginx_reload: [/usr/local/bin/k3s, kubectl, -n, wordpress, exec, deploy/wordpress, -c, nginx, --, nginx, -s, reload]
 
     - name: SSH geo | Is there a list already?
       ansible.builtin.stat:
@@ -271,7 +278,7 @@
   ansible.builtin.service:
     name: nftables
     state: started
-  when: not ssh_first_run
+  when: not (ssh_first_run | default(false))   # set by common_ssh; undefined in a --tags common_firewall run
 
 # Leftover of the pre-nftables era: the blog was filtered by
 # /root/fw/fw_ipv{4,6}.sh (iptables-legacy, applied by an @reboot cron job).
@@ -352,5 +359,5 @@
     file: first_run_reboot.yml
     apply:
       tags: [common_firewall]   # tags of a dynamic include do not reach the tasks inside
-  when: ssh_first_run
+  when: ssh_first_run | default(false)
   tags: [common_firewall]

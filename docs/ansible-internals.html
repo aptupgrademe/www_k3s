@@ -601,7 +601,7 @@ The bundled K3s components nobody needs here (Traefik, ServiceLB, local-storage)
 <p><strong><code>blog_k3s_deploy</code> / <code>next_k3s_deploy</code></strong> (per stack)</p>
 <p><strong>What:</strong> All Kubernetes objects of the application: namespace, secrets, ConfigMaps, deployments, services, ingress, CronJobs, NetworkPolicies, image policy (for Nextcloud also Collabora, notify_push, app reconciliation).
 <strong>Why:</strong> So the application can be rebuilt from the repo at any time.</p>
-<p class="wie"><strong>How:</strong> one template and one task file per component, in dependency order (<code>import_tasks</code>) → apply each with the K8s apply pattern → wait for the new pods only if something changed → Nextcloud: MariaDB/Redis on the host as "external services" (service without selector + endpoints pointing at the host IP).</p>
+<p class="wie"><strong>How:</strong> one template and one task file per component, in dependency order (<code>import_tasks</code>) → apply each with the K8s apply pattern → wait for the new pods only if something changed → Nextcloud: MariaDB/Redis on the host as "external services" (service without selector + endpoints pointing at the host IP). Blog since 2026-10-19: <code>/wp-login.php</code> and <code>/wp-admin/</code> only from the SSH country list – nginx <code>geo</code> on a file that <code>ssh-geo-update</code> (<code>common_firewall</code>) writes into a HostPath directory and reloads weekly; the role stops if the file is missing, because nginx would not start without it.</p>
 </div>
 
 <h3>Monitoring</h3>

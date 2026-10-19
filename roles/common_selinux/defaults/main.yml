@@ -24,6 +24,8 @@ selinux_profiles:
     - { label: MariaDB data dir, path: "{{ blog_k3s_db_dir | default('') }}", owner: 999, group: 999, mode: "0750" }
     # database dumps of the auto-update CronJob (cronjob.yml.j2), root only
     - { label: Update backups dir, path: "{{ blog_k3s_update_backup_dir | default('/srv/wordpress-update-backups') }}", owner: 0, group: 0, mode: "0700" }
+    # country list for the WordPress admin filter, read by the nginx container
+    - { label: Admin country list dir, path: "{{ blog_admin_geo_dir | default('/srv/wordpress-admin-geo') }}", owner: 0, group: 0, mode: "0755" }
   nextcloud:
     - { label: Nextcloud www dir, path: "{{ nextcloud_k3s_www_dir | default('') }}", owner: 33, group: 33, mode: "0755" }
     - { label: Nextcloud data dir, path: "{{ nextcloud_data_dir | default('') }}", owner: 33, group: 33, mode: "0770" }

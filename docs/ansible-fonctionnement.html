@@ -606,7 +606,7 @@ Les composants fournis avec K3s dont personne n'a besoin ici (Traefik, ServiceLB
 <p><strong><code>blog_k3s_deploy</code> / <code>next_k3s_deploy</code></strong> (par pile)</p>
 <p><strong>Quoi :</strong> Tous les objets Kubernetes de l'application : namespace, secrets, ConfigMaps, deployments, services, ingress, CronJobs, NetworkPolicies, politique d'images (pour Nextcloud en plus Collabora, notify_push, synchronisation des apps).
 <strong>Pourquoi :</strong> Pour que l'application puisse être reconstruite à tout moment depuis le dépôt.</p>
-<p class="wie"><strong>Comment :</strong> un template et un fichier de tâches par composant, dans l'ordre des dépendances (<code>import_tasks</code>) → appliquer chacun avec le schéma d'application K8s → n'attendre les nouveaux pods que si quelque chose a changé → Nextcloud : MariaDB/Redis sur l'hôte en tant que « services externes » (service sans sélecteur + endpoints vers l'IP de l'hôte).</p>
+<p class="wie"><strong>Comment :</strong> un template et un fichier de tâches par composant, dans l'ordre des dépendances (<code>import_tasks</code>) → appliquer chacun avec le schéma d'application K8s → n'attendre les nouveaux pods que si quelque chose a changé → Nextcloud : MariaDB/Redis sur l'hôte en tant que « services externes » (service sans sélecteur + endpoints vers l'IP de l'hôte). Blog depuis le 19/10/2026 : <code>/wp-login.php</code> et <code>/wp-admin/</code> seulement depuis la liste de pays SSH – <code>geo</code> nginx sur un fichier que <code>ssh-geo-update</code> (<code>common_firewall</code>) écrit dans un répertoire HostPath et recharge chaque semaine ; le rôle s’arrête si le fichier manque, car nginx ne démarrerait pas sans lui.</p>
 </div>
 
 <h3>Supervision</h3>

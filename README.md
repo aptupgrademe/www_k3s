@@ -378,7 +378,7 @@ ansible-vault encrypt inventory/host_vars/<host>/vault.yml
 | `common_k3s` | K3s, Helm, cert-manager, F5 nginx-ingress (HTTP/2, Brotli, OCSP) |
 | `common_calico` | Removes Calico (it never enforced anything here, see NetworkPolicy above); deleted once no host has it |
 | `common_kube_metrics` | Container metrics: read-only scraper token for the kubelet's cAdvisor + kube-state-metrics (NodePort 30808, local only) |
-| `common_firewall` | nftables only (legacy iptables packages removed; `common_cis_hardening` blocks the legacy table modules) – table inet, banned/scan-ban sets, port-scan detection, K3s exceptions, table-scoped reload, optional SSH country allowlist |
+| `common_firewall` | nftables only (legacy iptables packages removed; `common_cis_hardening` blocks the legacy table modules) – table inet, banned/scan-ban sets, port-scan detection, K3s exceptions, table-scoped reload, optional SSH country allowlist; on the blog the same list also limits `/wp-login.php` + `/wp-admin/` (nginx geo file, since 2026-10-19) |
 | `common_ssh` | SSH hardening (port 10022, key-only, PermitRootLogin without-password) |
 | `common_prometheus` | Prometheus metrics collector (dashboards/history only – see note below) |
 | `common_grafana` | Grafana dashboards (incl. our own "Container-Ressourcen") |
@@ -413,7 +413,7 @@ ansible-vault encrypt inventory/host_vars/<host>/vault.yml
 | Role | Purpose |
 |---|---|
 | `next_*` | Nextcloud + Collabora roles |
-| `blog_*` | WordPress + Redis Object Cache roles |
+| `blog_*` | WordPress + Redis Object Cache roles (login/admin only from the SSH country list, see `common_firewall`) |
 
 ---
 

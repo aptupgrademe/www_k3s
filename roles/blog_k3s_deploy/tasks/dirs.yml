@@ -48,3 +48,31 @@
     owner: 999
     group: 999
     mode: "0750"
+
+# Country list for the WordPress admin filter (nginx-cm.yml.j2). Written by
+# ssh-geo-update (common_firewall, runs earlier in the play). nginx refuses to
+# start when an include is missing - so stop here with a clear message
+# instead of a crash-looping pod.
+- name: Dirs | Admin country list directory
+  ansible.builtin.file:
+    path: "{{ blog_admin_geo_dir }}"
+    state: directory
+    owner: 0
+    group: 0
+    mode: "0755"
+  when: blog_admin_geo_enabled | bool
+
+- name: Dirs | Admin country list present?
+  ansible.builtin.stat:
+    path: "{{ blog_admin_geo_dir }}/admin-geo.conf"
+  register: _admin_geo
+  when: blog_admin_geo_enabled | bool
+
+- name: Dirs | Stop when the admin country list is missing
+  ansible.builtin.assert:
+    that: ansible_check_mode or _admin_geo.stat.exists
+    fail_msg: >-
+      {{ blog_admin_geo_dir }}/admin-geo.conf is missing - run common_firewall
+      first (ssh-geo-update writes it), otherwise nginx cannot start.
+    quiet: true
+  when: blog_admin_geo_enabled | bool

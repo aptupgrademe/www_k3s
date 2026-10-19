@@ -2213,6 +2213,11 @@ Both verified 2026-09-14.</p>
     <td><code>common_k3s</code> (nginx-ingress Helm values + ingress annotations)</td>
   </tr>
   <tr>
+    <td>HTTP – Admin country filter</td>
+    <td><code>/wp-login.php</code> and <code>/wp-admin/</code> only from the SSH country list (DE, ~11,800 RIPE blocks, IPv4 + IPv6) – 403 for everyone else before PHP runs; <code>admin-ajax.php</code>/<code>admin-post.php</code> stay open for visitors, the server and the pod network always pass. nginx <code>geo</code> file written by <code>ssh-geo-update</code> into <code>/srv/wordpress-admin-geo</code>, reloaded weekly. Since 2026-10-19. Login from abroad: VPN with a German exit, or add the address to <code>fw_ssh_geo_extra</code>.</td>
+    <td><code>blog_k3s_deploy</code> (nginx-cm), <code>common_firewall</code> (ssh-geo-update)</td>
+  </tr>
+  <tr>
     <td>HTTP – Endpoint Block</td>
     <td>xmlrpc.php → 403 (prevents XML-RPC brute-force); <code>/robots.txt</code> passed to WordPress (Yoast SEO generates dynamically with sitemap reference)</td>
     <td><code>blog_k3s_deploy</code> (ingress server-snippets, nginx-cm)</td>

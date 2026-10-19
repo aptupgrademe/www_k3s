@@ -26,6 +26,12 @@ blog_k3s_www_dir: /srv/wordpress-www
 # HostPath directory for MariaDB data files (InnoDB, system tables).
 blog_k3s_db_dir: /srv/wordpress-db
 
+# HostPath directory for the WordPress admin country list (nginx "geo" file,
+# written weekly by ssh-geo-update from the same RIPE data as the SSH filter).
+# Only used when fw_ssh_geo_countries is set on the blog: /wp-login.php and
+# /wp-admin/ then answer 403 to addresses outside those countries.
+blog_admin_geo_dir: /srv/wordpress-admin-geo
+
 # =============================================================================
 # Kubernetes API access for the kubernetes.core modules (k8s, k8s_info, helm,
 # helm_repository). They run on the host itself and use the K3s admin

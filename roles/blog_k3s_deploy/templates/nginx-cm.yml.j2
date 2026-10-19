@@ -8,6 +8,33 @@ metadata:
   namespace: wordpress
 data:
   default.conf: |
+{% if blog_admin_geo_enabled | bool %}
+    # WordPress login and admin only from the SSH country list. geo keeps
+    # the ~11,000 blocks as a radix tree; $remote_addr is the real client
+    # (real_ip below runs before this is evaluated). The server itself and
+    # the pod network always pass (WordPress loopback requests, cron).
+    geo $admin_geo_ok {
+        default 0;
+        127.0.0.0/8 1;
+        {{ k3s_pod_cidr }} 1;
+        {{ server_ipv4 }} 1;
+        {{ server_ipv6 }} 1;
+        include /etc/nginx/admin-geo/admin-geo.conf;
+    }
+    # admin-ajax.php and admin-post.php serve visitors too (forms, plugins).
+    map $uri $admin_area {
+        default 0;
+        /wp-login.php 1;
+        /wp-admin/admin-ajax.php 0;
+        /wp-admin/admin-post.php 0;
+        ~^/wp-admin(/|$) 1;
+    }
+    map "$admin_area$admin_geo_ok" $admin_geo_deny {
+        default 0;
+        "10" 1;
+    }
+
+{% endif %}
     server {
         listen 80;
         server_tokens off;
@@ -21,6 +48,13 @@ data:
         set_real_ip_from {{ k3s_pod_cidr }};
         real_ip_header   X-Forwarded-For;
         real_ip_recursive on;
+{% if blog_admin_geo_enabled | bool %}
+
+        # Login/admin from outside the country list: 403 before PHP runs.
+        if ($admin_geo_deny) {
+            return 403;
+        }
+{% endif %}
 
         # -------------------------------------------------------
         # Gzip compression (HTML, CSS, JS, JSON, XML, fonts)

@@ -603,7 +603,7 @@ Die mitgelieferten K3s-Bausteine, die hier keiner braucht (Traefik, ServiceLB, l
 <p><strong><code>blog_k3s_deploy</code> / <code>next_k3s_deploy</code></strong> (je Stack)</p>
 <p><strong>Was:</strong> Alle Kubernetes-Objekte der Anwendung: Namespace, Secrets, ConfigMaps, Deployments, Services, Ingress, CronJobs, NetworkPolicies, Image-Richtlinie (bei Nextcloud dazu Collabora, notify_push, App-Abgleich).
 <strong>Warum:</strong> Damit die Anwendung jederzeit aus dem Repo neu aufgebaut werden kann.</p>
-<p class="wie"><strong>Wie:</strong> pro Komponente eine Vorlage und eine Task-Datei, in Abhängigkeits-Reihenfolge (<code>import_tasks</code>) → jede mit dem K8s-Apply-Muster anwenden → nur wenn sich etwas geändert hat, auf die neuen Pods warten → Nextcloud: MariaDB/Redis auf dem Host als „externe Services“ (Service ohne Selector + Endpoints auf die Host-IP).</p>
+<p class="wie"><strong>Wie:</strong> pro Komponente eine Vorlage und eine Task-Datei, in Abhängigkeits-Reihenfolge (<code>import_tasks</code>) → jede mit dem K8s-Apply-Muster anwenden → nur wenn sich etwas geändert hat, auf die neuen Pods warten → Nextcloud: MariaDB/Redis auf dem Host als „externe Services“ (Service ohne Selector + Endpoints auf die Host-IP). Blog seit 19.10.2026: <code>/wp-login.php</code> und <code>/wp-admin/</code> nur aus der SSH-Länderliste – nginx-<code>geo</code> auf eine Datei, die <code>ssh-geo-update</code> (<code>common_firewall</code>) in ein HostPath-Verzeichnis schreibt und wöchentlich neu lädt; die Rolle bricht ab, wenn die Datei fehlt, weil nginx ohne sie nicht startet.</p>
 </div>
 
 <h3>Überwachung</h3>
