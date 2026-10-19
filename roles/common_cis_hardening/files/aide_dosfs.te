@@ -1,0 +1,15 @@
+# Local SELinux policy module (common_cis_hardening) - do not edit on the host.
+# AIDE calls statfs() on every mount point it passes, also on the excluded
+# /boot/efi (vfat, type dosfs_t). The distribution policy does not allow that
+# for aide_t, so every AIDE run logged a burst of AVC denials (13 per run on
+# sofie, 2026-10-19). This grants exactly that one call - reading file system
+# metadata (size, type), not a single file on it.
+module aide_dosfs 1.0;
+
+require {
+    type aide_t;
+    type dosfs_t;
+    class filesystem getattr;
+}
+
+allow aide_t dosfs_t:filesystem getattr;

@@ -82,16 +82,59 @@
 
 # /boot/efi is a FAT file system (SELinux type dosfs_t), and the policy does not
 # let aide_t read it: AIDE silently skipped the partition anyway. Excluding it
-# states that honestly. It does NOT silence the denials completely: AIDE still
-# calls statfs() on the mount point, so each run logs a burst of
-# "getattr aide_t dosfs_t filesystem" AVCs (13 on sofie, 2026-10-19).
-# The EFI binaries come from rpm packages (shim, grub2-efi), so
+# states that honestly. It does NOT silence the denials on its own: AIDE still
+# calls statfs() on the mount point - the local policy module below allows
+# exactly that. The EFI binaries come from rpm packages (shim, grub2-efi), so
 # "rpm -V shim-x64 grub2-efi-x64" checks them by hand if ever needed.
 - name: CIS | Exclude /boot/efi from AIDE (vfat, unreadable for aide_t under SELinux)
   ansible.builtin.lineinfile:
     path: /etc/aide.conf
     line: "!/boot/efi"
     insertafter: '^!/var/log/containers$'
+
+# Local SELinux module aide_dosfs (files/aide_dosfs.te, since 2026-10-19):
+# allows aide_t to statfs() the vfat /boot/efi - the last source of AVC
+# denials on these hosts. The .te source is compiled on the host
+# (checkmodule -> .mod, semodule_package -> .pp) and loaded with semodule -i;
+# that only happens when the source changed or the module is not loaded.
+# "semodule -l | grep aide_dosfs" shows it, "semodule -r aide_dosfs" removes it.
+- name: CIS | SELinux module tools (checkmodule, semodule_package)
+  ansible.builtin.dnf:
+    name: checkpolicy
+    state: present
+
+- name: CIS | Directory for local SELinux modules
+  ansible.builtin.file:
+    path: /etc/selinux/local
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: CIS | Local SELinux module source aide_dosfs.te
+  ansible.builtin.copy:
+    src: aide_dosfs.te
+    dest: /etc/selinux/local/aide_dosfs.te
+    owner: root
+    group: root
+    mode: "0600"
+  register: aide_dosfs_te
+
+- name: CIS | Is the aide_dosfs module loaded?
+  ansible.builtin.command: semodule -l
+  register: selinux_modules
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+
+- name: CIS | Build and load the aide_dosfs module
+  ansible.builtin.shell: |
+    set -e
+    cd /etc/selinux/local
+    checkmodule -M -m -o aide_dosfs.mod aide_dosfs.te
+    semodule_package -o aide_dosfs.pp -m aide_dosfs.mod
+    semodule -i aide_dosfs.pp
+  when: aide_dosfs_te.changed or 'aide_dosfs' not in selinux_modules.stdout_lines
+  changed_when: true
 
 - name: CIS | Check whether the AIDE database already exists
   ansible.builtin.stat:
