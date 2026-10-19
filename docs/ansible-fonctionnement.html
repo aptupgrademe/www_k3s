@@ -494,6 +494,7 @@ des valeurs différentes, <code>stack</code> sélectionne un profil :</p>
   <tr><td><code>blog_wordpress</code> / <code>next_config</code></td><td>chacun</td><td>réglages dans l'application via wp-cli ou occ</td></tr>
   <tr><td><code>blog_verify</code> / <code>nextcloud_verify</code> (+ <code>common_verify</code>)</td><td>chacun</td><td>tests de fumée, rapport, e-mail, contrôle strict des points critiques</td></tr>
   <tr><td><code>common_version_active</code></td><td>les deux</td><td>les versions épinglées tournent-elles (kubelet, charts, images, redémarrage) ?</td></tr>
+  <tr><td><code>common_selinux_monitoring</code></td><td>les deux</td><td>domaines SELinux propres pour Prometheus, les exportateurs et Grafana (d’abord en phase d’apprentissage permissive)</td></tr>
   <tr><td><code>common_aide_refresh</code></td><td>les deux</td><td>mettre à jour la base AIDE si quelque chose a changé</td></tr>
 </table>
 
@@ -534,7 +535,7 @@ La version détaillée, tâche par tâche, se trouve en commentaire en tête de 
 <div class="rolle">
 <p><strong><code>common_firewall</code></strong> (les deux)</p>
 <p><strong>Quoi :</strong> Règles nftables pour IPv4/IPv6, en option un filtre par pays pour SSH.
-<strong>Pourquoi :</strong> Seul ce qui est explicitement autorisé passe ; fail2ban reçoit ses ensembles de bannissement.</p>
+<strong>Pourquoi :</strong> Seul ce qui est explicitement autorisé passe ; fail2ban reçoit ses ensembles de bannissement. Depuis le 19/10/2026, il retire aussi les paquets iptables legacy – nftables uniquement.</p>
 <p class="wie"><strong>Comment :</strong> détecter DHCP ou statique (lire <code>nmcli</code> → <code>set_fact</code>) → construire en option la liste des pays → écrire le jeu de règles depuis le template, vérifié au préalable (<code>template validate: nft -c</code>) → limiter le rechargement à la propre table (drop-in systemd) → le handler recharge nftables et laisse fail2ban reposer ses bannissements (<code>listen</code>). Première exécution : redémarrage au lieu d'une activation à chaud (<code>include_tasks … when</code>).</p>
 </div>
 
@@ -690,7 +691,7 @@ Les composants fournis avec K3s dont personne n'a besoin ici (Traefik, ServiceLB
 <div class="rolle">
 <p><strong><code>common_monit</code></strong> (les deux)</p>
 <p><strong>Quoi :</strong> Chien de garde pour les services, le pare-feu, les pods, les certificats, le stockage et les sauvegardes ; redémarre fail2ban en cas de panne.
-<strong>Pourquoi :</strong> N'envoie un mail qu'en cas de changement d'état – chaque mail a donc un sens.</p>
+<strong>Pourquoi :</strong> N'envoie un mail qu'en cas de changement d'état – chaque mail a donc un sens. Depuis le 19/10/2026 avec un bac à sable systemd (score 9.6 → 7.1), volontairement sans <code>NoNewPrivileges</code>&nbsp;; pas de domaine SELinux, il exécute en root des vérifications arbitraires.</p>
 <p class="wie"><strong>Comment :</strong> vérifier que les identifiants mail sont présents (<code>assert</code>) → déterminer quels services existent sur cet hôte (<code>systemctl cat</code> dans une <code>loop</code> → <code>zip</code> + <code>selectattr</code>) → scripts de vérification et configuration depuis des templates → vérifier la configuration avec <code>monit -t</code> → démarrer.</p>
 </div>
 
@@ -722,6 +723,13 @@ Les composants fournis avec K3s dont personne n'a besoin ici (Traefik, ServiceLB
 <p><strong>Quoi :</strong> le pendant de la vérification des versions, à la fin : compare chaque version de <code>versions.yml</code> avec ce qui <em>tourne</em> – version du kubelet, charts déployés, images des conteneurs en cours, build info de Prometheus et des exportateurs, redémarrage en attente, services encore sur du code remplacé.
 <strong>Pourquoi :</strong> installé n’est pas actif : un nouveau binaire demande un redémarrage, une nouvelle image de nouveaux pods, un nouveau noyau un reboot (constaté le 19/10/2026 : une mise à jour de K3s n’avait jamais été installée).</p>
 <p class="wie"><strong>Comment :</strong> requêtes en lecture seule (<code>command</code>, <code>uri</code>, <code>check_mode: false</code>) → analyse du JSON en Jinja (<code>from_json</code>, <code>selectattr</code>, <code>map</code>) → une ligne par composant via <code>loop</code> + <code>set_fact</code> → n’affiche que les lignes qui ne correspondent pas. N’interrompt jamais le play.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_selinux_monitoring</code></strong> (les deux)</p>
+<p><strong>Quoi :</strong> de petits modules SELinux locaux (<code>homelab_prometheus</code>, <code>homelab_node_exporter</code>, <code>homelab_mysqld_exporter</code>, <code>homelab_grafana</code>) qui donnent aux services de supervision leurs propres domaines au lieu de <code>unconfined_service_t</code>.
+<strong>Pourquoi :</strong> la politique targeted n’a pas de module pour eux&nbsp;; sans module, ils ne sont pas confinés du tout.</p>
+<p class="wie"><strong>Comment :</strong> rendre le <code>.te</code> (permissif ou non, <code>selinux_monitoring_permissive</code>) et copier le <code>.fc</code> → compiler avec le Makefile de développement (<code>selinux-policy-devel</code>) seulement si une source a changé → <code>semodule -i</code> → <code>restorecon</code> sur les chemins du <code>.fc</code> → redémarrer le service dont l’étiquette a changé. Chaque module a besoin de <code>init_nnp_daemon_domain()</code>, car les unités tournent avec <code>NoNewPrivileges</code> – sans cela, Grafana restait en <code>init_t</code> et ne démarrait pas.</p>
 </div>
 
 <div class="rolle">

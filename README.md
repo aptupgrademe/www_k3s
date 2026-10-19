@@ -378,13 +378,13 @@ ansible-vault encrypt inventory/host_vars/<host>/vault.yml
 | `common_k3s` | K3s, Helm, cert-manager, F5 nginx-ingress (HTTP/2, Brotli, OCSP) |
 | `common_calico` | Removes Calico (it never enforced anything here, see NetworkPolicy above); deleted once no host has it |
 | `common_kube_metrics` | Container metrics: read-only scraper token for the kubelet's cAdvisor + kube-state-metrics (NodePort 30808, local only) |
-| `common_firewall` | nftables (table inet, banned/scan-ban sets, port-scan detection, K3s exceptions, table-scoped reload, optional SSH country allowlist) |
+| `common_firewall` | nftables only (legacy iptables packages removed; `common_cis_hardening` blocks the legacy table modules) – table inet, banned/scan-ban sets, port-scan detection, K3s exceptions, table-scoped reload, optional SSH country allowlist |
 | `common_ssh` | SSH hardening (port 10022, key-only, PermitRootLogin without-password) |
 | `common_prometheus` | Prometheus metrics collector (dashboards/history only – see note below) |
 | `common_grafana` | Grafana dashboards (incl. our own "Container-Ressourcen") |
 | `common_node_exporter` | Host metrics exporter |
 | `common_mysqld_exporter` | MariaDB metrics exporter |
-| `common_monit` | Watchdog and **the actual alerting path** – e-mails on resource/service/firewall/pod/TLS-certificate problems, auto-restarts fail2ban |
+| `common_monit` | Watchdog (systemd-sandboxed since 2026-10-19) and **the actual alerting path** – e-mails on resource/service/firewall/pod/TLS-certificate problems, auto-restarts fail2ban |
 | `common_fail2ban` | Brute-force protection; writes to nftables banned sets; log-watch timer keeps the HTTP jails on the current ingress log |
 | `common_auditd` | Linux audit daemon |
 | `common_rkhunter` | Rootkit detection with daily scan |
@@ -392,6 +392,7 @@ ansible-vault encrypt inventory/host_vars/<host>/vault.yml
 | `common_aide_refresh` | Refreshes the AIDE baseline after approved changes, so the nightly check isn't a false alarm |
 | `common_clamav` | Nightly ClamAV scan – WordPress uploads or Nextcloud data (`clamav_target`) |
 | `common_selinux` | SELinux enforcing + `container_file_t` for the stack's HostPath dirs (`selinux_target`); the pods run as `container_t` since `common_k3s` sets `selinux: true` with the `k3s-selinux` policy (2026-10-19) |
+| `common_selinux_monitoring` | Own SELinux domains (`homelab_*` modules) for Prometheus, node_exporter, mysqld_exporter and Grafana – permissive learning phase since 2026-10-19, enforcing after review |
 | `common_verify` | Smoke checks shared by `blog_verify` and `nextcloud_verify` |
 | `common_image_refresh` | Update playbooks: which Deployments run an outdated build of their tag |
 

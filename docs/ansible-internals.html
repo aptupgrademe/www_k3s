@@ -489,6 +489,7 @@ and Nextcloud need the same thing with different values, <code>stack</code> sele
   <tr><td><code>blog_wordpress</code> / <code>next_config</code></td><td>each</td><td>settings inside the application via wp-cli or occ</td></tr>
   <tr><td><code>blog_verify</code> / <code>nextcloud_verify</code> (+ <code>common_verify</code>)</td><td>each</td><td>smoke tests, report, e-mail, hard check of critical items</td></tr>
   <tr><td><code>common_version_active</code></td><td>both</td><td>are the pinned versions running (kubelet, charts, container images, reboot)?</td></tr>
+  <tr><td><code>common_selinux_monitoring</code></td><td>both</td><td>own SELinux domains for Prometheus, the exporters and Grafana (permissive learning phase first)</td></tr>
   <tr><td><code>common_aide_refresh</code></td><td>both</td><td>refresh the AIDE baseline if anything changed</td></tr>
 </table>
 
@@ -529,7 +530,7 @@ The task-by-task version is the comment at the top of each file under <code>role
 <div class="rolle">
 <p><strong><code>common_firewall</code></strong> (both)</p>
 <p><strong>What:</strong> nftables rules for IPv4/IPv6, optionally a country filter for SSH.
-<strong>Why:</strong> Only what is explicitly allowed gets through; fail2ban gets its ban sets.</p>
+<strong>Why:</strong> Only what is explicitly allowed gets through; fail2ban gets its ban sets. Since 2026-10-19 it also removes the legacy iptables packages – nftables only.</p>
 <p class="wie"><strong>How:</strong> detect DHCP or static (read <code>nmcli</code> → <code>set_fact</code>) → optionally build the country list → write the ruleset from the template, checked first (<code>template validate: nft -c</code>) → limit reloads to the own table (systemd drop-in) → the handler reloads nftables and lets fail2ban re-add its bans (<code>listen</code>). First run: reboot instead of live activation (<code>include_tasks … when</code>).</p>
 </div>
 
@@ -685,7 +686,7 @@ The bundled K3s components nobody needs here (Traefik, ServiceLB, local-storage)
 <div class="rolle">
 <p><strong><code>common_monit</code></strong> (both)</p>
 <p><strong>What:</strong> Watchdog for services, firewall, pods, certificates, storage and backups; restarts fail2ban if it fails.
-<strong>Why:</strong> Mails only on state changes – so every mail means something.</p>
+<strong>Why:</strong> Mails only on state changes – so every mail means something. Since 2026-10-19 with a systemd sandbox (exposure 9.6 → 7.1), deliberately without <code>NoNewPrivileges</code>; no SELinux domain, it runs arbitrary checks as root.</p>
 <p class="wie"><strong>How:</strong> check that the mail credentials are there (<code>assert</code>) → find out which services exist on this host (<code>systemctl cat</code> in a <code>loop</code> → <code>zip</code> + <code>selectattr</code>) → check scripts and configuration from templates → check the configuration with <code>monit -t</code> → start.</p>
 </div>
 
@@ -717,6 +718,13 @@ The bundled K3s components nobody needs here (Traefik, ServiceLB, local-storage)
 <p><strong>What:</strong> The counterpart of the version check at the end: compares every pin in <code>versions.yml</code> with what is <em>running</em> – the kubelet version, the deployed charts, the images of running containers, Prometheus/exporter build info, a pending reboot and services still on replaced code.
 <strong>Why:</strong> Installed is not active: a new binary needs a restart, a new image new pods, a new kernel a reboot (found 2026-10-19: a K3s bump had silently never been installed).</p>
 <p class="wie"><strong>How:</strong> read-only queries (<code>command</code>, <code>uri</code>, <code>check_mode: false</code>) → parse the JSON in Jinja (<code>from_json</code>, <code>selectattr</code>, <code>map</code>) → collect one row per component with <code>loop</code> + <code>set_fact</code> → print only the rows that do not match. Never fails the play.</p>
+</div>
+
+<div class="rolle">
+<p><strong><code>common_selinux_monitoring</code></strong> (both)</p>
+<p><strong>What:</strong> Small local SELinux modules (<code>homelab_prometheus</code>, <code>homelab_node_exporter</code>, <code>homelab_mysqld_exporter</code>, <code>homelab_grafana</code>) that give the monitoring services their own domains instead of <code>unconfined_service_t</code>.
+<strong>Why:</strong> The targeted policy has no module for them; without one they are not confined at all.</p>
+<p class="wie"><strong>How:</strong> render the <code>.te</code> (permissive or not, <code>selinux_monitoring_permissive</code>) and copy the <code>.fc</code> → build with the devel Makefile (<code>selinux-policy-devel</code>) only when a source changed → <code>semodule -i</code> → <code>restorecon</code> the paths of the <code>.fc</code> → restart the service whose label changed. Each module needs <code>init_nnp_daemon_domain()</code> because the units run with <code>NoNewPrivileges</code> – without it Grafana stayed in <code>init_t</code> and failed to start.</p>
 </div>
 
 <div class="rolle">

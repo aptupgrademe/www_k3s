@@ -2239,7 +2239,7 @@ Both verified 2026-09-14.</p>
   </tr>
   <tr>
     <td>SELinux</td>
-    <td>Enforcing, <code>container_file_t</code> for HostPath volumes. Since 2026-10-19 the pods themselves run confined as <code>container_t</code> with their own MCS categories (K3s with the <code>k3s-selinux</code> policy and <code>selinux: true</code>; before that they ran as <code>spc_t</code>/<code>unconfined_service_t</code> although SELinux was enforcing – check with <code>ps -eZ</code>). The local module <code>aide_dosfs</code> lets AIDE <code>statfs()</code> the vfat <code>/boot/efi</code>, the last source of AVC denials.</td>
+    <td>Enforcing, <code>container_file_t</code> for HostPath volumes. Since 2026-10-19 the pods themselves run confined as <code>container_t</code> with their own MCS categories (K3s with the <code>k3s-selinux</code> policy and <code>selinux: true</code>; before that they ran as <code>spc_t</code>/<code>unconfined_service_t</code> although SELinux was enforcing – check with <code>ps -eZ</code>). The local module <code>aide_dosfs</code> lets AIDE <code>statfs()</code> the vfat <code>/boot/efi</code>, the last source of AVC denials. The monitoring services (Prometheus, node_exporter, mysqld_exporter, Grafana) run in own domains since 2026-10-19 (<code>common_selinux_monitoring</code>, modules <code>homelab_*</code>), first in a permissive learning phase; enforcing after the collected AVCs are reviewed (planned 2026-10-23).</td>
     <td><code>common_selinux</code></td>
   </tr>
   <tr>
@@ -2274,7 +2274,7 @@ Both verified 2026-09-14.</p>
   </tr>
   <tr>
     <td>Watchdog</td>
-    <td>Monit checks every 2 min: services (fail2ban with auto-restart, sshd, k3s, exporters, Grafana), firewall (nftables default-drop), K3s pods, disk/load/RAM; e-mails only on state change (silent while healthy). Mail via the msmtp relay but on port 465/implicit SSL (Monit 6 has no STARTTLS)</td>
+    <td>Monit checks every 2 min: services (fail2ban with auto-restart, sshd, k3s, exporters, Grafana), firewall (nftables default-drop), K3s pods, disk/load/RAM; e-mails only on state change (silent while healthy). Mail via the msmtp relay but on port 465/implicit SSL (Monit 6 has no STARTTLS) Since 2026-10-19 Monit runs in a systemd sandbox (no writes below /usr, /boot, /etc, no home directories, private /tmp, no kernel tunables/modules/logs; exposure 9.6 → 7.1), deliberately without NoNewPrivileges.</td>
     <td><code>common_monit</code></td>
   </tr>
   <tr>
