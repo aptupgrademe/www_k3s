@@ -352,6 +352,7 @@
 <span class="c-ingress">│  nginx-ingress F5 (K3s DaemonSet, hostNetwork=true) │</span>
 <span class="c-ingress">│  TLS-Terminierung via cert-manager (Let's Encrypt)  │</span>
 <span class="c-ingress">│  Rate-Limiting: wp_login 5r/s, xmlrpc.php → 403     │</span>
+<span class="c-ingress">│  Rate-Limiting: wp_search 2r/s (nur Suche) → 429    │</span>
 <span class="c-ingress">└──────────────────────────┬──────────────────────────┘</span>
                            │ HTTP
                   www.apt-upgrade.me
@@ -585,6 +586,11 @@ real_ip_recursive on;</code></pre>
     <td>5 r/s pro IP, Burst 5 – verhindert Login-Brute-Force</td>
   </tr>
   <tr>
+    <td>Suche Rate-Limit (seit 19.10.2026)</td>
+    <td><code>nginx.org/server-snippets</code></td>
+    <td>Zone <code>wp_search</code>: 2 r/s pro IP, Burst 10, darüber <code>429</code>. Zählt nur Suchanfragen (<code>?s=…</code> und <code>/search/…</code>, auch mit Sprachpräfix wie <code>/de/search/</code>) – jede Suche ist eine ungecachte Datenbankabfrage, ein Bot kann damit die DB auslasten. Alle anderen Seiten haben einen leeren Schlüssel und werden nicht begrenzt.</td>
+  </tr>
+  <tr>
     <td>Security-Header</td>
     <td><code>nginx.org/location-snippets</code></td>
     <td>HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, X-XSS-Protection, CSP (Report-Only)</td>
@@ -598,9 +604,9 @@ real_ip_recursive on;</code></pre>
 
 <div class="callout callout-info">
   <strong>Rate-Limit-Zonen im Controller definiert</strong>
-  Die Zone <code>wp_login</code> wird in den Helm-Values des nginx-ingress-Controllers
-  (<code>http-snippets</code>) definiert und ist damit global für alle Ingress-Ressourcen
-  verfügbar. Die eigentliche Anwendung der Zone erfolgt über die
+  Die Zonen <code>wp_login</code> und <code>wp_search</code> werden in den Helm-Values des nginx-ingress-Controllers
+  (<code>http-snippets</code>) definiert und sind damit global für alle Ingress-Ressourcen
+  verfügbar. Die eigentliche Anwendung der Zonen erfolgt über die
   <code>server-snippets</code>-Annotation im WordPress-Ingress.
 </div>
 
@@ -2254,7 +2260,7 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   </tr>
   <tr>
     <td>Patches</td>
-    <td>dnf-automatic: Security-Updates täglich automatisch zwischen 01:00 und 02:00 Uhr, danach automatischer Reboot um 03:30 Uhr falls nötig; AIDE übernimmt den neuen Stand um 04:00 Uhr</td>
+    <td>dnf-automatic: Security-Updates täglich automatisch zwischen 01:00 und 02:00 Uhr, danach automatischer Reboot um 03:30 Uhr falls nötig (Kernel, glibc, systemd); ohne Reboot startet <code>restart-updated-services</code> um 03:45 die Dienste neu, die noch ersetzten Code ausführen (<code>needs-restarting -s</code>; sshd erst nach <code>sshd -t</code>, ausgenommen dbus, systemd, k3s, auditd u.&nbsp;a.; Mail nur, wenn etwas neu gestartet wurde); AIDE übernimmt den neuen Stand um 04:00 Uhr</td>
     <td><code>common_dnf_automatic</code></td>
   </tr>
   <tr>
