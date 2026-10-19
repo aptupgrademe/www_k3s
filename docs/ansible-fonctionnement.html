@@ -455,7 +455,7 @@ et s'arrête à la première erreur.</p>
 <p>Un rôle est une tâche autonome avec une arborescence fixe (voir <a href="#structure">structure</a>). Les rôles
 volumineux sont découpés en fichiers thématiques que <code>tasks/main.yml</code> inclut avec <code>import_tasks</code> dans
 un ordre fixe (p. ex. <code>blog_wordpress</code> : install, security_muplugin, plugins, appearance, ai_disclosure,
-settings, updates).</p>
+media, settings, updates).</p>
 
 <h3>Rôles communs avec profil</h3>
 <p>Chaque playbook complet définit une variable de play <code>stack</code> (<code>blog.yml</code> : <code>wordpress</code>,
@@ -698,7 +698,7 @@ Les composants fournis avec K3s dont personne n'a besoin ici (Traefik, ServiceLB
 
 <div class="rolle">
 <p><strong><code>blog_wordpress</code></strong> (blog)</p>
-<p><strong>Quoi :</strong> WordPress dans le pod en cours d'exécution via WP-CLI : installation, plugin de durcissement, plugins, menu/CSS, mention IA, réglages, mises à jour.
+<p><strong>Quoi :</strong> WordPress dans le pod en cours d'exécution via WP-CLI : installation, plugin de durcissement, plugins, menu/CSS, mention IA, envois en WebP sous 280 Ko (depuis le 19/10/2026), réglages, mises à jour.
 <strong>Pourquoi :</strong> La configuration du blog est reproductible et les mises à jour accompagnent chaque exécution.</p>
 <p class="wie"><strong>Comment :</strong> partout « lire l'état → ne changer que le nécessaire » : p. ex. lire une fois la liste des plugins (<code>from_json</code>) → n'installer que ceux qui manquent (<code>difference</code>), n'activer que ceux qui sont inactifs (<code>selectattr</code>) → écrire d'abord les fichiers PHP en <code>.new</code>, ne les remplacer qu'en cas de somme de contrôle différente → comparer les versions avant et après les mises à jour, ne redémarrer que dans ce cas.</p>
 </div>

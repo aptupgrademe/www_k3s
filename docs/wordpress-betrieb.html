@@ -2081,6 +2081,11 @@ rm -f ~/.ansible/cp/*</code></pre>
     <td>Das Mu-Plugin lädt die Theme-Schriften vor und lädt das erste große Bild eines Beitrags sofort mit <code>fetchpriority="high"</code>; auf der Startseite ist das das erste Bild der Beitragsliste. Auf Handys und Tablets zeigt die Startseite nur die Beitragsliste, die übrigen Blöcke der Startseite sind ausgeblendet.</td>
     <td><code>blog_wordpress</code> → Mu-Plugin <code>performance-hints.php</code> + eigenes CSS</td>
   </tr>
+  <tr>
+    <td>Bilder (seit 19.10.2026)</td>
+    <td>Jeder Upload als JPEG, PNG oder WebP wird als <strong>WebP</strong> gespeichert: höchstens 1536&nbsp;px an der längsten Seite, unter 280&nbsp;KB (Qualität 80, in 5er-Schritten bis 55, danach 1248 bzw. 1024&nbsp;px). Die EXIF-Drehung wird vorher angewendet, die übrigen EXIF-Daten (GPS, Kamera) fallen weg. Grund: Link-Vorschauen (WhatsApp, Signal …) ignorieren ein <code>og:image</code> über etwa 300&nbsp;KB und zeigen dann das erste Bild der Seite, hier das Logo. Die 30 älteren Beitragsbilder über 300&nbsp;KB wurden einmalig neu kodiert, CompressX hat danach seine AVIF/WebP-Kopien (<code>wp-content/compressx-nextgen/</code>) für alle Bilder neu erzeugt. Sicherung: <code>/root/bilder-umwandlung-2026-10-19/</code> auf dem Blog-Host.</td>
+    <td><code>blog_wordpress</code> → <code>tasks/media.yml</code>, Mu-Plugin <code>upload-images.php</code></td>
+  </tr>
 </table>
 
 <h3>TCP BBR im Detail</h3>

@@ -22,6 +22,7 @@
 #   plugins.yml            install missing plugins, activate inactive ones
 #   appearance.yml         custom CSS + navigation menu (stored in the DB)
 #   ai_disclosure.yml      AI notice page + three small mu-plugins
+#   media.yml              uploads stored as WebP, max 1536 px, below 280 KB
 #   settings.yml           self-registration off, WP-Cron via K8s CronJob
 #   updates.yml            core/plugin/theme/translation updates, cleanup,
 #                          restart only if versions really changed
@@ -77,6 +78,9 @@
 
 - name: blog_wordpress | AI usage disclosure
   ansible.builtin.import_tasks: ai_disclosure.yml
+
+- name: blog_wordpress | Uploaded images as WebP below 280 KB (mu-plugin)
+  ansible.builtin.import_tasks: media.yml
 
 - name: blog_wordpress | Registration and WP-Cron settings
   ansible.builtin.import_tasks: settings.yml

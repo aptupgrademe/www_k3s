@@ -452,7 +452,7 @@ anderen ab und stoppt beim ersten Fehler.</p>
 <p>Eine Rolle ist eine abgeschlossene Aufgabe mit festem Verzeichnisaufbau (siehe <a href="#aufbau">Aufbau</a>). Große
 Rollen sind in thematische Dateien aufgeteilt, die <code>tasks/main.yml</code> per <code>import_tasks</code> in fester
 Reihenfolge einbindet (z. B. <code>blog_wordpress</code>: install, security_muplugin, plugins, appearance,
-ai_disclosure, settings, updates).</p>
+ai_disclosure, media, settings, updates).</p>
 
 <h3>Gemeinsame Rollen mit Profil</h3>
 <p>Jedes volle Playbook setzt eine Play-Variable <code>stack</code> (<code>blog.yml</code>: <code>wordpress</code>,
@@ -695,7 +695,7 @@ Die mitgelieferten K3s-Bausteine, die hier keiner braucht (Traefik, ServiceLB, l
 
 <div class="rolle">
 <p><strong><code>blog_wordpress</code></strong> (Blog)</p>
-<p><strong>Was:</strong> WordPress im laufenden Pod per WP-CLI: Installation, Härtungs-Plugin, Plugins, Menü/CSS, KI-Hinweis, Einstellungen, Updates.
+<p><strong>Was:</strong> WordPress im laufenden Pod per WP-CLI: Installation, Härtungs-Plugin, Plugins, Menü/CSS, KI-Hinweis, Uploads als WebP unter 280 KB (seit 19.10.2026), Einstellungen, Updates.
 <strong>Warum:</strong> Die Einrichtung des Blogs ist reproduzierbar und Updates laufen bei jedem Lauf mit.</p>
 <p class="wie"><strong>Wie:</strong> überall „Zustand lesen → nur Nötiges ändern“: z. B. Plugin-Liste einmal lesen (<code>from_json</code>) → nur fehlende installieren (<code>difference</code>), nur inaktive aktivieren (<code>selectattr</code>) → PHP-Dateien erst als <code>.new</code> schreiben, nur bei anderer Prüfsumme austauschen → Versionen vor und nach den Updates vergleichen, nur dann neu starten.</p>
 </div>

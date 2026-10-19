@@ -119,6 +119,7 @@ Internet
 | **gzip compression** | nginx-ingress | Level 6 for HTML, CSS, JS, JSON, SVG (Brotli is not built into the F5 controller image) |
 | **Browser cache** | nginx sidecar (blog) | CSS/JS/fonts 1 year `immutable`, images 30 days, one `Cache-Control` header |
 | **Font preload + eager LCP image** | WordPress mu-plugin `performance-hints.php` | No layout shift from font swaps; the first large image loads at once |
+| **Uploads as WebP, max 1536 px, < 280 KB** | WordPress mu-plugin `upload-images.php` (`blog_wordpress/tasks/media.yml`) | One image format; featured images small enough for link previews (WhatsApp ignores og:image > ~300 KB) |
 | **Redis Object Cache** | WordPress pod | DB queries replaced by Redis lookups |
 | **PHP OPcache** | PHP-FPM | Bytecode cached in memory |
 | **/tmp on RAM (tmpfs)** | WordPress / Nextcloud FPM | emptyDir – PHP temp files bypass disk |

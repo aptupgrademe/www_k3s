@@ -451,7 +451,7 @@ the first failure.</p>
 <h2 id="roles">Roles</h2>
 <p>A role is a self-contained task with a fixed directory layout (see <a href="#layout">layout</a>). Large roles are split
 into thematic files that <code>tasks/main.yml</code> pulls in with <code>import_tasks</code> in a fixed order (e.g.
-<code>blog_wordpress</code>: install, security_muplugin, plugins, appearance, ai_disclosure, settings, updates).</p>
+<code>blog_wordpress</code>: install, security_muplugin, plugins, appearance, ai_disclosure, media, settings, updates).</p>
 
 <h3>Shared roles with a profile</h3>
 <p>Every full playbook sets a play variable <code>stack</code> (<code>blog.yml</code>: <code>wordpress</code>,
@@ -693,7 +693,7 @@ The bundled K3s components nobody needs here (Traefik, ServiceLB, local-storage)
 
 <div class="rolle">
 <p><strong><code>blog_wordpress</code></strong> (blog)</p>
-<p><strong>What:</strong> WordPress in the running pod via WP-CLI: installation, hardening plugin, plugins, menu/CSS, AI notice, settings, updates.
+<p><strong>What:</strong> WordPress in the running pod via WP-CLI: installation, hardening plugin, plugins, menu/CSS, AI notice, uploads as WebP below 280 KB (since 2026-10-19), settings, updates.
 <strong>Why:</strong> The blog's setup is reproducible, and updates come along with every run.</p>
 <p class="wie"><strong>How:</strong> everywhere "read the state → change only what is needed": e.g. read the plugin list once (<code>from_json</code>) → install only missing ones (<code>difference</code>), activate only inactive ones (<code>selectattr</code>) → write PHP files as <code>.new</code> first, swap them only on a different checksum → compare versions before and after the updates, restart only then.</p>
 </div>

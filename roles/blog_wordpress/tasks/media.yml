@@ -1,0 +1,112 @@
+---
+# Part of blog_wordpress (see main.yml): how uploaded images are stored.
+#
+# 2026-10-19: WhatsApp showed the site logo (Superman) instead of the featured
+# image when part 3 of the Ansible tour was shared. Link previews ignore an
+# og:image above ~300 KB and fall back to the first <img> on the page; 128 of
+# 468 posts had such a featured image (WebP, up to 945 KB). The existing ones
+# were re-encoded once by hand; this mu-plugin keeps new uploads in line:
+#   - one format: JPEG/PNG/WebP uploads are stored as WebP (GIF, SVG, ICO
+#     untouched), so the media library does not mix formats per article
+#   - longest side at most 1536 px, quality 80, lowered in steps of 5 (down
+#     to 55) until the file is below 280 KB; if that is not enough, 1248 and
+#     then 1024 px
+#   - EXIF orientation is applied first (phone photos), the remaining EXIF
+#     data (GPS, camera) is dropped with the re-encode
+# WordPress then builds the sub-sizes from that file, and CompressX its
+# AVIF/WebP companions for the <picture> tags, both as before.
+
+- name: WordPress | Deploy upload images mu-plugin (one format, WebP below 280 KB)
+  ansible.builtin.command:
+    argv:
+      - k3s
+      - kubectl
+      - exec
+      - deployment/wordpress
+      - --namespace
+      - wordpress
+      - --container
+      - wordpress-fpm
+      - --
+      - sh
+      - -c
+      - |
+        F=/var/www/html/wp-content/mu-plugins/upload-images.php
+        cat > "$F.new" << 'PHPEOF'
+        <?php
+        /**
+         * Upload images - managed by Ansible (blog_wordpress, tasks/media.yml).
+         * Every JPEG/PNG/WebP upload is stored as WebP, at most 1536 px on the
+         * longest side and below 280 KB (quality 80, lowered in steps of 5 down
+         * to 55; if that is not enough, 1248 and then 1024 px). An image that is
+         * still larger (pure noise) is kept at the last, smallest attempt. Link previews (WhatsApp, Signal, ...) ignore an og:image above
+         * ~300 KB and show the first image of the page instead. GIF, SVG and ICO
+         * are left alone. Runs before WordPress builds the sub-sizes, so they and
+         * CompressX's AVIF/WebP companions are made from the small file.
+         */
+        add_filter('wp_handle_upload', function ($upload, $context) {
+            $max_side = 1536;
+            $max_bytes = 280 * 1024;
+            if (!empty($upload['error']) || !in_array($upload['type'], ['image/jpeg', 'image/png', 'image/webp'], true)) {
+                return $upload;
+            }
+            $src = $upload['file'];
+            $ed = wp_get_image_editor($src);
+            if (is_wp_error($ed)) {
+                return $upload;
+            }
+            $size = $ed->get_size();
+            if ($upload['type'] === 'image/webp' && max($size['width'], $size['height']) <= $max_side && filesize($src) <= $max_bytes) {
+                return $upload;
+            }
+            $dir = dirname($src);
+            $tmp = $dir . '/.upload-' . wp_generate_password(8, false) . '.webp';
+            // quality 80 -> 55 first; still too big: also 1248, then 1024 px
+            foreach ([$max_side, 1248, 1024] as $side) {
+            for ($q = 80; $q >= 55; $q -= 5) {
+                $ed = wp_get_image_editor($src);
+                if (is_wp_error($ed)) {
+                    return $upload;
+                }
+                $ed->maybe_exif_rotate();
+                $s = $ed->get_size();
+                if (max($s['width'], $s['height']) > $side) {
+                    $ed->resize($side, $side, false);
+                }
+                $ed->set_quality($q);
+                $saved = $ed->save($tmp, 'image/webp');
+                if (is_wp_error($saved)) {
+                    @unlink($tmp);
+                    return $upload;
+                }
+                $tmp = $saved['path'];
+                clearstatcache();
+                if (filesize($tmp) <= $max_bytes) {
+                    break 2;
+                }
+            }
+            }
+            $name = preg_replace('/\.(jpe?g|png|webp)$/i', '', basename($src)) . '.webp';
+            $dst = strcasecmp($name, basename($src)) === 0 ? $src : $dir . '/' . wp_unique_filename($dir, $name);
+            if (!@rename($tmp, $dst)) {
+                @unlink($tmp);
+                return $upload;
+            }
+            if ($dst !== $src) {
+                @unlink($src);
+            }
+            $upload['file'] = $dst;
+            $upload['url'] = trailingslashit(dirname($upload['url'])) . basename($dst);
+            $upload['type'] = 'image/webp';
+            return $upload;
+        }, 10, 2);
+        PHPEOF
+        # Same change-only pattern as security-hardening.php.
+        if [ -f "$F" ] && [ "$(md5sum < "$F.new")" = "$(md5sum < "$F")" ]; then
+          rm -f "$F.new"
+        else
+          mv "$F.new" "$F" && chown www-data:www-data "$F" && echo CHANGED
+        fi
+  register: wp_mu_upload_images
+  changed_when: "'CHANGED' in wp_mu_upload_images.stdout"
+  notify: Restart wordpress deployment (OPcache picks up changed PHP files)
