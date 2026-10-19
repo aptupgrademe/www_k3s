@@ -11,11 +11,13 @@
 #          deny-all NetworkPolicy had zero effect until Calico was
 #          installed, and worked immediately afterwards).
 #
-#          Derived from the official Canal manifest (Calico for policy +
-#          Flannel for networking), stripped of the install-cni init
-#          container, the kube-flannel container and the canal-config
-#          CNI/flannel settings – K3s's own embedded Flannel already does
-#          that job, and installing Canal's own copy would conflict with it.
+#          The template is GENERATED from the official Canal manifest
+#          (Calico for policy + Flannel for networking) by
+#          scripts/calico-derive-manifest.py <calico_version>: it strips the
+#          CNI init containers, the kube-flannel container and the
+#          canal-config CNI/flannel settings – K3s's own embedded Flannel
+#          already does that job. Never hand-edit the template; change the
+#          script and re-run it (since 2026-10-19, Calico v3.33.0).
 #
 #          The calico-node RBAC intentionally mirrors upstream's full
 #          calico-node ClusterRole rather than a hand-trimmed subset:
