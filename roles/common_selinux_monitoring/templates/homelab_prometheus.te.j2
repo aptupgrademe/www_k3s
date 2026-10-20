@@ -1,6 +1,6 @@
 # Managed by Ansible (common_selinux_monitoring) - local SELinux module.
 # Gives prometheus its own domain instead of unconfined_service_t.
-policy_module(homelab_prometheus, 1.1.0)
+policy_module(homelab_prometheus, 1.1.1)
 
 type homelab_prometheus_t;
 type homelab_prometheus_exec_t;
@@ -40,6 +40,12 @@ fs_read_cgroup_files(homelab_prometheus_t)
 fs_getattr_xattr_fs(homelab_prometheus_t)
 dev_read_sysfs(homelab_prometheus_t)
 kernel_read_net_sysctls(homelab_prometheus_t)
+# /proc/stat (boot time) and /proc/<pid>/net/netstat: Prometheus' own
+# process/Go metrics. Missed in 1.1.0 because they are read rarely - seen
+# once under enforcing on the blog, 2026-10-20 14:58 (denied, no impact
+# beyond those self-metrics).
+kernel_read_system_state(homelab_prometheus_t)
+kernel_read_network_state(homelab_prometheus_t)
 kernel_search_network_sysctl(homelab_prometheus_t)
 
 
