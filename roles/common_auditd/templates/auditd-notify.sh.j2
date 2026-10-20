@@ -50,6 +50,19 @@ for key in $KEYS; do
 
     # Only events recorded since the last checkpoint, human-readable.
     new="$(ausearch --input-logs -k "$key" --checkpoint "$ckpt" --start checkpoint -i 2>/dev/null)" || true
+    # K3s itself rewrites its bundled manifests, the token and some TLS files
+    # on EVERY start (restart, upgrade, nightly reboot) - since the notifier
+    # works again (2026-10-19) that mailed after each of them. Drop an event
+    # only if BOTH match: the executable is the K3s binary from its data
+    # directory and the process runs in K3s's SELinux domain. Any other
+    # writer (cp, a shell, another binary) is still reported.
+    # Also dropped: loading the watch rule itself (auditctl op=add_rule, at
+    # every boot and every common_auditd run). Removing a rule - the way to
+    # switch this watch off - is still reported.
+    new="$(printf '%s\n' "$new" | awk -v RS='----\n' -v ORS='' '
+        /exe=\/var\/lib\/rancher\/k3s\/data\/[0-9a-f]+\/bin\/k3s / && /subj=system_u:system_r:container_runtime_t:/ { next }
+        /type=CONFIG_CHANGE/ && /op=add_rule/ && /exe=\/usr\/sbin\/auditctl / { next }
+        /[^[:space:]]/ { print "----\n" $0 }')"
     if [ -n "$new" ]; then
         report="${report}
 
