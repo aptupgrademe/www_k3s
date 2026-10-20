@@ -2453,7 +2453,7 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   </tr>
   <tr>
     <td>Netzwerk-Kernel-Härtung</td>
-    <td>ICMP-Redirects/Source-Routing abgelehnt, Martian-Packet-Logging,
+    <td>ICMP-Redirects/Source-Routing abgelehnt, Martian-Packet-Logging (nur auf dem Uplink – Pods erben all/default und protokollierten jeden ARP neuer Pods; seit 20.10.2026),
         TCP-SYN-Cookies, <code>ptrace_scope</code> auf Nachkommen beschränkt,
         volles ASLR, Kernel-Log nur für root (<code>dmesg_restrict</code>), RFC-1337-Schutz gegen TIME-WAIT-Angriffe, geschützte FIFOs/Dateien in <code>/tmp</code> (<code>protected_fifos/regular = 2</code>). Bewusst ausgenommen:
         <code>ip_forward</code>/<code>rp_filter</code> – von k3s/Flannel so

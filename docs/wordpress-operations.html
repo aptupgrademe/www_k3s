@@ -2415,7 +2415,7 @@ Both verified 2026-09-14.</p>
   </tr>
   <tr>
     <td>Network kernel hardening</td>
-    <td>ICMP redirects/source routing refused, martian packet logging, TCP
+    <td>ICMP redirects/source routing refused, martian packet logging (on the uplink only – pods inherit all/default and logged every new pod’s ARP; since 2026-10-20), TCP
         SYN cookies, <code>ptrace_scope</code> restricted to descendants,
         full ASLR, kernel log for root only (<code>dmesg_restrict</code>), RFC 1337 protection against TIME-WAIT assassination, protected FIFOs/files in <code>/tmp</code> (<code>protected_fifos/regular = 2</code>). Deliberately excludes
         <code>ip_forward</code>/<code>rp_filter</code> – required as-is by

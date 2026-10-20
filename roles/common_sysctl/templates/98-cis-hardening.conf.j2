@@ -40,8 +40,16 @@ net.ipv6.conf.all.accept_ra = 0
 net.ipv6.conf.default.accept_ra = 0
 
 # --- Log packets with impossible ("martian") source addresses ---
-net.ipv4.conf.all.log_martians = 1
-net.ipv4.conf.default.log_martians = 1
+# Only on the uplink, deliberately not via all/default as CIS writes it:
+# every pod network namespace copies the host's all/default values when it
+# is created, and an interface logs when "all" OR its own value is 1. With
+# all/default = 1 every pod logged the ARP broadcasts of new pods as
+# martians (~50 lines/h, from 2026-10-19, found with Loki). The interface
+# that faces the internet still logs; pods, cni0, flannel and the veth
+# pairs do not. A CIS scanner will flag all/default - this is the reason.
+net.ipv4.conf.all.log_martians = 0
+net.ipv4.conf.default.log_martians = 0
+net.ipv4.conf.{{ ansible_facts['default_ipv4']['interface'] | default('eth0') }}.log_martians = 1
 
 # --- Ignore ICMP broadcast echo requests (smurf attack mitigation) ---
 net.ipv4.icmp_echo_ignore_broadcasts = 1
