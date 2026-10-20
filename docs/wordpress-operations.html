@@ -2327,8 +2327,10 @@ Both verified 2026-09-14.</p>
   </tr>
   <tr>
     <td>K8s API audit log</td>
-    <td>Every API request logged to <code>/var/lib/rancher/k3s/server/logs/audit.log</code>
-        (30d/10 backups/100MB rotation). Secrets/ConfigMaps at Metadata level
+    <td>API requests logged to <code>/var/lib/rancher/k3s/server/logs/audit.log</code>
+        (30d/10 backups/100MB rotation). Not logged since 2026-10-20 (~90 % of the volume, ~230 → ~25 MB/day):
+        health/discovery/OpenAPI requests, the API server itself, lease heartbeats and read-only requests of
+        the platform components, service accounts and nodes – reads of secrets and everything an admin does stay logged. Secrets/ConfigMaps at Metadata level
         (who/when, never content), <code>pods/exec</code>/<code>attach</code>/<code>portforward</code>
         at Request level, RBAC object changes at full RequestResponse</td>
     <td><code>common_k3s</code></td>

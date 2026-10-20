@@ -81,6 +81,14 @@
 # this is for. Everything else at Metadata as a reasonable baseline;
 # read-only "events" watches are dropped entirely (near-zero security value,
 # high volume - would otherwise dominate the log).
+# 2026-10-20: also dropped, because they filled the 10 x 100 MB cap in ~4.5
+# days instead of 30 (measured on cvjm, ~230 MB/day): health/discovery/
+# OpenAPI requests, the API server talking to itself, lease heartbeats
+# (leader election, kubelet) - together ~50 % - and the read-only requests
+# of the platform's own components, service accounts and nodes (~40 %).
+# First match wins: secrets stay logged for EVERY reader (the rule sits
+# before the component-read rule), and reads by an admin (system:masters)
+# and every write are still logged.
 - name: K3s | Deploy audit policy (CIS 3.2.1/3.2.2)
   ansible.builtin.copy:
     dest: /etc/rancher/k3s/audit-policy.yaml
@@ -94,6 +102,14 @@
         - "RequestReceived"
       rules:
         - level: None
+          nonResourceURLs: ["/healthz*", "/livez*", "/readyz*", "/version", "/openapi*", "/api*", "/metrics"]
+        - level: None
+          users: ["system:apiserver"]
+        - level: None
+          resources:
+            - group: "coordination.k8s.io"
+              resources: ["leases"]
+        - level: None
           verbs: ["get", "list", "watch"]
           resources:
             - group: ""
@@ -101,7 +117,18 @@
         - level: Metadata
           resources:
             - group: ""
-              resources: ["secrets", "configmaps"]
+              resources: ["secrets"]
+        - level: None
+          verbs: ["get", "list", "watch"]
+          users: ["system:kube-controller-manager", "system:kube-scheduler", "system:kube-proxy",
+                  "k3s-cloud-controller-manager", "system:k3s-supervisor", "system:k3s-controller"]
+        - level: None
+          verbs: ["get", "list", "watch"]
+          userGroups: ["system:serviceaccounts", "system:nodes"]
+        - level: Metadata
+          resources:
+            - group: ""
+              resources: ["configmaps"]
         - level: Request
           resources:
             - group: ""

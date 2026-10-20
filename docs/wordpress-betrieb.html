@@ -2364,9 +2364,11 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   </tr>
   <tr>
     <td>K8s-API-Audit-Log</td>
-    <td>Jeder API-Request wird nach
+    <td>API-Requests werden nach
         <code>/var/lib/rancher/k3s/server/logs/audit.log</code> geloggt
-        (30 Tage/10 Backups/100MB Rotation). Secrets/ConfigMaps auf
+        (30 Tage/10 Backups/100MB Rotation). Seit 20.10.2026 nicht mehr geloggt (~90 % des Volumens, ~230 → ~25 MB/Tag):
+        Health-/Discovery-/OpenAPI-Abfragen, der API-Server selbst, Lease-Herzschläge und Lesezugriffe der
+        Plattform-Komponenten, ServiceAccounts und Nodes – Secret-Zugriffe und alles, was ein Admin tut, bleiben im Log. Secrets/ConfigMaps auf
         Metadata-Level (wer/wann, nie Inhalt), <code>pods/exec</code>/<code>attach</code>/<code>portforward</code>
         auf Request-Level, RBAC-Objektänderungen mit vollem RequestResponse</td>
     <td><code>common_k3s</code></td>
