@@ -88,3 +88,24 @@
     - nextcloud_apps_manage | bool
     - item.rc is defined
     - item.rc != 0
+
+# opcache.validate_timestamps = 0 (nginx-cm.yml.j2, opcache.ini): FPM never
+# re-checks file mtimes, so files app:update overwrote above would keep
+# running as the old bytecode until the next unrelated pod restart. Same
+# second rollout as in nextcloud-update.yml; last in this file because the
+# tasks above use the old pod name.
+- name: Apps | Restart Nextcloud so PHP-FPM picks up the updated app code
+  ansible.builtin.command: k3s kubectl rollout restart deployment/nextcloud -n nextcloud
+  changed_when: true
+  when:
+    - nextcloud_apps_manage | bool
+    - nextcloud_apps_update | bool
+    - nc_app_update is changed
+
+- name: Apps | Wait for the restarted Nextcloud pod
+  ansible.builtin.command: k3s kubectl rollout status deployment/nextcloud -n nextcloud --timeout=300s
+  changed_when: false
+  when:
+    - nextcloud_apps_manage | bool
+    - nextcloud_apps_update | bool
+    - nc_app_update is changed
