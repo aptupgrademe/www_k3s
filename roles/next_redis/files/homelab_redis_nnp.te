@@ -1,0 +1,12 @@
+policy_module(homelab_redis_nnp, 1.0.0)
+
+# Managed by Ansible (next_redis). Lets systemd start redis-server into
+# redis_t although the unit runs with NoNewPrivileges (implied by the
+# sandbox in 99-hardening.conf). The distribution policy allows that NNP
+# transition for many daemons, but not for redis_t. Nothing else is granted.
+
+gen_require(`
+    type redis_t;
+')
+
+init_nnp_daemon_domain(redis_t)

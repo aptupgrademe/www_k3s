@@ -40,6 +40,75 @@
 
 
 # -----------------------------------------------------------------------------
+# systemd sandbox (2026-10-20) - live before the service starts, same pattern
+# as next_mariadb, so a fresh host never runs Redis unsandboxed
+# -----------------------------------------------------------------------------
+# The SELinux module first: without it the drop-in below (NoNewPrivileges)
+# keeps redis-server out of redis_t and Redis does not start.
+# selinux-policy-devel comes from common_selinux_monitoring on every host;
+# installed here as well so the role does not depend on the order.
+- name: Redis | Policy build tools (selinux-policy-devel)
+  ansible.builtin.dnf:
+    name: selinux-policy-devel
+    state: present
+
+- name: Redis | SELinux module source directory
+  ansible.builtin.file:
+    path: /etc/selinux/local/redis
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Redis | SELinux module source (NNP transition into redis_t)
+  ansible.builtin.copy:
+    src: homelab_redis_nnp.te
+    dest: /etc/selinux/local/redis/homelab_redis_nnp.te
+    owner: root
+    group: root
+    mode: "0600"
+  register: redis_te
+
+- name: Redis | Loaded SELinux modules
+  ansible.builtin.command: semodule -l
+  register: redis_semodules
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+
+- name: Redis | Build and load the SELinux module
+  ansible.builtin.shell: |
+    set -e
+    cd /etc/selinux/local/redis
+    make -f /usr/share/selinux/devel/Makefile homelab_redis_nnp.pp >/dev/null
+    semodule -i homelab_redis_nnp.pp
+  when: redis_te is changed or 'homelab_redis_nnp' not in redis_semodules.stdout_lines
+  changed_when: true
+
+- name: Redis | Ensure systemd drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/system/redis.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Redis | Deploy systemd hardening drop-in
+  ansible.builtin.copy:
+    src: systemd-hardening.conf
+    dest: /etc/systemd/system/redis.service.d/99-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+  register: redis_dropin
+  notify: Restart Redis
+
+- name: Redis | Reload systemd so the drop-in takes effect
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: redis_dropin is changed
+
+
+# -----------------------------------------------------------------------------
 # Service
 # -----------------------------------------------------------------------------
 - name: Redis | Ensure Redis service is enabled and started
@@ -89,12 +158,33 @@
   no_log: true
   notify: Restart Redis
 
+# No snapshots (2026-10-20). This Redis holds only file locks with a TTL and
+# a cache Nextcloud rebuilds by itself; the package default (save 3600 1 300
+# 100 60 10000) wrote dump.rdb for nothing, and a restore of it after a
+# restart would bring back keys without expiry from the moment of the dump.
+# The blog's Redis pod runs with --save "" for the same reason.
+- name: Redis | Disable RDB snapshots
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: '^save\s'
+    line: 'save ""'
+    backup: true
+  notify: Restart Redis
+
 # Flush handlers immediately so Redis restarts with the new bind address
 # before next_config (which runs in the same play) tries to connect via the
 # pod → ExternalService → host IP path.  Without this, Redis still listens
 # on 127.0.0.1 only when occ commands run and the connection is refused.
 - name: Redis | Flush handlers to apply config changes now
   ansible.builtin.meta: flush_handlers
+
+# The last snapshot would otherwise be loaded at every start from now on -
+# Redis no longer rewrites it. Only old cache/lock data, safe to drop; with
+# save "" no new one appears, so this stays idempotent.
+- name: Redis | Remove the last snapshot left from before save ""
+  ansible.builtin.file:
+    path: /var/lib/redis/dump.rdb
+    state: absent
 
 - name: Redis | Wait for Redis to be ready on host IP
   ansible.builtin.wait_for:

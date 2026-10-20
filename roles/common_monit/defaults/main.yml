@@ -47,6 +47,11 @@ monit_candidate_services:
   - mysqld_exporter
   - loki
   - alloy
+  # Host database and cache of the Nextcloud stack (added 2026-10-20). On the
+  # blog both run as pods - no such units, so they are skipped there, and the
+  # pod check (monit-check-pods.sh) covers them instead.
+  - mariadb
+  - redis
 
 # --- Mail relay for Monit's own SMTP ---
 # Reuses the same relay/credentials as msmtp (from the host vault: mail_smtphost
