@@ -17,6 +17,8 @@ PROM = "{{ trivy_textfile_dir }}/trivy.prom"
 IGNORE = "{{ trivy_report_dir }}/.trivyignore"
 MAIL_TO = "{{ trivy_mail }}"
 MAIL_SEV = {{ trivy_mail_severities | to_json }}
+# image repository -> review date (YYYY-MM-DD); see trivy_accepted_images
+ACCEPTED = {{ (trivy_accepted_images | default([])) | items2dict(key_name='image', value_name='review') | to_json }}
 HOST = "{{ inventory_hostname }}"
 ENV = dict(os.environ,
            CONTAINERD_ADDRESS="/run/k3s/containerd/containerd.sock",
@@ -78,6 +80,9 @@ def main():
             failed.append(image)
             print(f"scan failed: {image}: {r.stderr.strip()[-300:]}", file=sys.stderr)
             continue
+        # repository without the tag (a ":" in the last path part is the tag)
+        repo = image.rsplit(":", 1)[0] if ":" in image.split("/")[-1] else image
+        accepted = ACCEPTED.get(repo, "") >= datetime.date.today().isoformat()
         counts = {(s, f): 0 for s in SEVERITIES for f in (True, False)}
         with open(out) as fh:
             report = json.load(fh)
@@ -86,14 +91,14 @@ def main():
                 sev = v.get("Severity", "UNKNOWN")
                 fixed = bool(v.get("FixedVersion"))
                 counts[(sev if sev in SEVERITIES else "UNKNOWN", fixed)] += 1
-                if fixed and sev in MAIL_SEV:
+                if fixed and sev in MAIL_SEV and not accepted:
                     key = f'{image}|{v["VulnerabilityID"]}|{v["PkgName"]}'
                     findings[key] = {"image": image, "id": v["VulnerabilityID"], "pkg": v["PkgName"],
                                      "severity": sev, "installed": v.get("InstalledVersion", ""),
                                      "fixed": v.get("FixedVersion", ""), "target": res.get("Target", "")}
         for (sev, fixed), n in sorted(counts.items()):
             lines.append(f'trivy_image_vulnerabilities{{image="{esc(image)}",severity="{sev}",'
-                         f'fixable="{str(fixed).lower()}"}} {n}')
+                         f'fixable="{str(fixed).lower()}",accepted="{str(accepted).lower()}"}} {n}')
 
     lines += ok_lines + [
         "# HELP trivy_db_update_ok 1 = the vulnerability DB update worked",

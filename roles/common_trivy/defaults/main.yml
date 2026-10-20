@@ -14,3 +14,16 @@ trivy_mail_severities: [CRITICAL, HIGH]
 # Trivy skips them (written to .trivyignore). Empty on purpose - every
 # entry is a decision, not a default.
 trivy_ignore: []
+
+# Accepted IMAGES (repository without tag): still scanned and counted in
+# Grafana (label accepted="true"), but their findings never mail. After
+# "review" the acceptance lapses on its own and the next run mails them
+# again - the reminder to decide anew. One entry per decision, with reason.
+trivy_accepted_images:
+  - image: docker.io/hipages/php-fpm_exporter
+    review: "2027-01-20"
+    reason: >-
+      No release since 2022 (OpenSSL 1.1, old Go), no maintained alternative.
+      Sidecar in the PHP pod: talks FastCGI to PHP-FPM on 127.0.0.1 and serves
+      /metrics only to Prometheus through a loopback NodePort, no TLS, behind
+      NetworkPolicies. Kept for the PHP-FPM panels. Decided 2026-10-20 (Raphael).
