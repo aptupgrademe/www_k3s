@@ -9,7 +9,10 @@
 # enforced. That is the learning phase: collect the AVCs for some days,
 # turn them into reviewed allow rules in the .te templates, then set this
 # to false. Never generate the rules blindly with audit2allow.
-selinux_monitoring_permissive: true
+# 2026-10-20: the blog enforces (rules reviewed from one day incl. a reboot,
+# checked with audit2why and service restarts: 0 new AVCs). The Nextcloud
+# hosts keep learning until ~2026-10-23 - mysqld_exporter only runs there.
+selinux_monitoring_permissive: "{{ stack == 'nextcloud' }}"
 
 # Which modules a host gets: mysqld_exporter runs on the Nextcloud hosts
 # only (the blog has it as a sidecar in the MariaDB pod).

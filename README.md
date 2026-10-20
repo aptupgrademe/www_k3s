@@ -382,7 +382,7 @@ ansible-vault encrypt inventory/host_vars/<host>/vault.yml
 | `common_ssh` | SSH hardening (port 10022, key-only, PermitRootLogin without-password) |
 | `common_prometheus` | Prometheus metrics collector (dashboards/history only – see note below) |
 | `common_grafana` | Grafana dashboards (incl. our own "Container-Ressourcen") |
-| `common_loki` | Loki + Grafana Alloy: journal, pod logs, audit.log/fail2ban.log (14 days, 127.0.0.1 only), Loki datasource + log alerts (AVC, fail2ban error, OOM, no logs) – blog since 2026-10-19 |
+| `common_loki` | Loki + Grafana Alloy: journal, pod logs, audit.log/fail2ban.log (14 days, 127.0.0.1 only), Loki datasource + log alerts (AVC, fail2ban error, OOM, no logs) – all hosts since 2026-10-20 (blog 2026-10-19) |
 | `common_node_exporter` | Host metrics exporter (+ textfile collector in `/var/lib/node_exporter/textfile`, fed by `common_trivy`) |
 | `common_mysqld_exporter` | MariaDB metrics exporter |
 | `common_monit` | Watchdog (systemd-sandboxed since 2026-10-19) and **the actual alerting path** – e-mails on resource/service/firewall/pod/TLS-certificate problems, auto-restarts fail2ban |
@@ -392,7 +392,7 @@ ansible-vault encrypt inventory/host_vars/<host>/vault.yml
 | `common_cis_hardening` | CIS AlmaLinux 9 Benchmark: AIDE, kernel modules, cron/sudo, mount options |
 | `common_aide_refresh` | Refreshes the AIDE baseline after approved changes, so the nightly check isn't a false alarm |
 | `common_clamav` | Nightly ClamAV scan – WordPress uploads or Nextcloud data (`clamav_target`) |
-| `common_trivy` | Nightly Trivy scan (pinned version + sha256) of every running image from containerd; counts in Grafana via the node_exporter textfile collector, mail only on NEW fixable CRITICAL/HIGH findings – blog since 2026-10-19 |
+| `common_trivy` | Nightly Trivy scan (pinned version + sha256) of every running image from containerd; counts in Grafana via the node_exporter textfile collector, mail only on NEW fixable CRITICAL/HIGH findings – all hosts since 2026-10-20 (blog 2026-10-19) |
 | `common_selinux` | SELinux enforcing + `container_file_t` for the stack's HostPath dirs (`selinux_target`); the pods run as `container_t` since `common_k3s` sets `selinux: true` with the `k3s-selinux` policy (2026-10-19) |
 | `common_selinux_monitoring` | Own SELinux domains (`homelab_*` modules) for Prometheus, node_exporter, mysqld_exporter and Grafana – permissive learning phase since 2026-10-19, enforcing after review |
 | `common_verify` | Smoke checks shared by `blog_verify` and `nextcloud_verify` |

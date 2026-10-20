@@ -1,6 +1,6 @@
 # Managed by Ansible (common_selinux_monitoring) - local SELinux module.
 # Gives node_exporter its own domain instead of unconfined_service_t.
-policy_module(homelab_node_exporter, 1.1.0)
+policy_module(homelab_node_exporter, 1.2.0)
 
 type homelab_node_exporter_t;
 type homelab_node_exporter_exec_t;
@@ -19,7 +19,40 @@ files_search_var_lib(homelab_node_exporter_t)
 allow homelab_node_exporter_t homelab_node_exporter_textfile_t:dir list_dir_perms;
 allow homelab_node_exporter_t homelab_node_exporter_textfile_t:file read_file_perms;
 
-# Allow rules from the reviewed AVCs of the learning phase go here.
+# Reviewed 2026-10-20 from one day of learning-phase AVCs on the blog
+# (incl. a reboot); audit2allow -R was the draft, not the result.
+
+# listen on 9100 (hplip_port_t in the policy's port list)
+allow homelab_node_exporter_t self:tcp_socket create_stream_socket_perms;
+corenet_tcp_bind_generic_node(homelab_node_exporter_t)
+corenet_tcp_bind_hplip_port(homelab_node_exporter_t)
+
+# the collectors: /proc, /sys, netlink (netdev/arp), udev db, md raid, sysctls
+allow homelab_node_exporter_t self:netlink_route_socket { create_netlink_socket_perms nlmsg_read };
+kernel_read_proc_files(homelab_node_exporter_t)
+kernel_read_network_state(homelab_node_exporter_t)
+kernel_read_network_state_symlinks(homelab_node_exporter_t)
+kernel_search_network_state(homelab_node_exporter_t)
+kernel_read_net_sysctls(homelab_node_exporter_t)
+kernel_search_network_sysctl(homelab_node_exporter_t)
+kernel_read_fs_sysctls(homelab_node_exporter_t)
+kernel_read_software_raid_state(homelab_node_exporter_t)
+dev_list_sysfs(homelab_node_exporter_t)
+dev_read_sysfs(homelab_node_exporter_t)
+udev_read_db(homelab_node_exporter_t)
+udev_search_pids(homelab_node_exporter_t)
+fs_search_cgroup_dirs(homelab_node_exporter_t)
+fs_read_cgroup_files(homelab_node_exporter_t)
+# filesystem collector: statfs on every mount - the mounts differ per host,
+# so all filesystem types (read-only attribute access, nothing else)
+fs_getattr_all_fs(homelab_node_exporter_t)
+files_list_var_lib(homelab_node_exporter_t)
+gen_require(`
+    type container_var_run_t;
+')
+allow homelab_node_exporter_t container_var_run_t:dir search;
+auth_read_passwd_file(homelab_node_exporter_t)
+
 
 {% if selinux_monitoring_permissive | bool %}
 # Learning phase: log denials, do not enforce (selinux_monitoring_permissive)

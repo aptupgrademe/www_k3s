@@ -2158,12 +2158,12 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   </tr>
   <tr>
     <td>Logs</td>
-    <td>Loki + Grafana Alloy: systemd-Journal, alle Pod-Logs, <code>audit.log</code> und <code>fail2ban.log</code>, 14 Tage, nur 127.0.0.1; durchsuchbar in Grafana (Explore, Datenquelle Loki). Log-Alarme: blockierter SELinux-Zugriff (AVC, permissive=0), fail2ban-Fehler, OOM-Killer des Kernels, keine Logs mehr. Auf dem Blog seit 19.10.2026; die Nextcloud-Server folgen.</td>
+    <td>Loki + Grafana Alloy: systemd-Journal, alle Pod-Logs, <code>audit.log</code> und <code>fail2ban.log</code>, 14 Tage, nur 127.0.0.1; durchsuchbar in Grafana (Explore, Datenquelle Loki). Log-Alarme: blockierter SELinux-Zugriff (AVC, permissive=0), fail2ban-Fehler, OOM-Killer des Kernels, keine Logs mehr. Auf allen drei Servern seit 20.10.2026 (Blog seit 19.10.2026).</td>
     <td><code>common_loki</code></td>
   </tr>
   <tr>
     <td>Image-Scan</td>
-    <td>Trivy (gepinnte Version + sha256) scannt jede Nacht um 05:15 alle laufenden Images direkt aus containerd (Registry nur als Rückfall); Zahlen pro Image/Schweregrad in Grafana (<code>trivy_image_vulnerabilities</code>, Textfile-Collector des node_exporter). Mail nur, wenn ein behebbarer CRITICAL/HIGH-Befund <em>neu</em> ist; Grafana-Alarm nur bei fehlgeschlagenem oder veraltetem Scan. Akzeptierte Befunde mit Begründung: <code>trivy_ignore</code>. Auf dem Blog seit 19.10.2026; die Nextcloud-Server folgen.</td>
+    <td>Trivy (gepinnte Version + sha256) scannt jede Nacht um 05:15 alle laufenden Images direkt aus containerd (Registry nur als Rückfall); Zahlen pro Image/Schweregrad in Grafana (<code>trivy_image_vulnerabilities</code>, Textfile-Collector des node_exporter). Mail nur, wenn ein behebbarer CRITICAL/HIGH-Befund <em>neu</em> ist; Grafana-Alarm nur bei fehlgeschlagenem oder veraltetem Scan. Akzeptierte Befunde mit Begründung: <code>trivy_ignore</code>. Auf allen drei Servern seit 20.10.2026 (Blog seit 19.10.2026).</td>
     <td><code>common_trivy</code></td>
   </tr>
   <tr>

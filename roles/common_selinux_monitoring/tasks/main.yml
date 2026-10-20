@@ -12,7 +12,8 @@
 #          (common_monit).
 #          Learning phase first: selinux_monitoring_permissive (defaults)
 #          keeps the new domains permissive, so denials are logged but not
-#          enforced. The reviewed allow rules then go into the templates.
+#          enforced. The reviewed allow rules are in the templates; since
+#          2026-10-20 the blog enforces, the Nextcloud hosts still learn.
 # Target:  both stacks, after the monitoring roles (the binaries and data
 #          directories must exist before they can be labelled).
 # =============================================================================

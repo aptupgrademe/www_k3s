@@ -2135,12 +2135,12 @@ Both verified 2026-09-14.</p>
   </tr>
   <tr>
     <td>Logs</td>
-    <td>Loki + Grafana Alloy: systemd journal, all pod logs, <code>audit.log</code> and <code>fail2ban.log</code>, 14 days, 127.0.0.1 only; searchable in Grafana (Explore, datasource Loki). Log alerts: blocked SELinux access (AVC, permissive=0), fail2ban errors, kernel OOM killer, no logs arriving. Live on the blog since 2026-10-19; the Nextcloud servers follow.</td>
+    <td>Loki + Grafana Alloy: systemd journal, all pod logs, <code>audit.log</code> and <code>fail2ban.log</code>, 14 days, 127.0.0.1 only; searchable in Grafana (Explore, datasource Loki). Log alerts: blocked SELinux access (AVC, permissive=0), fail2ban errors, kernel OOM killer, no logs arriving. On all three servers since 2026-10-20 (blog since 2026-10-19).</td>
     <td><code>common_loki</code></td>
   </tr>
   <tr>
     <td>Image scan</td>
-    <td>Trivy (pinned version + sha256) scans every running image nightly at 05:15 straight from containerd (registry only as a fallback); counts per image/severity in Grafana (<code>trivy_image_vulnerabilities</code>, node_exporter textfile collector). Mail only when a fixable CRITICAL/HIGH finding is <em>new</em>; Grafana alerts only on a failed or stale scan. Accepted findings with a reason: <code>trivy_ignore</code>. Live on the blog since 2026-10-19; the Nextcloud servers follow.</td>
+    <td>Trivy (pinned version + sha256) scans every running image nightly at 05:15 straight from containerd (registry only as a fallback); counts per image/severity in Grafana (<code>trivy_image_vulnerabilities</code>, node_exporter textfile collector). Mail only when a fixable CRITICAL/HIGH finding is <em>new</em>; Grafana alerts only on a failed or stale scan. Accepted findings with a reason: <code>trivy_ignore</code>. On all three servers since 2026-10-20 (blog since 2026-10-19).</td>
     <td><code>common_trivy</code></td>
   </tr>
   <tr>

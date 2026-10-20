@@ -1,6 +1,6 @@
 # Managed by Ansible (common_selinux_monitoring) - local SELinux module.
 # Gives grafana its own domain instead of unconfined_service_t.
-policy_module(homelab_grafana, 1.0.0)
+policy_module(homelab_grafana, 1.1.0)
 
 type homelab_grafana_t;
 type homelab_grafana_exec_t;
@@ -16,8 +16,66 @@ type homelab_grafana_var_lib_t;
 files_type(homelab_grafana_var_lib_t)
 type homelab_grafana_log_t;
 logging_log_file(homelab_grafana_log_t)
+# /run/grafana: PID file and plugin sockets (systemd RuntimeDirectory= labels
+# it from the file context when it creates it). The .fc says /var/run/grafana:
+# the policy looks up /run paths as /var/run (file_contexts.subs_dist), an
+# entry for /run/grafana never matched (found while testing, 2026-10-20).
+type homelab_grafana_run_t;
+files_pid_file(homelab_grafana_run_t)
 
-# Allow rules from the reviewed AVCs of the learning phase go here.
+# Reviewed 2026-10-20 from one day of learning-phase AVCs on the blog
+# (incl. a reboot); audit2allow -R was the draft, not the result.
+
+# own database, plugins and logs; backend plugins (gpx_*) are executables
+# inside /var/lib/grafana/plugins and run as child processes
+manage_dirs_pattern(homelab_grafana_t, homelab_grafana_var_lib_t, homelab_grafana_var_lib_t)
+manage_files_pattern(homelab_grafana_t, homelab_grafana_var_lib_t, homelab_grafana_var_lib_t)
+allow homelab_grafana_t homelab_grafana_var_lib_t:file map;
+can_exec(homelab_grafana_t, homelab_grafana_var_lib_t)
+files_search_var_lib(homelab_grafana_t)
+manage_dirs_pattern(homelab_grafana_t, homelab_grafana_log_t, homelab_grafana_log_t)
+manage_files_pattern(homelab_grafana_t, homelab_grafana_log_t, homelab_grafana_log_t)
+logging_search_logs(homelab_grafana_t)
+
+# /run/grafana (systemd RuntimeDirectory): PID file and the plugin sockets
+manage_dirs_pattern(homelab_grafana_t, homelab_grafana_run_t, homelab_grafana_run_t)
+manage_files_pattern(homelab_grafana_t, homelab_grafana_run_t, homelab_grafana_run_t)
+manage_sock_files_pattern(homelab_grafana_t, homelab_grafana_run_t, homelab_grafana_run_t)
+allow homelab_grafana_t self:unix_stream_socket { create_stream_socket_perms connectto };
+files_search_pids(homelab_grafana_t)
+
+# Type=notify: sd_notify() to /run/systemd/notify (labelled kernel_t at boot)
+kernel_dgram_send(homelab_grafana_t)
+
+# plugin downloads land in /tmp
+files_manage_generic_tmp_files(homelab_grafana_t)
+files_manage_generic_tmp_dirs(homelab_grafana_t)
+
+# network: listen on 3000, Prometheus 9090, Loki 3100, mail, grafana.com, DNS
+allow homelab_grafana_t self:tcp_socket create_stream_socket_perms;
+allow homelab_grafana_t self:udp_socket create_socket_perms;
+allow homelab_grafana_t self:unix_dgram_socket create_socket_perms;
+corenet_tcp_bind_generic_node(homelab_grafana_t)
+corenet_tcp_bind_ntop_port(homelab_grafana_t)
+corenet_tcp_connect_websm_port(homelab_grafana_t)
+corenet_tcp_connect_unreserved_ports(homelab_grafana_t)
+corenet_tcp_connect_smtp_port(homelab_grafana_t)
+corenet_tcp_connect_http_port(homelab_grafana_t)
+sysnet_dns_name_resolve(homelab_grafana_t)
+sysnet_read_config(homelab_grafana_t)
+miscfiles_read_generic_certs(homelab_grafana_t)
+
+# Go runtime: user lookup, cgroup limits, /proc, /sys, file watches on /usr/share/grafana
+auth_read_passwd_file(homelab_grafana_t)
+fs_search_cgroup_dirs(homelab_grafana_t)
+fs_read_cgroup_files(homelab_grafana_t)
+kernel_read_proc_files(homelab_grafana_t)
+kernel_read_network_state(homelab_grafana_t)
+kernel_read_net_sysctls(homelab_grafana_t)
+kernel_search_network_sysctl(homelab_grafana_t)
+dev_read_sysfs(homelab_grafana_t)
+files_watch_usr_dirs(homelab_grafana_t)
+
 
 {% if selinux_monitoring_permissive | bool %}
 # Learning phase: log denials, do not enforce (selinux_monitoring_permissive)
