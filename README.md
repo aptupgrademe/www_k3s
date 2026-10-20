@@ -66,7 +66,9 @@ Internet
 - **Nextcloud 34** with PHP-FPM, nginx sidecar, Redis (host service) and MariaDB 10.11
 - **Collabora CODE** (online office) with WOPI integration
 - **NetworkPolicies on both stacks**, enforced by K3s's embedded policy controller
-  (kube-router): on Nextcloud, Collabora can never reach MariaDB/Redis directly; on
+  (kube-router): on Nextcloud, Collabora can never reach MariaDB/Redis directly, and
+  since 2026-10-20 the Nextcloud pod accepts only the ingress controller, Collabora
+  and the exporter scrape, notify_push only the ingress controller; on
   the blog, MariaDB/Redis only accept the WordPress pods and WordPress's own egress
   is capped. (Calico ran next to it until 2026-10-19 but never enforced anything –
   see below.)
@@ -97,7 +99,8 @@ Internet
   countries (local DB-IP Lite lookup) and search-engine arrivals from the access logs; only the totals
   are stored, no IPs, no cookies, no tracker
 - **Container health probes** – startup + readiness + liveness (tcpSocket) on
-  every FPM, nginx and Collabora container, so a *wedged* (not crashed) container
+  every FPM, nginx and Collabora container (the blog's MariaDB pod: exec ping with
+  a startup gate and 5 s timeouts since 2026-10-20), so a *wedged* (not crashed) container
   is restarted automatically while a slow `occ upgrade` or preview burst never
   trips a restart loop
 - **Reproducible app layout** – playbook-driven enable/disable reconcile
@@ -171,6 +174,11 @@ Internet
 - `collabora-netpol` restricts the Collabora pod to DNS + the Nextcloud pod
   only – it can no longer reach MariaDB or Redis by any path, direct or via
   the host IP, even though it previously could (verified live both ways).
+- Since 2026-10-20 `nextcloud-netpol` (ingress only: ingress controller,
+  Collabora's WOPI calls, exporter scrape – egress stays open because the app
+  store, push servers, federation and external storages cannot be listed
+  without FQDN rules) and `notify-push-netpol` (both directions: ingress
+  controller in; DNS and the host's MariaDB/Redis/443 out).
 - On the blog, the WordPress stack's policies let only the WordPress pods reach
   MariaDB and Redis, and cap WordPress's own traffic to what it needs
   (`roles/blog_k3s_deploy/templates/networkpolicy.yml.j2`).
@@ -378,14 +386,14 @@ ansible-vault encrypt inventory/host_vars/<host>/vault.yml
 | `common_k3s` | K3s, Helm, cert-manager, F5 nginx-ingress (HTTP/2, Brotli, OCSP) |
 | `common_calico` | Removes Calico (it never enforced anything here, see NetworkPolicy above); deleted once no host has it |
 | `common_kube_metrics` | Container metrics: read-only scraper token for the kubelet's cAdvisor + kube-state-metrics (NodePort 30808, local only) |
-| `common_firewall` | nftables only (legacy iptables packages removed; `common_cis_hardening` blocks the legacy table modules) – table inet, banned/scan-ban sets, port-scan detection, K3s exceptions, table-scoped reload, optional SSH country allowlist; on the blog the same list also limits `/wp-login.php` + `/wp-admin/` (nginx geo file, since 2026-10-19) |
+| `common_firewall` | nftables only (legacy iptables packages removed; `common_cis_hardening` blocks the legacy table modules) – table inet, banned/scan-ban sets, port-scan detection, K3s exceptions, table-scoped reload, optional SSH country allowlist; on the blog the same list also limits `/wp-login.php` + `/wp-admin/` (nginx geo file, since 2026-10-19), and on every host `/grafana` in the ingress controller (`/srv/ingress-admin-geo`, since 2026-10-20) |
 | `common_ssh` | SSH hardening (port 10022, key-only, PermitRootLogin without-password) |
 | `common_prometheus` | Prometheus metrics collector (dashboards/history only – see note below) |
 | `common_grafana` | Grafana dashboards (incl. our own "Container-Ressourcen") |
 | `common_loki` | Loki + Grafana Alloy: journal, pod logs, audit.log/fail2ban.log (14 days, 127.0.0.1 only), Loki datasource + log alerts (AVC, fail2ban error, OOM, no logs) – all hosts since 2026-10-20 (blog 2026-10-19) |
 | `common_node_exporter` | Host metrics exporter (+ textfile collector in `/var/lib/node_exporter/textfile`, fed by `common_trivy`) |
 | `common_mysqld_exporter` | MariaDB metrics exporter |
-| `common_monit` | Watchdog (systemd-sandboxed since 2026-10-19) and **the actual alerting path** – e-mails on resource/service/firewall/pod/TLS-certificate problems, auto-restarts fail2ban |
+| `common_monit` | Watchdog (systemd-sandboxed since 2026-10-19) and **the actual alerting path** – e-mails on resource/service/firewall/pod/TLS-certificate problems (since 2026-10-20 also the host MariaDB and Redis of the Nextcloud stack), auto-restarts fail2ban |
 | `common_fail2ban` | Brute-force protection; writes to nftables banned sets; log-watch timer keeps the HTTP jails on the current ingress log |
 | `common_auditd` | Linux audit daemon |
 | `common_rkhunter` | Rootkit detection with daily scan |

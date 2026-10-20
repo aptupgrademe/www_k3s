@@ -681,7 +681,7 @@ $OCC notify_push:metrics       # "Active connection count" &gt; 0, sobald Client
   allen Hosts entfernt; <code>common_calico</code> räumt nur noch die Reste weg.
 </div>
 <p>
-  <code>next_k3s_deploy</code> wendet eine Policy an, <code>collabora-netpol</code>,
+  <code>next_k3s_deploy</code> wendet drei Policies an (siehe Kasten unten); die älteste, <code>collabora-netpol</code>,
   die den Collabora-Pod einschränkt: anders als <code>nextcloud-fpm</code> hat
   Collabora keinen legitimen Grund, jemals direkt auf MariaDB oder Redis
   zuzugreifen – sein Egress ist daher auf DNS, den Nextcloud-Pod (WOPI, Port
@@ -697,11 +697,16 @@ kubectl -n default run nptest --image=busybox:1 --restart=Never --rm -i -- \
   sh -c "nc -w3 -z collabora.nextcloud.svc.cluster.local 9980 &amp;&amp; echo OPEN || echo BLOCKED"
 # → BLOCKED erwartet</code></pre>
 <div class="callout callout-info">
-  <strong>In <code>nextcloud</code> ist nur Collabora eingeschränkt</strong>
-  Das ist Absicht: Collabora verarbeitet beliebige hochgeladene Dokumente und
-  hat keinen legitimen DB-/Redis-Zugriff zu verlieren – die Einschränkung ist
-  also ein echter Sicherheitsgewinn. <code>nextcloud-fpm</code> braucht den
-  DB-Zugriff ohnehin. (Der Blog hat seit 20.08.2026 eigene Policies für
+  <strong>In <code>nextcloud</code>: Collabora in beide Richtungen, Nextcloud und notify_push seit 20.10.2026</strong>
+  Collabora verarbeitet beliebige hochgeladene Dokumente und hat keinen
+  legitimen DB-/Redis-Zugriff zu verlieren – daher in beide Richtungen
+  eingeschränkt. Der Nextcloud-Pod ist nur auf dem Weg hinein eingeschränkt
+  (Ingress-Controller, WOPI-Aufrufe von Collabora, Exporter-Abfrage): Sein
+  Egress erreicht berechtigt App Store, Push- und Update-Server, föderierte
+  Freigaben und externe Speicher, was Standard-NetworkPolicy ohne FQDN-Regeln
+  nicht ausdrücken kann. notify_push ist klein und vorhersehbar und hat beide
+  Richtungen. Die <code>nextcloud-cron</code>-Pods sind nicht ausgewählt, der
+  Startup-Race aus dem WordPress-Handbuch greift also nicht. (Der Blog hat seit 20.08.2026 eigene Policies für
   WordPress, MariaDB und Redis, siehe WordPress-Betriebshandbuch.)
 </div>
 <div class="callout callout-warn">
@@ -808,8 +813,8 @@ kubectl -n default run nptest --image=busybox:1 --restart=Never --rm -i -- \
   </tr>
   <tr>
     <td><code>networkpolicy.yml.j2</code></td>
-    <td>NetworkPolicy <code>collabora-netpol</code></td>
-    <td>Schränkt Collaboras Ingress/Egress ein – durchgesetzt vom Network-Policy-Controller von K3s</td>
+    <td>NetworkPolicies <code>collabora-netpol</code>, <code>nextcloud-netpol</code>, <code>notify-push-netpol</code></td>
+    <td>Collabora: Ingress und Egress; Nextcloud-Pod: nur Ingress (Ingress-Controller, Collabora-WOPI, Exporter-Abfrage – Egress bleibt offen, keine FQDN-Regeln); notify_push: Ingress vom Ingress-Controller, Egress DNS + MariaDB/Redis/443 auf dem Host – durchgesetzt vom Network-Policy-Controller von K3s</td>
   </tr>
 </table>
 </section>
@@ -2093,7 +2098,7 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
     <td>
       <code>nginx-k3s-scanner</code>: Scanner (20× 40x in 60 s);
       <code>nginx-k3s-bad-paths</code>: bekannte Exploit-Pfade (/.env, /.git/, /phpinfo.php – 2 Versuche, 24 h Ban);
-      <code>nginx-k3s-grafana-login</code>: Grafana-Login-Brute-Force (5 fehlgeschlagene Logins/HTTP&nbsp;401 in 600&nbsp;s);
+      <code>nginx-k3s-grafana-login</code>: Grafana-Login-Brute-Force (5 fehlgeschlagene Logins/HTTP&nbsp;401 in 600&nbsp;s); Seit 20.10.2026 antwortet <code>/grafana</code> zudem nur Adressen aus der SSH-Länderliste (gleiche RIPE-Daten, <code>ssh-geo-update</code> schreibt sie für den Ingress-Controller nach <code>/srv/ingress-admin-geo</code>), sonst 403;
       <code>recidive</code>: Wiederholungstäter – 3× gebannt in 24 h → 30-Tage-Ban.
       Alle Verify-Tasks laufen per <code>curl --resolve hostname:443:127.0.0.1</code> (Quell-IP 127.0.0.1 ∈ ignoreip → kein Selbst-Ban).
       Logpfad: <code>/var/log/pods/ingress-nginx_*/nginx-ingress/*.log</code>.
@@ -2168,7 +2173,7 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   </tr>
   <tr>
     <td>Watchdog</td>
-    <td>Monit prüft alle 2 Min.: Dienste (fail2ban mit Auto-Neustart, sshd, k3s, Exporter, Grafana), Firewall (nftables default-drop), K3s-Pods, Disk/Load/RAM; mailt nur bei Statuswechsel (still solange gesund). Mailversand über den msmtp-Relay, aber Port 465/impliziertes SSL (Monit 6 kennt kein STARTTLS) Seit 19.10.2026 läuft Monit in einer systemd-Sandbox (kein Schreiben unter /usr, /boot, /etc, keine Home-Verzeichnisse, eigenes /tmp, keine Kernel-Parameter/-Module/-Logs; Bewertung 9.6 → 7.1), bewusst ohne NoNewPrivileges.</td>
+    <td>Monit prüft alle 2 Min.: Dienste (fail2ban mit Auto-Neustart, sshd, k3s, Exporter, Grafana, seit 20.10.2026 auch MariaDB und Redis auf dem Host), Firewall (nftables default-drop), K3s-Pods, Disk/Load/RAM; mailt nur bei Statuswechsel (still solange gesund). Mailversand über den msmtp-Relay, aber Port 465/impliziertes SSL (Monit 6 kennt kein STARTTLS) Seit 19.10.2026 läuft Monit in einer systemd-Sandbox (kein Schreiben unter /usr, /boot, /etc, keine Home-Verzeichnisse, eigenes /tmp, keine Kernel-Parameter/-Module/-Logs; Bewertung 9.6 → 7.1), bewusst ohne NoNewPrivileges.</td>
     <td><code>common_monit</code></td>
   </tr>
   <tr>
@@ -2236,14 +2241,13 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   Konsistenzgründen gespiegelt, aber <strong>nicht live angewendet</strong> –
   die Nextcloud-Produktionshosts (<code>cvjm</code>, <code>sofie</code>)
   sind noch nicht aktiv. Sie greifen beim ersten echten
-  <code>ansible-playbook nextcloud-k3s.yml</code>-Lauf. Anders als beim Blog
-  gibt es bei Nextcloud keine eigene NetworkPolicy (nur
-  <code>collabora-netpol</code> existiert, unverändert) – MariaDB/Redis
-  laufen hier als Host-Services, nicht als Pods, daher greift der
-  "Policy-Startup-Race"-Befund von der WordPress-Seite aktuell nicht. Falls
-  später eine <code>nextcloud-netpol</code> eingeführt wird, die den
-  nextcloud-/Cron-Pod selbst einschränkt, diesen Befund erneut prüfen (siehe
-  WP-Cron-Abschnitt im WordPress-Betriebshandbuch).
+  <code>ansible-playbook nextcloud-k3s.yml</code>-Lauf. Seit 20.10.2026 hat der Nextcloud-Pod
+  eine reine Ingress-Policy <code>nextcloud-netpol</code> und notify_push eine
+  eigene; die <code>nextcloud-cron</code>-Pods sind nicht ausgewählt, der
+  "Policy-Startup-Race"-Befund der WordPress-Seite greift also weiterhin
+  nicht. Falls je eine Policy den Egress der Cron-Pods einschränkt, diesen
+  Befund zuerst erneut prüfen (siehe WP-Cron-Abschnitt im
+  WordPress-Betriebshandbuch).
 </div>
 <div class="callout callout-info">
   <strong>OS-Level-CIS-Härtung ebenfalls geteilt</strong>
@@ -2281,7 +2285,7 @@ oder wieder einbaut. Beides geprüft am 2026-09-14.</p>
   </tr>
   <tr>
     <td>Redis mit Passwort (<code>requirepass</code>)</td>
-    <td>Redis lauscht auf der öffentlichen Host-IP (Pods erreichen es darüber). Bisher schützte nur die nftables-Regel – jetzt zusätzlich ein Passwort, damit der Ausfall einer einzigen Schicht nicht sofort unauthentifizierten Zugriff auf Sessions/File-Locks öffnet.</td>
+    <td>Redis lauscht auf der öffentlichen Host-IP (Pods erreichen es darüber). Bisher schützte nur die nftables-Regel – jetzt zusätzlich ein Passwort, damit der Ausfall einer einzigen Schicht nicht sofort unauthentifizierten Zugriff auf Sessions/File-Locks öffnet. Seit 20.10.2026 zusätzlich eine systemd-Sandbox wie bei MariaDB (Bewertung 9.2 → 1.4) – sie impliziert NoNewPrivileges, deshalb erlaubt das lokale SELinux-Modul <code>homelab_redis_nnp</code> den Übergang nach <code>redis_t</code> – und keine RDB-Snapshots (<code>save ""</code>).</td>
     <td><code>next_redis</code>, K8s-Secret</td>
   </tr>
   <tr>

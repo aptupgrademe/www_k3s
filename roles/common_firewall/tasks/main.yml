@@ -106,15 +106,23 @@
         owner: root
         group: root
         mode: "0644"
-        content: "{{ ({'countries': fw_ssh_geo_countries, 'extra': fw_ssh_geo_extra}
-                      | combine(_geo_nginx if stack == 'wordpress' else {})) | to_nice_json }}\n"
+        content: "{{ {'countries': fw_ssh_geo_countries, 'extra': fw_ssh_geo_extra,
+                      'nginx_targets': [_geo_ingress] + ([_geo_blog] if stack == 'wordpress' else [])}
+                     | to_nice_json }}\n"
       register: _geo_conf
       vars:
-        # Blog: the same list as an nginx geo file for the WordPress admin
-        # filter (blog_k3s_deploy), reloaded in the running nginx container.
-        _geo_nginx:
-          nginx_out: "{{ blog_admin_geo_dir }}/admin-geo.conf"
-          nginx_reload: [/usr/local/bin/k3s, kubectl, -n, wordpress, exec, deploy/wordpress, -c, nginx, --, nginx, -s, reload]
+        # Every host: the same list as an nginx geo file for the ingress
+        # controller, which answers 403 on /grafana outside these countries
+        # (common_k3s mounts the directory, the Grafana ingresses check it).
+        # The reload fails harmlessly on a fresh host before K3s exists.
+        _geo_ingress:
+          out: "{{ ingress_admin_geo_dir }}/admin-geo.conf"
+          reload: [/usr/local/bin/k3s, kubectl, -n, ingress-nginx, exec, ds/ingress-nginx-nginx-ingress-controller, --, nginx, -s, reload]
+        # Blog: the WordPress admin filter (blog_k3s_deploy), reloaded in the
+        # running nginx container of the WordPress pod.
+        _geo_blog:
+          out: "{{ blog_admin_geo_dir }}/admin-geo.conf"
+          reload: [/usr/local/bin/k3s, kubectl, -n, wordpress, exec, deploy/wordpress, -c, nginx, --, nginx, -s, reload]
 
     - name: SSH geo | Is there a list already?
       ansible.builtin.stat:

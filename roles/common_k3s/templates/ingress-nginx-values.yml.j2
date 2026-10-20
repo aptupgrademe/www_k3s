@@ -93,3 +93,27 @@ controller:
             default                     "";
         }
         limit_req_zone "$wp_search_by_arg$wp_search_by_path" zone=wp_search:10m rate=2r/s;
+{% if ingress_admin_geo_enabled | bool %}
+
+        # /grafana country filter (2026-10-20): the same RIPE list as the SSH
+        # filter, written weekly by ssh-geo-update (common_firewall) into
+        # {{ ingress_admin_geo_dir }}, mounted below; ssh-geo-update reloads
+        # nginx afterwards. The Grafana ingresses answer 403 when this is 0.
+        # The glob keeps nginx starting if the file is ever missing - then
+        # every address counts as outside: fail closed, and only /grafana is
+        # affected, never the sites.
+        geo $ingress_admin_geo_ok {
+            default 0;
+            include /etc/nginx/admin-geo/*.conf;
+        }
+
+  volumes:
+  - name: admin-geo
+    hostPath:
+      path: {{ ingress_admin_geo_dir }}
+      type: Directory
+  volumeMounts:
+  - name: admin-geo
+    mountPath: /etc/nginx/admin-geo
+    readOnly: true
+{% endif %}

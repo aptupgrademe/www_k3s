@@ -745,7 +745,9 @@ real_ip_recursive on;</code></pre>
     <td>Database initialization on first start, HostPath volume. Root/user
         passwords delivered as files; readiness/liveness probes read the
         root password straight from the mounted file
-        (<code>$(cat /etc/secrets/db-root-password)</code>)</td>
+        (<code>$(cat /etc/secrets/db-root-password)</code>). Since 2026-10-20 a startupProbe
+        (up to 5&nbsp;min) gates liveness/readiness, and all three use a 5&nbsp;s timeout instead
+        of 1&nbsp;s – a long crash recovery no longer ends in a restart loop</td>
   </tr>
   <tr>
     <td><code>nginx-cm.yml.j2</code></td>
@@ -2190,7 +2192,7 @@ Both verified 2026-09-14.</p>
       <code>nginx-k3s-wp-login</code>: WP login brute-force (10 POST in 600 s);
       <code>nginx-k3s-scanner</code>: scanners (20× 40x errors in 60 s);
       <code>nginx-k3s-bad-paths</code>: known exploit paths (/.env, /.git/, /phpinfo.php – 2 attempts, 24 h ban);
-      <code>nginx-k3s-grafana-login</code>: Grafana login brute-force (5 failed logins/HTTP&nbsp;401 in 600&nbsp;s);
+      <code>nginx-k3s-grafana-login</code>: Grafana login brute-force (5 failed logins/HTTP&nbsp;401 in 600&nbsp;s); Since 2026-10-20 <code>/grafana</code> also answers only addresses from the SSH country list (same RIPE data, <code>ssh-geo-update</code> writes it into <code>/srv/ingress-admin-geo</code> for the ingress controller), 403 elsewhere;
       <code>recidive</code>: repeat offenders – banned 3× in 24 h → 30-day ban.
       All verify tasks run via <code>curl --resolve hostname:443:127.0.0.1</code> (source IP 127.0.0.1 ∈ ignoreip → no self-ban).
       Log path: <code>/var/log/pods/ingress-nginx_*/nginx-ingress/*.log</code>.

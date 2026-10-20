@@ -1,4 +1,4 @@
-# NetworkPolicy for Collabora – managed by Ansible (next_k3s_deploy)
+# NetworkPolicies for the Nextcloud namespace – managed by Ansible (next_k3s_deploy)
 # Enforced by K3s's embedded network policy controller (kube-router) - not by
 # Calico, which never matched a pod here and was removed 2026-10-19.
 #
@@ -70,3 +70,99 @@ spec:
     ports:
     - protocol: TCP
       port: 443
+---
+# Nextcloud pod (nginx + PHP-FPM + exporter) - added 2026-10-20. Until then
+# only Collabora had a policy here; on the blog every pod has one.
+#
+# Ingress only, on purpose. Egress stays open: Nextcloud legitimately talks to
+# hosts nobody can list in advance - the app store, update and push servers,
+# federated shares, external storages, the mail relay - and standard
+# NetworkPolicy (kube-router) has no FQDN rules, so an egress list would be
+# "0.0.0.0/0 on most ports" anyway. What this closes is the way IN: only the
+# ingress controller, Collabora's WOPI callbacks and the exporter scrape.
+# Kubelet probes come from the node itself, which kube-router always allows.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: nextcloud-netpol
+  namespace: nextcloud
+spec:
+  podSelector:
+    matchLabels:
+      app: nextcloud
+  policyTypes:
+  - Ingress
+  ingress:
+  # nginx-ingress runs hostNetwork: requests arrive with the node's own IP.
+  - from:
+    - ipBlock:
+        cidr: {{ nextcloud_ipv4 }}/32
+    ports:
+    - protocol: TCP
+      port: 80
+  # Collabora -> Nextcloud WOPI (load and save documents), direct pod path -
+  # the counterpart of the egress rule in collabora-netpol above.
+  - from:
+    - podSelector:
+        matchLabels:
+          app: collabora
+    ports:
+    - protocol: TCP
+      port: 80
+  # php-fpm-exporter, scraped by the host's Prometheus via NodePort (SNAT
+  # source not pinnable, same reasoning as the blog's policy).
+  - from:
+    - ipBlock:
+        cidr: {{ k3s_pod_cidr }}
+    ports:
+    - protocol: TCP
+      port: 9253
+{% if nextcloud_notify_push_enabled | default(false) %}
+---
+# notify_push - added 2026-10-20. Small and predictable, so both directions:
+# clients reach it only through the ingress (/push), and it only needs DNS,
+# the host's MariaDB and Redis, and Nextcloud's public URL (it checks users
+# against overwrite.cli.url, which resolves to the node IP).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: notify-push-netpol
+  namespace: nextcloud
+spec:
+  podSelector:
+    matchLabels:
+      app: notify-push
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - ipBlock:
+        cidr: {{ nextcloud_ipv4 }}/32
+    ports:
+    - protocol: TCP
+      port: {{ notify_push_port | default(7867) }}
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  - to:
+    - ipBlock:
+        cidr: {{ nextcloud_ipv4 }}/32
+    ports:
+    - protocol: TCP
+      port: 3306
+    - protocol: TCP
+      port: 6379
+    - protocol: TCP
+      port: 443
+{% endif %}

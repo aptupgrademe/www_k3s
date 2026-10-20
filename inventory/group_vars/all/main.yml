@@ -32,6 +32,13 @@ blog_k3s_db_dir: /srv/wordpress-db
 # /wp-admin/ then answer 403 to addresses outside those countries.
 blog_admin_geo_dir: /srv/wordpress-admin-geo
 
+# HostPath directory for the same country list in the ingress controller
+# (every host, since 2026-10-20): /grafana answers 403 outside those
+# countries. Mounted read-only into the nginx-ingress DaemonSet (common_k3s).
+ingress_admin_geo_dir: /srv/ingress-admin-geo
+# On whenever the SSH country filter is configured (fw_ssh_geo_countries).
+ingress_admin_geo_enabled: "{{ fw_ssh_geo_countries | default([]) | length > 0 }}"
+
 # =============================================================================
 # Kubernetes API access for the kubernetes.core modules (k8s, k8s_info, helm,
 # helm_repository). They run on the host itself and use the K3s admin

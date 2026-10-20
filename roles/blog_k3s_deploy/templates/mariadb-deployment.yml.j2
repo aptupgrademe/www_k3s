@@ -131,6 +131,25 @@ spec:
             # 768Mi for MariaDB itself + 512Mi for the memory-backed /tmp.
             memory: "1280Mi"
             cpu: "1500m"
+        # Startup gate (2026-10-20): liveness and readiness only begin once
+        # MariaDB answered once. Before, liveness started after 30 s and
+        # killed the container after three missed pings - an InnoDB crash
+        # recovery or a large undo purge that takes longer than ~90 s would
+        # have ended in a restart loop. Up to 5 min here (30 x 10 s).
+        # timeoutSeconds 5 instead of the default 1 on all three: the exec
+        # starts a shell and a client, which on a busy node can take longer
+        # than a second without anything being wrong.
+        startupProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - >
+              mysqladmin ping -h 127.0.0.1
+              -u root -p"$(cat /etc/secrets/db-root-password)" 2>/dev/null
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 30
         readinessProbe:
           exec:
             command:
@@ -139,8 +158,8 @@ spec:
             - >
               mysqladmin ping -h 127.0.0.1
               -u root -p"$(cat /etc/secrets/db-root-password)" 2>/dev/null
-          initialDelaySeconds: 20
           periodSeconds: 10
+          timeoutSeconds: 5
           failureThreshold: 6
         livenessProbe:
           exec:
@@ -150,8 +169,8 @@ spec:
             - >
               mysqladmin ping -h 127.0.0.1
               -u root -p"$(cat /etc/secrets/db-root-password)" 2>/dev/null
-          initialDelaySeconds: 30
           periodSeconds: 20
+          timeoutSeconds: 5
           failureThreshold: 3
 
       # -------------------------------------------------------------------

@@ -11,7 +11,7 @@
 # template is rendered on the controller, parsed into objects and applied via
 # the API; "changed" only when a live object really differs.
 
-- name: NetworkPolicy | Apply Collabora NetworkPolicy
+- name: NetworkPolicy | Apply the NetworkPolicies (Collabora, Nextcloud, notify_push)
   kubernetes.core.k8s:
     kubeconfig: "{{ k3s_kubeconfig }}"
     state: present

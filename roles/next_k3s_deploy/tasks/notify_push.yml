@@ -53,6 +53,31 @@
   check_mode: false   # read-only query, also runs in --check
   when: nextcloud_notify_push_enabled | bool
 
+# notify_push parses only config.php (see the Deployment), and there the
+# installer wrote the Redis password once. Nextcloud itself reads the current
+# one from redis.config.php (Secret), which wins - so after a password
+# rotation Nextcloud worked and the push daemon did not (found 2026-10-20).
+# This copies the Secret's value into config.php when they differ, inside
+# the pod, so the password never appears on the host's command line.
+- name: notify_push | Keep the Redis password in config.php in sync
+  ansible.builtin.command:
+    argv: [k3s, kubectl, exec, -i, deployment/nextcloud, --namespace, nextcloud,
+           --container, nextcloud-fpm, --, runuser, -u, www-data, --, sh, -s]
+    stdin: |
+      set -e
+      cd /var/www/html
+      want=$(php -r 'include "config/redis.config.php"; echo $CONFIG["redis"]["password"] ?? "";')
+      have=$(php -r 'include "config/config.php"; echo $CONFIG["redis"]["password"] ?? "";')
+      [ -n "$want" ] || { echo "no password in redis.config.php"; exit 1; }
+      if [ "$want" = "$have" ]; then echo unchanged; exit 0; fi
+      php occ config:system:set redis password --value="$want" >/dev/null
+      echo updated
+  register: np_redis_pw
+  changed_when: "'updated' in np_redis_pw.stdout"
+  when:
+    - nextcloud_notify_push_enabled | bool
+    - not ansible_check_mode
+
 - name: notify_push | Apply the Deployment + Service
   kubernetes.core.k8s:
     kubeconfig: "{{ k3s_kubeconfig }}"
@@ -73,6 +98,14 @@
     k8s_objects: "{{ lookup('ansible.builtin.template', 'notify-push-deployment.yml.j2') | ansible.builtin.from_yaml_all | select | list }}"
   register: np_apply
   when: nextcloud_notify_push_enabled | bool
+
+# The daemon reads config.php only at start.
+- name: notify_push | Restart it after a Redis password change
+  ansible.builtin.command: k3s kubectl rollout restart deployment/notify-push -n nextcloud
+  changed_when: true
+  when:
+    - nextcloud_notify_push_enabled | bool
+    - np_redis_pw is changed
 
 - name: notify_push | Wait for the notify-push deployment to be ready
   ansible.builtin.command: >-

@@ -148,6 +148,13 @@ metadata:
       add_header Referrer-Policy "no-referrer" always;
       add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
       add_header X-Robots-Tag "noindex, nofollow" always;
+{% if ingress_admin_geo_enabled | bool %}
+      # Grafana login only from the countries of the SSH filter (2026-10-20,
+      # same list; $ingress_admin_geo_ok comes from the ingress controller's
+      # http-snippets, common_k3s). Password, Grafana's lock-out and the
+      # fail2ban jail stay as further layers.
+      if ($ingress_admin_geo_ok = 0) { return 403; }
+{% endif %}
 spec:
   ingressClassName: nginx
   rules:
