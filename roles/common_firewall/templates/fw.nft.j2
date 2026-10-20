@@ -290,6 +290,12 @@ table inet filter {
     ip saddr {{ k3s_pod_cidr }} accept
     ip daddr {{ k3s_pod_cidr }} accept
 
+    # IPv6 link-local multicast between pods (router solicitations, MLD
+    # reports to ff02::/16 on cni0): the pod network is IPv4-only, so these
+    # were always dropped - only no longer logged (~1,000 lines a day per
+    # host, 2026-10-20). Same verdict as the policy, just silent.
+    ip6 daddr ff02::/16 drop
+
     limit rate 2/minute log prefix "nftables DROP FWD: " level warn flags all
   }
 
@@ -348,6 +354,12 @@ table inet filter {
 
     # K3s API server (hostNetwork pods + kubectl)
     tcp dport 6443 ct state new accept
+
+    # MLD reports the kernel sends on the pods' veth interfaces (ff02::16,
+    # behind a hop-by-hop header, so "nexthdr ipv6-icmp" above never matches
+    # them): dropped as before, but no longer logged (~430 lines a day per
+    # host, 2026-10-20). DHCPv6 to ff02::1:2 is accepted further up.
+    ip6 daddr ff02::/16 drop
 
     # Log everything else before the policy drop (rate-limited)
     limit rate 2/minute log prefix "nftables DROP OUT: " level warn flags all
