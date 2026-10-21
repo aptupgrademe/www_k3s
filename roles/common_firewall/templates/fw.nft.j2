@@ -121,6 +121,22 @@ table inet filter {
     # Loopback
     iif lo accept
 
+    # Blocklist check - BEFORE "ct state established,related accept".
+    # Until 2026-10-21 it came after it, so a ban only stopped NEW
+    # connections: a scanner banned at 20:50:25 on 2026-10-20 kept sending
+    # ~860 requests over its open keep-alive connection in the next three
+    # minutes. Here every packet of a banned source is dropped, open
+    # connections included (they die at the next packet). Replies to our own
+    # outgoing connections to a banned address are dropped too - intended.
+    ip  saddr @banned4 drop
+    ip6 saddr @banned6 drop
+{% for short in fail2ban_nft_jails.values() | sort %}
+    ip  saddr @f2b_{{ short }}4 drop
+    ip6 saddr @f2b_{{ short }}6 drop
+{% endfor %}
+    ip  saddr @scanban4 drop
+    ip6 saddr @scanban6 drop
+
     # Established / related connections
     ct state established,related accept
 
@@ -140,15 +156,6 @@ table inet filter {
     tcp flags & (syn|ack|fin|rst) == rst limit rate 1/second accept
     tcp flags & (syn|ack|fin|rst) == rst drop
 
-    # Blocklist check (before K3s ACCEPT rules so banned IPs are always dropped)
-    ip  saddr @banned4 drop
-    ip6 saddr @banned6 drop
-{% for short in fail2ban_nft_jails.values() | sort %}
-    ip  saddr @f2b_{{ short }}4 drop
-    ip6 saddr @f2b_{{ short }}6 drop
-{% endfor %}
-    ip  saddr @scanban4 drop
-    ip6 saddr @scanban6 drop
 
     # -------------------------------------------------------------------------
     # K3s / Kubernetes CNI exceptions
