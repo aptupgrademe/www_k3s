@@ -402,7 +402,7 @@ ansible-vault encrypt inventory/host_vars/<host>/vault.yml
 | `common_clamav` | Nightly ClamAV scan – WordPress uploads or Nextcloud data (`clamav_target`) |
 | `common_trivy` | Nightly Trivy scan (pinned version + sha256) of every running image from containerd; counts in Grafana via the node_exporter textfile collector, mail only on NEW fixable CRITICAL/HIGH findings – all hosts since 2026-10-20 (blog 2026-10-19) |
 | `common_selinux` | SELinux enforcing + `container_file_t` for the stack's HostPath dirs (`selinux_target`); the pods run as `container_t` since `common_k3s` sets `selinux: true` with the `k3s-selinux` policy (2026-10-19) |
-| `common_selinux_monitoring` | Own SELinux domains (`homelab_*` modules) for Prometheus, node_exporter, mysqld_exporter and Grafana – permissive learning phase since 2026-10-19, enforcing after review |
+| `common_selinux_monitoring` | Own SELinux domains (`homelab_*` modules) for Prometheus, node_exporter, mysqld_exporter and Grafana – permissive learning phase from 2026-10-19, enforcing on the blog since 2026-10-20 and on both Nextcloud hosts since 2026-10-21 |
 | `common_verify` | Smoke checks shared by `blog_verify` and `nextcloud_verify` |
 | `common_image_refresh` | Update playbooks: which Deployments run an outdated build of their tag |
 

@@ -11,8 +11,12 @@
 # to false. Never generate the rules blindly with audit2allow.
 # 2026-10-20: the blog enforces (rules reviewed from one day incl. a reboot,
 # checked with audit2why and service restarts: 0 new AVCs). The Nextcloud
-# hosts keep learning until ~2026-10-23 - mysqld_exporter only runs there.
-selinux_monitoring_permissive: "{{ stack == 'nextcloud' }}"
+# hosts kept learning; 2026-10-21 they enforce too, two days early: >12 h
+# without a single AVC for Grafana, Prometheus and node_exporter, and
+# mysqld_exporter - whose module had no rules at all until then - 0 AVCs
+# after its rules (1.1.0) and a restart. The Loki alert on enforcing
+# denials ("permissive=0") mails anything that was still missed.
+selinux_monitoring_permissive: false
 
 # Which modules a host gets: mysqld_exporter runs on the Nextcloud hosts
 # only (the blog has it as a sidecar in the MariaDB pod).
