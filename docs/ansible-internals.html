@@ -414,7 +414,7 @@ entry below.</p>
   <li>Packages, SSH, firewall, sysctl, CIS hardening – the base, before anything listens.</li>
   <li><code>common_selinux</code> <em>before</em> the deploy – the HostPath directories need their SELinux label before a
     container uses them.</li>
-  <li><code>common_k3s</code> (<code>common_calico</code> now only removes Calico), then the application deploy (<code>blog_k3s_deploy</code> or
+  <li><code>common_k3s</code>, then the application deploy (<code>blog_k3s_deploy</code> or
     <code>next_k3s_deploy</code>). The pods start in the background.</li>
   <li>Monitoring, fail2ban, mail, automatic updates, rkhunter, ClamAV, auditd, Monit – run while the pods come up
     (saves minutes).</li>
@@ -479,7 +479,6 @@ and Nextcloud need the same thing with different values, <code>stack</code> sele
   <tr><td><code>common_selinux</code></td><td>both</td><td>SELinux enforcing, labels for HostPath directories</td></tr>
   <tr><td><code>next_mariadb</code>, <code>next_redis</code></td><td>Nextcloud</td><td>database and cache on the host</td></tr>
   <tr><td><code>common_k3s</code></td><td>both</td><td>K3s, Helm, cert-manager, F5 nginx-ingress, ServiceAccount hardening</td></tr>
-  <tr><td><code>common_calico</code></td><td>both</td><td>removes Calico – it never enforced anything here; K3s's policy controller enforces the NetworkPolicies</td></tr>
   <tr><td><code>common_kube_metrics</code></td><td>both</td><td>Container metrics: cAdvisor (in the kubelet) and kube-state-metrics for Prometheus</td></tr>
   <tr><td><code>blog_k3s_deploy</code> / <code>next_k3s_deploy</code></td><td>each</td><td>the application's Kubernetes objects (Deployments, Secrets, Ingress, CronJobs, policies)</td></tr>
   <tr><td><code>common_node_exporter</code>, <code>common_prometheus</code>, <code>common_grafana</code>, <code>common_mysqld_exporter</code></td><td>both / Nextcloud</td><td>monitoring, local only, Grafana via Ingress</td></tr>
@@ -581,13 +580,6 @@ The task-by-task version is the comment at the top of each file under <code>role
 The bundled K3s components nobody needs here (Traefik, ServiceLB, local-storage) are switched off.
 <strong>Why:</strong> This is the platform the blog and Nextcloud run on. What does not run cannot be attacked.</p>
 <p class="wie"><strong>How:</strong> read the installed version (<code>register</code>) → download the binary only if it differs from <code>k3s_version</code> (<code>get_url force: true … when</code>, <code>notify</code>) → restart right away (<code>flush_handlers</code>) → wait until the API answers (<code>until</code>) → Helm the same way → download helm-diff only if the version differs from <code>helm_diff_version</code> (checksum in <code>get_url</code>) → install the charts (<code>kubernetes.core.helm</code> only changes something on a different chart version or different values).</p>
-</div>
-
-<div class="rolle">
-<p><strong><code>common_calico</code></strong> (both)</p>
-<p><strong>What:</strong> Since 2026-10-19 it <em>removes</em> Calico: the cluster objects (same template, <code>state: absent</code>) and what Felix leaves on the host (<code>files/calico-cleanup.sh</code>).
-<strong>Why:</strong> Calico ran in policy-only mode to enforce the NetworkPolicies, but Felix only matches pod interfaces named <code>cali*</code> and K3s's Flannel creates <code>veth*</code> – it never enforced anything. The policies are enforced by K3s's built-in controller (kube-router), tested with a pod from another namespace.</p>
-<p class="wie"><strong>How:</strong> the K8s apply pattern (now explained in <code>common_k3s</code>, used by 26 tasks) with <code>state: absent</code> → wait until no <code>calico-node</code> pod is left (<code>k8s_info</code> + <code>until</code>) → the cleanup script removes only Calico's rules, chains, ipsets and the <code>calico-arp</code> table and prints a line per object, which <code>changed_when</code> reads.</p>
 </div>
 
 <div class="rolle">

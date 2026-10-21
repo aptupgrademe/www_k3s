@@ -1,6 +1,6 @@
 # K8s apply test
 
-Checks the Kubernetes-facing part of the roles (`common_k3s`, `common_calico`,
+Checks the Kubernetes-facing part of the roles (`common_k3s`,
 `blog_k3s_deploy`, `next_k3s_deploy`) without touching a server: an
 API-server-only K3s of the pinned `k3s_version` runs in podman, the manifests
 are applied first with the roles of `main` (the state the servers are in) and

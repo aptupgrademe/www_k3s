@@ -91,7 +91,6 @@
     - { role: common_cis_hardening, tags: [common_cis_hardening] }  # CIS AlmaLinux 9 Benchmark: AIDE, kernel modules, cron/sudo, mount options
     - { role: common_selinux,       tags: [common_selinux] }  # SELinux enforcing + container_file_t for HostPath  ← before deploy!
     - { role: common_k3s,           tags: [common_k3s] }            # K3s + Helm + cert-manager + nginx-ingress (F5)
-    - { role: common_calico,        tags: [common_calico] }         # REMOVES Calico (never enforced anything here; K3s's controller enforces NetworkPolicies)
     - { role: common_kube_metrics,  tags: [common_kube_metrics] }   # Container metrics: cAdvisor scraper token + kube-state-metrics (NodePort 30808)
     - { role: blog_k3s_deploy,      tags: [blog_k3s_deploy] }       # WordPress K8s objects; waits until MariaDB, Redis and WordPress are ready
 

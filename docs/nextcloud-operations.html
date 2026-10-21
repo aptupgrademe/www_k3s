@@ -674,7 +674,7 @@ $OCC notify_push:metrics       # "Active connection count" &gt; 0 once clients c
   a pod. Tested (blog): with K3s's controller switched off a pod in
   <code>default</code> reached MariaDB, with it on the connection is blocked –
   with or without Calico. Calico is removed from all hosts;
-  <code>common_calico</code> only deletes its leftovers.
+  the clean-up role <code>common_calico</code> was deleted on 2026-10-21.
 </div>
 <p>
   <code>next_k3s_deploy</code> applies three policies (see the callout below); the oldest, <code>collabora-netpol</code>,
@@ -768,7 +768,6 @@ kubectl -n default run nptest --image=busybox:1 --restart=Never --rm -i -- \
   <tr><td><code>common_selinux</code> (<code>stack: nextcloud</code>)</td><td>SELinux enforcing, <code>container_file_t</code> for HostPath directories (shared with the blog)</td></tr>
   <tr><td><code>next_k3s_deploy</code></td><td>K8s manifests: namespace, secrets, ConfigMaps, deployments, ingress, CronJob, NetworkPolicy</td></tr>
   <tr><td><code>next_config</code></td><td>Post-deploy via <code>kubectl exec occ</code>: trusted_domains, apps, WOPI config</td></tr>
-  <tr><td><code>common_calico</code></td><td>Removes Calico (it never enforced anything here; K3s's controller enforces the NetworkPolicies) – can be deleted once no host has Calico</td></tr>
 </table>
 
 <h3>Templates (generating the K8s manifests)</h3>

@@ -170,7 +170,8 @@ Internet
   Calico's own CNI plugin); K3s's Flannel names them `veth*`, so none of its
   rules ever matched a pod. Verified: with K3s's controller disabled a pod in
   `default` reached MariaDB:3306, with it enabled the connection is blocked,
-  with or without Calico. `common_calico` now only removes Calico's leftovers.
+  with or without Calico. The removal role `common_calico` was deleted on 2026-10-21, once no host had
+  any Calico object left.
 - `collabora-netpol` restricts the Collabora pod to DNS + the Nextcloud pod
   only – it can no longer reach MariaDB or Redis by any path, direct or via
   the host IP, even though it previously could (verified live both ways).
@@ -384,7 +385,6 @@ ansible-vault encrypt inventory/host_vars/<host>/vault.yml
 | `common_version_check` | Pre-flight: K3s, Helm, chart and image versions vs. latest |
 | `common_version_active` | Last check: is every pin from versions.yml really running (kubelet, deployed charts, images of running containers, Prometheus/exporters, pending reboot, services on old code)? Reports only what is not active |
 | `common_k3s` | K3s, Helm, cert-manager, F5 nginx-ingress (HTTP/2, Brotli, OCSP) |
-| `common_calico` | Removes Calico (it never enforced anything here, see NetworkPolicy above); deleted once no host has it |
 | `common_kube_metrics` | Container metrics: read-only scraper token for the kubelet's cAdvisor + kube-state-metrics (NodePort 30808, local only) |
 | `common_firewall` | nftables only (legacy iptables packages removed; `common_cis_hardening` blocks the legacy table modules) – table inet, banned/scan-ban sets, port-scan detection, K3s exceptions, table-scoped reload, optional SSH country allowlist; on the blog the same list also limits `/wp-login.php` + `/wp-admin/` (nginx geo file, since 2026-10-19), and on every host `/grafana` in the ingress controller (`/srv/ingress-admin-geo`, since 2026-10-20) |
 | `common_ssh` | SSH hardening (port 10022, key-only, PermitRootLogin without-password) |
@@ -442,9 +442,6 @@ blog_image_wordpress: "wordpress:7.1.3-php8.4-fpm"
 nextcloud_image_fpm:  "nextcloud:34.0.5-fpm"
 
 ```
-
-(`calico_version` and `scripts/calico-derive-manifest.py` only remain so `common_calico` can name the objects it
-deletes; both go away together with that role.)
 
 ---
 

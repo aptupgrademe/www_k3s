@@ -50,7 +50,7 @@ cp -r "$REPO/roles" "$WORK/new/"
 for t in old new; do
   R=$WORK/$t/roles
   grep -rlE "/tmp/k8s-|/tmp/placeholder|/etc/ingress-nginx-defaults|/tmp/ingress-nginx-values|/etc/rancher/k3s/k3s.yaml" \
-    "$R"/{common_k3s,common_calico,blog_k3s_deploy,next_k3s_deploy} | xargs -r sed -i \
+    "$R"/{common_k3s,blog_k3s_deploy,next_k3s_deploy} | xargs -r sed -i \
     -e "s#/tmp/k8s-#$WORK/tmpk8s/k8s-#g" -e "s#/tmp/placeholder#$WORK/tmpk8s/placeholder#g" \
     -e "s#/etc/ingress-nginx-defaults#$WORK/nginxdef#g" \
     -e "s#/tmp/ingress-nginx-values#$WORK/tmpk8s/ingress-nginx-values#g" \

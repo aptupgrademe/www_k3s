@@ -42,14 +42,6 @@
       depNameTemplate: "helm/helm",
       datasourceTemplate: "github-releases",
     },
-    {
-      customType: "regex",
-      description: "Calico (policy-only manifest is vendored - re-derive it for a minor/major, see versions.yml notes)",
-      managerFilePatterns: ["/^inventory/group_vars/all/versions\\.yml$/"],
-      matchStrings: ['\\ncalico_version:\\s+"(?<currentValue>v[^"]+)"'],
-      depNameTemplate: "projectcalico/calico",
-      datasourceTemplate: "github-releases",
-    },
     // Binaries pinned without the release tag's "v": node_exporter 1.12.1 <- tag v1.12.1
     {
       customType: "regex",
@@ -142,15 +134,14 @@
       ],
     },
     // A K3s minor is a Kubernetes minor upgrade (one at a time, read the
-    // upstream notes); a Calico minor needs the vendored policy-only manifest
-    // re-derived (versions.yml notes). Neither is a routine bump.
+    // upstream notes) - not a routine bump.
     {
-      matchPackageNames: ["k3s-io/k3s", "projectcalico/calico"],
+      matchPackageNames: ["k3s-io/k3s"],
       matchUpdateTypes: ["minor"],
       dependencyDashboardApproval: true,
       labels: ["dependencies", "minor - not routine"],
       prBodyNotes: [
-        "K3s: Kubernetes minor upgrade, one minor at a time. Calico: re-derive `roles/common_calico/templates/calico-policy-only.yml.j2` from the new manifest instead of only bumping the version (see versions.yml notes).",
+        "K3s: Kubernetes minor upgrade, one minor at a time.",
       ],
     },
     // Host binary and sidecar image of mysqld_exporter move together.

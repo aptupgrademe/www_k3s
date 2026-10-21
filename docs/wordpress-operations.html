@@ -628,8 +628,8 @@ real_ip_recursive on;</code></pre>
   names them <code>veth*</code>, so none of its rules ever matched a pod.
   Tested: with K3s's controller switched off a pod in <code>default</code>
   reached MariaDB:3306; with it on the connection is blocked, with or without
-  Calico. Calico was removed; <code>common_calico</code> only deletes its
-  leftovers.
+  Calico. Calico was removed; the clean-up role <code>common_calico</code> was deleted on
+  2026-10-21.
 </div>
 <table>
   <tr><th>Policy</th><th>Applies to</th><th>Allowed ingress</th><th>Allowed egress</th></tr>

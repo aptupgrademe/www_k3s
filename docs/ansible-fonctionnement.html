@@ -417,7 +417,7 @@ l'historique de chaque entrée en dessous.</p>
   <li>Paquets, SSH, pare-feu, sysctl, durcissement CIS – la base, avant que quoi que ce soit n'écoute.</li>
   <li><code>common_selinux</code> <em>avant</em> le déploiement – les répertoires HostPath ont besoin de leur étiquette
     SELinux avant qu'un conteneur ne les utilise.</li>
-  <li><code>common_k3s</code> (<code>common_calico</code> ne fait plus que retirer Calico), puis le déploiement de l'application (<code>blog_k3s_deploy</code>
+  <li><code>common_k3s</code>, puis le déploiement de l'application (<code>blog_k3s_deploy</code>
     ou <code>next_k3s_deploy</code>). Les pods démarrent en arrière-plan.</li>
   <li>Supervision, fail2ban, mail, mises à jour automatiques, rkhunter, ClamAV, auditd, Monit – s'exécutent pendant que
     les pods démarrent (gain de quelques minutes).</li>
@@ -484,7 +484,6 @@ des valeurs différentes, <code>stack</code> sélectionne un profil :</p>
   <tr><td><code>common_selinux</code></td><td>les deux</td><td>SELinux enforcing, étiquettes des répertoires HostPath</td></tr>
   <tr><td><code>next_mariadb</code>, <code>next_redis</code></td><td>Nextcloud</td><td>base de données et cache sur l'hôte</td></tr>
   <tr><td><code>common_k3s</code></td><td>les deux</td><td>K3s, Helm, cert-manager, F5 nginx-ingress, durcissement des ServiceAccounts</td></tr>
-  <tr><td><code>common_calico</code></td><td>les deux</td><td>retire Calico – il n’a jamais rien appliqué ici ; les NetworkPolicies sont appliquées par le contrôleur de K3s</td></tr>
   <tr><td><code>common_kube_metrics</code></td><td>les deux</td><td>Métriques par conteneur : cAdvisor (dans le kubelet) et kube-state-metrics pour Prometheus</td></tr>
   <tr><td><code>blog_k3s_deploy</code> / <code>next_k3s_deploy</code></td><td>chacun</td><td>objets Kubernetes de l'application (Deployments, Secrets, Ingress, CronJobs, policies)</td></tr>
   <tr><td><code>common_node_exporter</code>, <code>common_prometheus</code>, <code>common_grafana</code>, <code>common_mysqld_exporter</code></td><td>les deux / Nextcloud</td><td>supervision, accessible en local uniquement, Grafana via Ingress</td></tr>
@@ -586,13 +585,6 @@ La version détaillée, tâche par tâche, se trouve en commentaire en tête de 
 Les composants fournis avec K3s dont personne n'a besoin ici (Traefik, ServiceLB, local-storage) sont désactivés.
 <strong>Pourquoi :</strong> C'est la plateforme sur laquelle tournent le blog et Nextcloud. Ce qui ne tourne pas ne peut pas être attaqué.</p>
 <p class="wie"><strong>Comment :</strong> lire la version installée (<code>register</code>) → ne télécharger le binaire que s'il diffère de <code>k3s_version</code> (<code>get_url force: true … when</code>, <code>notify</code>) → redémarrer tout de suite (<code>flush_handlers</code>) → attendre que l'API réponde (<code>until</code>) → Helm de la même façon → ne télécharger helm-diff que si la version diffère de <code>helm_diff_version</code> (somme de contrôle dans <code>get_url</code>) → installer les charts (<code>kubernetes.core.helm</code> ne modifie qu'en cas d'autre version de chart ou d'autres valeurs).</p>
-</div>
-
-<div class="rolle">
-<p><strong><code>common_calico</code></strong> (les deux)</p>
-<p><strong>Quoi :</strong> depuis le 19/10/2026, il <em>retire</em> Calico : les objets du cluster (même modèle, <code>state: absent</code>) et ce que Felix laisse sur l’hôte (<code>files/calico-cleanup.sh</code>).
-<strong>Pourquoi :</strong> Calico tournait en mode policy-only pour appliquer les NetworkPolicies, mais Felix ne reconnaît que les interfaces nommées <code>cali*</code> et le Flannel de K3s crée des <code>veth*</code> – il n’a jamais rien appliqué. Les politiques sont appliquées par le contrôleur intégré de K3s (kube-router), testé avec un pod d’un autre namespace.</p>
-<p class="wie"><strong>Comment :</strong> le motif K8s apply (expliqué désormais dans <code>common_k3s</code>, utilisé par 26 tâches) avec <code>state: absent</code> → attendre qu’il ne reste aucun pod <code>calico-node</code> (<code>k8s_info</code> + <code>until</code>) → le script de nettoyage ne retire que les règles, chaînes, ipsets de Calico et la table <code>calico-arp</code>, et affiche une ligne par objet, lue par <code>changed_when</code>.</p>
 </div>
 
 <div class="rolle">

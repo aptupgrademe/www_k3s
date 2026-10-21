@@ -629,7 +629,7 @@ real_ip_recursive on;</code></pre>
   passte keine seiner Regeln je auf einen Pod. Getestet: Mit abgeschaltetem
   K3s-Controller erreichte ein Pod in <code>default</code> MariaDB:3306, mit
   eingeschaltetem wird die Verbindung blockiert – mit oder ohne Calico.
-  Calico ist entfernt; <code>common_calico</code> räumt nur noch die Reste weg.
+  Calico ist entfernt; die Aufräumrolle <code>common_calico</code> ist seit 21.10.2026 gelöscht.
 </div>
 <table>
   <tr><th>Policy</th><th>Gilt für</th><th>Erlaubter Ingress</th><th>Erlaubter Egress</th></tr>

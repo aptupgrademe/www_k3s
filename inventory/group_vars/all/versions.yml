@@ -23,7 +23,6 @@ k3s_version:                 "v1.37.1+k3s1"   # github.com/k3s-io/k3s/releases
 helm_version:                "v4.3.1"         # github.com/helm/helm/releases
 helm_diff_version:           "3.15.15"        # github.com/databus23/helm-diff/releases + checksum below
 helm_diff_sha256:            "504e99410611daa70702362e1b10dc74929df8a912cb3f6b5d21d1ee9d0cb7d9"
-calico_version:              "v3.33.0"        # ONLY so common_calico can name the objects it deletes (Calico removed 2026-10-19, see notes)
 ingress_nginx_chart_version: "2.8.0"          # F5 nginx-ingress chart, helm.nginx.com/stable index.yaml
 cert_manager_chart_version:  "1.21.2"         # charts.jetstack.io index.yaml (listed there as v1.21.2)
 kube_state_metrics_image:    "registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.20.0"  # github.com/kubernetes/kube-state-metrics/releases
@@ -100,36 +99,6 @@ nextcloud_mariadb_repo_version: "10.11"   # MariaDB Community repo series on the
 #   shipped a malicious build (GHSA-69fq-xp46-6x23). Update only to a
 #   release that is at least two weeks old, copy the sha256 from the
 #   release's checksums file.
-#
-# calico_version
-#   2026-10-19 REMOVED: Calico never enforced anything here (Felix only matches
-#   cali* interfaces, K3s's Flannel creates veth*); the NetworkPolicies are
-#   enforced by K3s's own controller. The pin stays only because common_calico
-#   renders the old template to delete exactly those objects. History below
-#   describes what was believed at the time.
-#   "Policy-only" mode (common_calico): only Felix + kube-controllers, reading
-#   Pod/NetworkPolicy objects straight from the Kubernetes API. K3s's built-in
-#   Flannel keeps doing all pod networking/IPAM/CNI duties - Calico only adds
-#   NetworkPolicy enforcement, which Flannel alone silently ignores (verified
-#   live: a deny-all policy had zero effect before Calico was installed).
-#   The manifest in common_calico/templates is vendored and only its image
-#   tags are templated, so a bump swaps images while the manifest structure
-#   stays at the version it was derived from. Fine for a patch release with no
-#   CRD or RBAC changes - re-derive the manifest for a minor or major bump
-#   instead of just moving this string.
-#   The template is GENERATED: scripts/calico-derive-manifest.py <version>
-#   re-derives it from upstream canal.yaml for every minor/major bump (a patch
-#   bump may stay a string change if upstream's manifest did not change).
-#   2026-10-19 v3.32.2 -> v3.33.0: manifest re-derived with the new script.
-#   kube-controllers now runs from the single quay.io/calico/calico image
-#   ("component kube-controllers"); calico-node keeps quay.io/calico/node. Also
-#   fixes the 'unknown field "status"' tier warnings upstream (calico#13082),
-#   so our tiers CRD addition is gone; picks up upstream RBAC that the old
-#   hand-derived manifest lacked (bgpconfigurations/bgppeers create/update).
-#   2026-09-13 v3.32.1 -> v3.32.2: bugfix/CVE release. Two fixes matter here: a
-#   panic in kube-controllers when the informer delivers a tombstone to a
-#   delete handler, and IP-set programming errors in nftables mode - both
-#   components this host actually runs.
 #
 # ingress_nginx_chart_version
 #   2026-10-16 2.7.3 -> 2.8.0 (controller 5.6.3 -> 5.7.0): security hardening

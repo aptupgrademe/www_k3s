@@ -4,8 +4,8 @@
 # =============================================================================
 # Enforced by K3s's embedded network policy controller (kube-router, on by
 # default - never set disable-network-policy). Calico, which these comments
-# used to name, enforced nothing here and was removed 2026-10-19 (see
-# common_calico); Flannel alone would indeed ignore NetworkPolicies.
+# used to name, enforced nothing here and was removed 2026-10-19 (see the
+# README, NetworkPolicy); Flannel alone would indeed ignore NetworkPolicies.
 #
 # Uses THE K8S APPLY PATTERN (explained in common_k3s/tasks/main.yml): the
 # template is rendered on the controller, parsed into objects and applied via

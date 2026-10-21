@@ -1,5 +1,5 @@
 ---
-# Runs the Kubernetes-facing task files of common_k3s, common_calico, common_kube_metrics,
+# Runs the Kubernetes-facing task files of common_k3s, common_kube_metrics,
 # blog_k3s_deploy and next_k3s_deploy against the API-only test cluster.
 # Started by run.sh, which sets ANSIBLE_ROLES_PATH (old or new roles) and
 # passes WORK / overrides via -e.
@@ -27,8 +27,6 @@
       ansible.builtin.include_role: { name: common_k3s, tasks_from: default_sa_hardening.yml }
     - name: CoreDNS custom imports
       ansible.builtin.include_role: { name: common_k3s, tasks_from: coredns_custom.yml }
-    - name: Calico
-      ansible.builtin.include_role: { name: common_calico }
     - name: Container metrics
       ansible.builtin.include_role: { name: common_kube_metrics }
       # new since 2026-10-19: an older <BASE_REF> tree does not have it yet

@@ -414,7 +414,7 @@ Historie je Eintrag.</p>
   <li>Pakete, SSH, Firewall, sysctl, CIS-Härtung – die Basis, bevor irgendetwas lauscht.</li>
   <li><code>common_selinux</code> <em>vor</em> dem Deploy – die HostPath-Verzeichnisse brauchen ihr SELinux-Label, bevor
     ein Container sie benutzt.</li>
-  <li><code>common_k3s</code> (<code>common_calico</code> entfernt nur noch Calico), dann das Deploy der Anwendung (<code>blog_k3s_deploy</code>
+  <li><code>common_k3s</code>, dann das Deploy der Anwendung (<code>blog_k3s_deploy</code>
     bzw. <code>next_k3s_deploy</code>). Die Pods starten im Hintergrund.</li>
   <li>Monitoring, fail2ban, Mail, automatische Updates, rkhunter, ClamAV, auditd, Monit – laufen, während die Pods
     hochfahren (spart Minuten).</li>
@@ -481,7 +481,6 @@ Profil:</p>
   <tr><td><code>common_selinux</code></td><td>beide</td><td>SELinux enforcing, Labels für HostPath-Verzeichnisse</td></tr>
   <tr><td><code>next_mariadb</code>, <code>next_redis</code></td><td>Nextcloud</td><td>Datenbank und Cache auf dem Host</td></tr>
   <tr><td><code>common_k3s</code></td><td>beide</td><td>K3s, Helm, cert-manager, F5 nginx-ingress, ServiceAccount-Härtung</td></tr>
-  <tr><td><code>common_calico</code></td><td>beide</td><td>entfernt Calico – es hat hier nie etwas durchgesetzt; die NetworkPolicies setzt der Policy-Controller von K3s durch</td></tr>
   <tr><td><code>common_kube_metrics</code></td><td>beide</td><td>Container-Metriken: cAdvisor (im Kubelet) und kube-state-metrics für Prometheus</td></tr>
   <tr><td><code>blog_k3s_deploy</code> / <code>next_k3s_deploy</code></td><td>je</td><td>Kubernetes-Objekte der Anwendung (Deployments, Secrets, Ingress, CronJobs, Policies)</td></tr>
   <tr><td><code>common_node_exporter</code>, <code>common_prometheus</code>, <code>common_grafana</code>, <code>common_mysqld_exporter</code></td><td>beide / Nextcloud</td><td>Monitoring, nur lokal erreichbar, Grafana per Ingress</td></tr>
@@ -583,13 +582,6 @@ Ausführlicher, Task für Task, steht es als Kommentar am Anfang jeder Datei unt
 Die mitgelieferten K3s-Bausteine, die hier keiner braucht (Traefik, ServiceLB, local-storage), sind abgeschaltet.
 <strong>Warum:</strong> Das ist die Plattform, auf der Blog und Nextcloud laufen. Was nicht läuft, kann auch nicht angegriffen werden.</p>
 <p class="wie"><strong>Wie:</strong> installierte Version lesen (<code>register</code>) → Binary nur laden, wenn sie von <code>k3s_version</code> abweicht (<code>get_url force: true … when</code>, <code>notify</code>) → Neustart sofort (<code>flush_handlers</code>) → warten, bis die API antwortet (<code>until</code>) → Helm genauso → helm-diff nur laden, wenn die Version von <code>helm_diff_version</code> abweicht (Prüfsumme in <code>get_url</code>) → Charts installieren (<code>kubernetes.core.helm</code> ändert nur bei anderer Chart-Version oder anderen Werten).</p>
-</div>
-
-<div class="rolle">
-<p><strong><code>common_calico</code></strong> (beide)</p>
-<p><strong>Was:</strong> Seit dem 19.10.2026 <em>entfernt</em> sie Calico: die Objekte im Cluster (dieselbe Vorlage, <code>state: absent</code>) und das, was Felix auf dem Host hinterlässt (<code>files/calico-cleanup.sh</code>).
-<strong>Warum:</strong> Calico lief im Policy-Modus, um die NetworkPolicies durchzusetzen, aber Felix erkennt Pods nur an Schnittstellen namens <code>cali*</code>, und das Flannel von K3s legt <code>veth*</code> an – es hat nie etwas durchgesetzt. Die Policies setzt der eingebaute Controller von K3s (kube-router) durch, getestet mit einem Pod aus einem fremden Namespace.</p>
-<p class="wie"><strong>Wie:</strong> das K8s-Apply-Muster (jetzt in <code>common_k3s</code> erklärt, von 26 Tasks genutzt) mit <code>state: absent</code> → warten, bis kein <code>calico-node</code>-Pod mehr da ist (<code>k8s_info</code> + <code>until</code>) → das Aufräumskript entfernt nur Calicos Regeln, Ketten, IP-Sets und die Tabelle <code>calico-arp</code> und gibt pro Objekt eine Zeile aus, die <code>changed_when</code> auswertet.</p>
 </div>
 
 <div class="rolle">
