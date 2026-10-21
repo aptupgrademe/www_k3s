@@ -214,6 +214,12 @@ data:
     memory_limit        = 512M
     max_execution_time  = 300
 
+    ; --- PHP RCE CVE-2026-109618/109619 (2026-10-21) ---
+    ; Upload progress in the session is one of the two paths confirmed as
+    ; exploitable under PHP-FPM (GHSA-6wmf-4rv5-p3rp). WordPress does not use
+    ; it; the advisory recommends keeping it off even after the fix.
+    session.upload_progress.enabled = Off
+
     ; --- Realpath cache (avoid repeated filesystem lookups) ---
     realpath_cache_size = 4096K
     realpath_cache_ttl  = 3600

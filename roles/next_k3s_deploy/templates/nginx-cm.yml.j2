@@ -184,6 +184,17 @@ metadata:
   namespace: nextcloud
 data:
   opcache.ini: |
+    ; --- PHP RCE CVE-2026-109618/109619 (2026-10-21) ---
+    ; Upload progress in the session is one of the two paths confirmed as
+    ; exploitable under PHP-FPM (GHSA-6wmf-4rv5-p3rp). Nextcloud uploads in
+    ; chunks via JavaScript and does not use it; the advisory recommends
+    ; keeping it off even after the fix.
+    session.upload_progress.enabled = Off
+
+    ; PHP 8.5: fatal-error backtraces are the other confirmed path; they only
+    ; add a stack trace to fatal error messages.
+    fatal_error_backtraces = Off
+
     ; --- Realpath cache (avoid repeated filesystem lookups) ---
     realpath_cache_size = 4096K
     realpath_cache_ttl  = 3600
