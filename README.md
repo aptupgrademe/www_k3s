@@ -138,7 +138,7 @@ Internet
 - `table inet` ruleset covering IPv4 and IPv6 in one ruleset
 - Default **DROP policy** on INPUT and FORWARD
 - Whitelist-only: SSH (port 10022), HTTP (80), HTTPS (443), ICMP rate-limited
-- `banned4` / `banned6` nftables sets with native timeout (filled by Fail2Ban)
+- One nftables set pair per Fail2Ban jail (`f2b_<jail>4/6`, since 2026-10-21 - with one shared set, a short unban lifted the longer bans of other jails) plus `banned4` / `banned6` for manual bans, all with native timeout; Monit check `f2b_sets` compares fail2ban with the sets
 - **Port-scan ban** in the kernel: a source that keeps knocking on closed ports
   lands in `scanban4` / `scanban6` and is dropped on *all* ports for a while.
   Fail2Ban can't do this, because it only sees logs and the drop log is

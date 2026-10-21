@@ -32,6 +32,23 @@ blog_k3s_db_dir: /srv/wordpress-db
 # /wp-admin/ then answer 403 to addresses outside those countries.
 blog_admin_geo_dir: /srv/wordpress-admin-geo
 
+# fail2ban -> nftables: ONE set pair per jail, f2b_<name>4 / f2b_<name>6
+# (common_firewall creates the sets and the drop rules, common_fail2ban points
+# each jail's action at its own set). Until 2026-10-21 all jails shared
+# banned4/banned6: when two jails banned the same address (a scanner hits
+# bad-paths for 24 h and scanner for 1 h), the first unban DELETED it from the
+# shared set although the other ban was still running - 1 to 5 addresses per
+# host were "banned" in fail2ban but let through by the firewall, and recidive's
+# 30-day bans could end after a day. banned4/banned6 stay for manual bans.
+fail2ban_nft_jails:
+  sshd: sshd
+  nginx-k3s-wp-login: wp_login
+  nginx-k3s-nc-login: nc_login
+  nginx-k3s-grafana-login: grafana_login
+  nginx-k3s-scanner: scanner
+  nginx-k3s-bad-paths: bad_paths
+  recidive: recidive
+
 # HostPath directory for the same country list in the ingress controller
 # (every host, since 2026-10-20): /grafana answers 403 outside those
 # countries. Mounted read-only into the nginx-ingress DaemonSet (common_k3s).

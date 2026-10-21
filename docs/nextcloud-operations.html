@@ -2404,7 +2404,7 @@ systemctl stop ssh-login-alert.timer ; systemctl start ssh-login-alert.timer</co
         24h auto-expiry. fail2ban writes detected attackers directly into these sets.
         Every nftables reload recreates the table and empties the sets, so a handler restarts fail2ban
         afterwards and it re-applies its active bans from its database.
-        Check: <code>nft list set inet filter banned4</code></td>
+        Since 2026-10-21 every jail has its own set pair <code>f2b_&lt;jail&gt;4</code>/<code>6</code>: an unban only lifts that jail's ban (with the shared sets, the 1-hour scanner unban lifted 24-hour and 30-day bans of the same address). Monit's <code>f2b_sets</code> check compares fail2ban with the sets; <code>banned4</code>/<code>6</code> remain for manual bans. Check: <code>/usr/local/sbin/monit-check-f2b-sets.sh</code></td>
   </tr>
   <tr>
     <td>Port-scan ban</td>
@@ -2465,6 +2465,7 @@ nft list ruleset
 # Show blocklists
 nft list set inet filter banned4
 nft list set inet filter banned6
+nft list sets inet filter | grep "set f2b_"   # one set pair per fail2ban jail (since 2026-10-21)
 nft list set inet filter scanban4      # port-scan bans (1 h)
 
 # Lift a port-scan ban (e.g. after testing from your own IP)

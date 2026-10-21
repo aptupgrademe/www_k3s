@@ -36,9 +36,11 @@ findtime = {{ fail2ban_findtime }}
 maxretry = {{ fail2ban_maxretry }}
 backend  = systemd
 
-# Custom action: writes to nftables banned4 (IPv4) or banned6 (IPv6) - the
-# set is chosen per address family in action.d/nftables-banned-sets.conf.
-# Do not pass nftset= here: it would override both families.
+# Custom action: each jail below writes to its OWN set pair f2b_<name>4/6
+# (action = nftables-banned-sets[setname=...], names from fail2ban_nft_jails
+# in group_vars); the family is chosen in action.d/nftables-banned-sets.conf.
+# Do not pass nftset= here: it would override both families. banaction stays
+# as the fallback for a jail added without its own action line (banned4/6).
 banaction     = nftables-banned-sets
 banaction_allports = nftables-banned-sets
 
@@ -51,6 +53,7 @@ ignoreip = 127.0.0.1/8 ::1 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16{% if fail2ban
 # -----------------------------------------------------------------------------
 [sshd]
 enabled  = true
+action   = nftables-banned-sets[setname=f2b_{{ fail2ban_nft_jails['sshd'] }}]
 port     = {{ ansible_port | default(10022) }}
 logpath  = %(sshd_log)s
 backend  = systemd
@@ -66,6 +69,7 @@ maxretry = 3
 # -----------------------------------------------------------------------------
 [nginx-k3s-wp-login]
 enabled  = true
+action   = nftables-banned-sets[setname=f2b_{{ fail2ban_nft_jails['nginx-k3s-wp-login'] }}]
 port     = 80,443
 filter   = nginx-k3s-wp-login
 logpath  = /var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/*.log
@@ -83,6 +87,7 @@ findtime = 600
 # -----------------------------------------------------------------------------
 [nginx-k3s-nc-login]
 enabled  = true
+action   = nftables-banned-sets[setname=f2b_{{ fail2ban_nft_jails['nginx-k3s-nc-login'] }}]
 port     = 80,443
 filter   = nginx-k3s-nc-login
 logpath  = /var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/*.log
@@ -105,6 +110,7 @@ findtime = 600
 # -----------------------------------------------------------------------------
 [nginx-k3s-grafana-login]
 enabled  = true
+action   = nftables-banned-sets[setname=f2b_{{ fail2ban_nft_jails['nginx-k3s-grafana-login'] }}]
 port     = 80,443
 filter   = nginx-k3s-grafana-login
 logpath  = /var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/*.log
@@ -121,6 +127,7 @@ findtime = 600
 # -----------------------------------------------------------------------------
 [nginx-k3s-scanner]
 enabled  = true
+action   = nftables-banned-sets[setname=f2b_{{ fail2ban_nft_jails['nginx-k3s-scanner'] }}]
 port     = 80,443
 filter   = nginx-k3s-scanner
 logpath  = /var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/*.log
@@ -137,6 +144,7 @@ findtime = 60
 # -----------------------------------------------------------------------------
 [nginx-k3s-bad-paths]
 enabled  = true
+action   = nftables-banned-sets[setname=f2b_{{ fail2ban_nft_jails['nginx-k3s-bad-paths'] }}]
 port     = 80,443
 filter   = nginx-k3s-bad-paths
 logpath  = /var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/*.log
@@ -156,7 +164,7 @@ bantime  = 86400
 enabled   = true
 filter    = recidive
 logpath   = /var/log/fail2ban.log
-banaction = nftables-banned-sets
+action    = nftables-banned-sets[setname=f2b_{{ fail2ban_nft_jails['recidive'] }}]
 backend   = polling
 bantime   = 2592000
 findtime  = 86400

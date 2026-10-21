@@ -8,7 +8,7 @@ Deploys a hardened nftables firewall ruleset on AlmaLinux 9.
 - Enables and starts the `nftables` systemd service
 - Uses `table inet` – a single ruleset covering both IPv4 and IPv6
 - Default policy: **DROP** on INPUT, OUTPUT, and FORWARD
-- Creates native nftables sets `banned4` (IPv4) and `banned6` (IPv6) with automatic timeout-based expiry; fail2ban writes banned IPs directly into these sets
+- Creates one native nftables set pair per fail2ban jail (`f2b_<jail>4/6`, list `fail2ban_nft_jails` in group_vars, since 2026-10-21) plus `banned4`/`banned6` for manual bans, all with timeout-based expiry; each jail writes and unbans only in its own sets
 - Drops malformed packets (XMAS, NULL), rate-limits RST floods, and rate-limits ICMP/ICMPv6
 
 ## Ports open by default

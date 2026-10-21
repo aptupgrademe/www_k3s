@@ -36,6 +36,27 @@ table inet filter {
   }
 
   # ---------------------------------------------------------------------------
+  # fail2ban: one set pair per jail (fail2ban_nft_jails, group_vars). Each jail
+  # adds AND removes only in its own set, so the unban of one jail can no
+  # longer lift another jail's ban on the same address (until 2026-10-21 all
+  # jails shared banned4/6, see group_vars). Every element carries the jail's
+  # bantime as its own timeout.
+  # ---------------------------------------------------------------------------
+{% for jail, short in fail2ban_nft_jails | dictsort %}
+  set f2b_{{ short }}4 {
+    type ipv4_addr
+    flags timeout
+    comment "fail2ban jail {{ jail }} (IPv4)"
+  }
+
+  set f2b_{{ short }}6 {
+    type ipv6_addr
+    flags timeout
+    comment "fail2ban jail {{ jail }} (IPv6)"
+  }
+
+{% endfor %}
+  # ---------------------------------------------------------------------------
   # Port-scan detection (see the end of the input chain). portscanN holds
   # per-source SYN-rate counters for closed ports, scanbanN the 1-hour bans.
   # Lift a ban: nft delete element inet filter scanban4 { 1.2.3.4 }
@@ -122,6 +143,10 @@ table inet filter {
     # Blocklist check (before K3s ACCEPT rules so banned IPs are always dropped)
     ip  saddr @banned4 drop
     ip6 saddr @banned6 drop
+{% for short in fail2ban_nft_jails.values() | sort %}
+    ip  saddr @f2b_{{ short }}4 drop
+    ip6 saddr @f2b_{{ short }}6 drop
+{% endfor %}
     ip  saddr @scanban4 drop
     ip6 saddr @scanban6 drop
 
@@ -283,6 +308,10 @@ table inet filter {
     # Blocklist check on forwarded traffic
     ip  saddr @banned4 drop
     ip6 saddr @banned6 drop
+{% for short in fail2ban_nft_jails.values() | sort %}
+    ip  saddr @f2b_{{ short }}4 drop
+    ip6 saddr @f2b_{{ short }}6 drop
+{% endfor %}
     ip  saddr @scanban4 drop
     ip6 saddr @scanban6 drop
 

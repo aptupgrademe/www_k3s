@@ -21,6 +21,13 @@ check process fail2ban with pidfile /run/fail2ban/fail2ban.pid
     if does not exist then restart
     if 3 restarts within 5 cycles then timeout
 
+# --- every fail2ban ban really in the firewall (since 2026-10-21) ---
+# fail2ban's own view and the nftables sets can drift apart (shared-set
+# unbans until 2026-10-21, or a reload that emptied the sets). Two cycles, so
+# a ban being applied at that very moment is not an alert.
+check program f2b_sets with path "/usr/local/sbin/monit-check-f2b-sets.sh"
+    if status != 0 for 2 cycles then alert
+
 # --- Other critical services: alert on state change (no auto-restart) ---
 {% for svc in monit_present_services %}
 check program svc_{{ svc | replace('-', '_') }} with path "/usr/local/sbin/monit-check-service.sh {{ svc }}"

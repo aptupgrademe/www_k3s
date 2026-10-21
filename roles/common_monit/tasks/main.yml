@@ -90,6 +90,7 @@
     - monit-check-pods.sh
     - monit-check-certs.sh
     - monit-check-f2b-jails.sh
+    - monit-check-f2b-sets.sh
 
 # Monit refuses to start if its control file is readable by anyone but
 # its owner - hence 0600, which also protects the SMTP password inside.

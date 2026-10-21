@@ -14,12 +14,21 @@
 # logged "Ban", but the firewall never blocked the address.
 # =============================================================================
 
+#
+# <setname> is passed per jail in jail.local (action = nftables-banned-sets
+# [setname=f2b_<name>]): every jail has its own set pair since 2026-10-21, so
+# an unban removes the address only from that jail's set. With one shared set
+# the 1-hour scanner unban lifted the 24-hour bad-paths ban of the same
+# address, and every short ban could end a 30-day recidive ban.
+# =============================================================================
+
 [Definition]
 actionban   = nft add element inet filter <nftset> { <ip> timeout <bantime>s }
 actionunban = nft delete element inet filter <nftset> { <ip> } 2>/dev/null; true
 
 [Init]
-nftset = banned4
+setname = banned
+nftset = <setname>4
 
 [Init?family=inet6]
-nftset = banned6
+nftset = <setname>6

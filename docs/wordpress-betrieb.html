@@ -2717,7 +2717,7 @@ systemctl stop ssh-login-alert.timer ; systemctl start ssh-login-alert.timer</co
         24h Auto-Expiry. fail2ban schreibt erkannte Angreifer direkt in diese Sets.
         Jeder nftables-Reload legt die Tabelle neu an und leert dabei die Sets; ein Handler startet
         fail2ban danach neu, das die aktiven Sperren aus seiner Datenbank wieder einträgt.
-        Prüfen: <code>nft list set inet filter banned4</code></td>
+        Seit 21.10.2026 hat jedes Jail ein eigenes Set-Paar <code>f2b_&lt;jail&gt;4</code>/<code>6</code>: Eine Entsperrung hebt nur die Sperre dieses Jails auf (mit den gemeinsamen Sets hob die 1-Stunden-Entsperrung des Scanner-Jails 24-Stunden- und 30-Tage-Sperren derselben Adresse mit auf). Der Monit-Check <code>f2b_sets</code> gleicht fail2ban mit den Sets ab; <code>banned4</code>/<code>6</code> bleiben für manuelle Sperren. Prüfen: <code>/usr/local/sbin/monit-check-f2b-sets.sh</code></td>
   </tr>
   <tr>
     <td>Portscan-Sperre</td>
@@ -2780,6 +2780,7 @@ nft list ruleset
 # Blocklists anzeigen
 nft list set inet filter banned4
 nft list set inet filter banned6
+nft list sets inet filter | grep "set f2b_"   # one set pair per fail2ban jail (since 2026-10-21)
 nft list set inet filter scanban4      # Portscan-Sperren (1 h)
 
 # Portscan-Sperre aufheben (z. B. nach einem Test von der eigenen IP)
