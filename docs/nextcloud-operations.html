@@ -973,7 +973,7 @@ k3s kubectl exec -n nextcloud deployment/nextcloud -c nextcloud-fpm -- \
   preview silently and the apps get a 404. <code>enabledPreviewProviders</code> adds HEIC (iPhone photos, via
   imagick). Setting this key <strong>replaces</strong> the built-in default list instead of extending it, so the
   Nextcloud 34 defaults (MarkDown, TXT, OpenDocument, PNG, JPEG, GIF, BMP, XBitmap, Krita, WebP) are repeated there.
-  Videos would additionally need ffmpeg in the image.
+  Videos would additionally need ffmpeg in the image. Since 2026-10-21 previews are at most 2048&nbsp;px (<code>nextcloud_preview_max</code>, was 4096) with JPEG quality 70 (<code>nextcloud_preview_jpeg_quality</code>, app config <code>preview jpeg_quality</code>, was 80) – roughly half the space. After a change: <code>occ preview:cleanup</code> (never <code>rm</code>, previews live in the database since NC 32) and regenerate.
 </p>
 <div class="callout callout-info">
   <strong>Config changes restart the pod once (checksum annotation)</strong>
@@ -1017,7 +1017,7 @@ k3s kubectl exec -n nextcloud deployment/nextcloud -c nextcloud-fpm -- \
 <div class="callout callout-success">
   <strong>Deployment Verification (nextcloud_verify)</strong>
   At the end of <code>nextcloud-k3s.yml</code> the role <code>nextcloud_verify</code>
-  automatically runs 33 smoke tests: services, K8s pods, HTTPS reachability, security headers,
+  automatically runs 34 smoke tests: services, K8s pods, HTTPS reachability, security headers,
   Nextcloud status. Only critical failures (firewall, K3s, pods, HTTPS/TLS …) stop the play; the others are listed in the report and the mail. Afterwards <code>common_version_active</code> (since 2026-10-19) checks that every version from <code>versions.yml</code> is really running: kubelet, deployed charts, images of running containers, Prometheus and exporters, pending reboot, services on old code. It reports only what is not active yet and never stops the play.
 </div>
 
@@ -1133,7 +1133,7 @@ redis-cli FLUSHALL</code></pre>
     <div class="label">Grafana</div>
     <div class="value"><code>https://nextcloud.*/grafana/</code></div>
     <p style="margin-top:8px;font-size:13px;color:var(--muted)">
-      Dashboards: Node Exporter Full (1860), MySQL Overview (7362), PHP-FPM (4912), Container-Ressourcen (our own, since 2026-10-19)<br>
+      Dashboards: Node Exporter Full (1860), MySQL Overview (7362), PHP-FPM (4912), Container-Ressourcen (our own, since 2026-10-19), fail2ban – Bans (Loki, since 2026-10-21)<br>
       Login: Grafana admin password from vault.yml
     </p>
   </div>
@@ -1338,16 +1338,23 @@ k3s kubectl logs -n nextcloud deployment/nextcloud -c nextcloud-fpm -f | grep -i
 
 <h3>Grafana Alerting</h3>
 <p>
-  Grafana is set up with 5 pre-configured alert rules and an email contact point
+  Grafana is set up with 12 pre-configured alert rules (plus the log alerts from <code>common_loki</code>) and an email contact point
   (configured by <code>common_grafana</code>, SMTP credentials from <code>common_msmtp</code>):
 </p>
 <table>
-  <tr><th>Alert Rule</th><th>Threshold</th><th>Description</th></tr>
-  <tr><td>Disk root &gt; 80 %</td><td>80 %</td><td>Root filesystem utilization</td></tr>
-  <tr><td>Data partition &gt; 80 %</td><td>80 %</td><td>Utilization of /srv or /var</td></tr>
-  <tr><td>RAM &gt; 90 %</td><td>90 %</td><td>Host RAM utilization</td></tr>
-  <tr><td>CPU &gt; 85 %</td><td>85 %</td><td>CPU utilization (5-minute average)</td></tr>
-  <tr><td>Node Exporter unreachable</td><td>–</td><td>Node Exporter is not responding</td></tr>
+  <tr><th>Alert rule</th><th>Threshold</th><th>Description</th></tr>
+  <tr><td>Festplatte root &gt; 80 %</td><td>80 %</td><td>Root filesystem usage</td></tr>
+  <tr><td>Daten-Partition &gt; 80 %</td><td>80 %</td><td>Usage of /srv or /var</td></tr>
+  <tr><td>Arbeitsspeicher &gt; 90 %</td><td>90 %</td><td>Host RAM usage</td></tr>
+  <tr><td>CPU-Last &gt; 85 %</td><td>85 %</td><td>CPU usage (5-minute average)</td></tr>
+  <tr><td>Node Exporter nicht erreichbar</td><td>–</td><td>Node Exporter is not responding</td></tr>
+  <tr><td>Container-Speicher &gt; 90 % vom Limit</td><td>90 %</td><td>a container close to its memory limit (OOM kill ahead)</td></tr>
+  <tr><td>Container-CPU gedrosselt &gt; 50 %</td><td>50 %</td><td>a container throttled in more than half of its periods</td></tr>
+  <tr><td>Container OOM-Kill</td><td>&gt; 0</td><td>a container was killed for lack of memory (15 min)</td></tr>
+  <tr><td>Container startet wiederholt neu</td><td>&gt; 2</td><td>more than two restarts in 15 min (crash loop)</td></tr>
+  <tr><td>PHP-FPM: Anfragen warten</td><td>&gt; 0</td><td>the listen queue stays non-empty for 5 min – pm.max_children too small (since 2026-10-21)</td></tr>
+  <tr><td>Trivy-Scan veraltet</td><td>36 h</td><td>the nightly scan did not run</td></tr>
+  <tr><td>Trivy-Scan fehlgeschlagen</td><td>–</td><td>the database or an image could not be scanned</td></tr>
 </table>
 <p>
   Notifications are sent to the address stored in <code>vault.yml</code> (<code>email</code>)
@@ -2400,8 +2407,7 @@ systemctl stop ssh-login-alert.timer ; systemctl start ssh-login-alert.timer</co
   </tr>
   <tr>
     <td>Dynamic blocklists</td>
-    <td>Native nftables sets (<code>banned4</code> / <code>banned6</code>) with
-        24h auto-expiry. fail2ban writes detected attackers directly into these sets.
+    <td>Native nftables sets with auto-expiry. fail2ban writes detected attackers directly into the sets of its jail (<code>f2b_&lt;jail&gt;4</code>/<code>6</code>, expiry = the jail's ban time); <code>banned4</code>/<code>banned6</code> (24 h) remain for manual bans.
         Every nftables reload recreates the table and empties the sets, so a handler restarts fail2ban
         afterwards and it re-applies its active bans from its database.
         Since 2026-10-21 every jail has its own set pair <code>f2b_&lt;jail&gt;4</code>/<code>6</code>: an unban only lifts that jail's ban (with the shared sets, the 1-hour scanner unban lifted 24-hour and 30-day bans of the same address). Monit's <code>f2b_sets</code> check compares fail2ban with the sets; <code>banned4</code>/<code>6</code> remain for manual bans. Check: <code>/usr/local/sbin/monit-check-f2b-sets.sh</code></td>
@@ -2463,9 +2469,9 @@ journalctl -k -f --grep "nftables DROP"
 nft list ruleset
 
 # Show blocklists
-nft list set inet filter banned4
-nft list set inet filter banned6
-nft list sets inet filter | grep "set f2b_"   # one set pair per fail2ban jail (since 2026-10-21)
+nft list sets inet filter | grep "set f2b_"   # fail2ban: one set pair per jail
+nft list set inet filter f2b_sshd4      # e.g. the SSH jail
+nft list set inet filter banned4       # manual bans only (24 h)
 nft list set inet filter scanban4      # port-scan bans (1 h)
 
 # Lift a port-scan ban (e.g. after testing from your own IP)

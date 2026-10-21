@@ -463,7 +463,7 @@ and Nextcloud need the same thing with different values, <code>stack</code> sele
   <tr><th>Role</th><th>Selector</th><th>What the profile defines</th></tr>
   <tr><td><code>common_clamav</code></td><td><code>clamav_profiles[stack]</code></td><td>scan directory, excludes, skip media, time</td></tr>
   <tr><td><code>common_selinux</code></td><td><code>selinux_profiles[stack]</code></td><td>HostPath directories with owner and mode</td></tr>
-  <tr><td><code>common_verify</code></td><td>imported via <code>import_role … tasks_from</code></td><td>16 shared checks; the application-specific ones stay in <code>blog_verify</code> / <code>nextcloud_verify</code></td></tr>
+  <tr><td><code>common_verify</code></td><td>imported via <code>import_role … tasks_from</code></td><td>17 shared checks; the application-specific ones stay in <code>blog_verify</code> / <code>nextcloud_verify</code></td></tr>
   <tr><td><code>common_image_refresh</code></td><td><code>image_refresh_namespace</code></td><td>which Deployments have a rebuilt image (for the update playbooks)</td></tr>
 </table>
 
@@ -489,7 +489,7 @@ and Nextcloud need the same thing with different values, <code>stack</code> sele
   <tr><td><code>blog_wordpress</code> / <code>next_config</code></td><td>each</td><td>settings inside the application via wp-cli or occ</td></tr>
   <tr><td><code>blog_verify</code> / <code>nextcloud_verify</code> (+ <code>common_verify</code>)</td><td>each</td><td>smoke tests, report, e-mail, hard check of critical items</td></tr>
   <tr><td><code>common_version_active</code></td><td>both</td><td>are the pinned versions running (kubelet, charts, container images, reboot)?</td></tr>
-  <tr><td><code>common_loki</code></td><td>both</td><td>Loki + Grafana Alloy: journal, pod logs, audit/fail2ban log (14 days, local only), log alerts</td></tr>
+  <tr><td><code>common_loki</code></td><td>both</td><td>Loki + Grafana Alloy: journal, pod logs, audit/fail2ban log (14 days, local only), log alerts, dashboard "fail2ban – Bans"</td></tr>
   <tr><td><code>common_trivy</code></td><td>both</td><td>nightly Trivy scan of all running images, Grafana metrics, mail on new fixable findings</td></tr>
   <tr><td><code>common_selinux_monitoring</code></td><td>both</td><td>own SELinux domains for Prometheus, the exporters and Grafana (permissive learning phase first)</td></tr>
   <tr><td><code>common_aide_refresh</code></td><td>both</td><td>refresh the AIDE baseline if anything changed</td></tr>

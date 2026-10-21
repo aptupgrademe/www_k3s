@@ -1054,7 +1054,7 @@ k3s kubectl exec -n wordpress deployment/mariadb -- \
 <div class="callout callout-success">
   <strong>Deployment-Verification (blog_verify)</strong>
   Am Ende von <code>blog.yml</code> führt die Rolle <code>blog_verify</code> automatisch
-  26 Smoke-Tests durch: Dienste, K8s-Pods, HTTPS-Erreichbarkeit, Security-Header,
+  27 Smoke-Tests durch: Dienste, K8s-Pods, HTTPS-Erreichbarkeit, Security-Header,
   Performance-Prüfungen. Nur kritische Fehlschläge (Firewall, K3s, Pods, HTTPS/TLS …) brechen das Play ab, die übrigen stehen im Bericht und in der Mail. Danach prüft <code>common_version_active</code> (seit 19.10.2026), ob jede Version aus <code>versions.yml</code> wirklich läuft: Kubelet, installierte Charts, Images der laufenden Container, Prometheus und Exporter, ausstehender Reboot, Dienste mit altem Code. Es meldet nur, was noch nicht aktiv ist, und bricht nicht ab.
 </div>
 
@@ -1168,7 +1168,7 @@ k3s kubectl describe certificate wordpress-tls -n wordpress</code></pre>
     <div class="label">Grafana</div>
     <div class="value"><code>https://www.apt-upgrade.me/grafana/</code></div>
     <p style="margin-top:8px;font-size:13px;color:var(--muted)">
-      Dashboards: Node Exporter Full (1860), MySQL Overview (7362), PHP-FPM (4912), Container-Ressourcen (eigenes, seit 19.10.2026)<br>
+      Dashboards: Node Exporter Full (1860), MySQL Overview (7362), PHP-FPM (4912), Container-Ressourcen (eigenes, seit 19.10.2026), fail2ban – Bans (Loki, seit 21.10.2026)<br>
       Login: Grafana-Admin-Passwort aus vault.yml
     </p>
   </div>
@@ -1382,16 +1382,23 @@ k3s kubectl logs -n wordpress deployment/wordpress -c wordpress-fpm -f | grep -i
 
 <h3>Grafana Alerting</h3>
 <p>
-  Grafana ist mit 5 vorkonfigurierten Alert-Rules und einem E-Mail-Kontaktpunkt eingerichtet
+  Grafana ist mit 12 vorkonfigurierten Alert-Rules (dazu die Log-Alarme aus <code>common_loki</code>) und einem E-Mail-Kontaktpunkt eingerichtet
   (konfiguriert durch <code>common_grafana</code>, SMTP-Credentials aus <code>common_msmtp</code>):
 </p>
 <table>
   <tr><th>Alert-Rule</th><th>Schwellwert</th><th>Beschreibung</th></tr>
-  <tr><td>Disk root &gt; 80 %</td><td>80 %</td><td>Füllstand des Root-Dateisystems</td></tr>
-  <tr><td>Data partition &gt; 80 %</td><td>80 %</td><td>Füllstand von /srv oder /var</td></tr>
-  <tr><td>RAM &gt; 90 %</td><td>90 %</td><td>RAM-Auslastung des Hosts</td></tr>
-  <tr><td>CPU &gt; 85 %</td><td>85 %</td><td>CPU-Auslastung (5-Minuten-Schnitt)</td></tr>
-  <tr><td>Node Exporter unreachable</td><td>–</td><td>Node Exporter antwortet nicht mehr</td></tr>
+  <tr><td>Festplatte root &gt; 80 %</td><td>80 %</td><td>Füllstand des Root-Dateisystems</td></tr>
+  <tr><td>Daten-Partition &gt; 80 %</td><td>80 %</td><td>Füllstand von /srv oder /var</td></tr>
+  <tr><td>Arbeitsspeicher &gt; 90 %</td><td>90 %</td><td>RAM-Auslastung des Hosts</td></tr>
+  <tr><td>CPU-Last &gt; 85 %</td><td>85 %</td><td>CPU-Auslastung (5-Minuten-Schnitt)</td></tr>
+  <tr><td>Node Exporter nicht erreichbar</td><td>–</td><td>Node Exporter antwortet nicht mehr</td></tr>
+  <tr><td>Container-Speicher &gt; 90 % vom Limit</td><td>90 %</td><td>ein Container nahe an seinem Speicherlimit (OOM-Kill droht)</td></tr>
+  <tr><td>Container-CPU gedrosselt &gt; 50 %</td><td>50 %</td><td>ein Container wird in mehr als der Hälfte der Perioden gebremst</td></tr>
+  <tr><td>Container OOM-Kill</td><td>&gt; 0</td><td>ein Container wurde wegen Speichermangel beendet (15 min)</td></tr>
+  <tr><td>Container startet wiederholt neu</td><td>&gt; 2</td><td>mehr als zwei Neustarts in 15 min (Crash-Schleife)</td></tr>
+  <tr><td>PHP-FPM: Anfragen warten</td><td>&gt; 0</td><td>die Listen-Queue bleibt 5 min nicht leer – pm.max_children zu knapp (seit 21.10.2026)</td></tr>
+  <tr><td>Trivy-Scan veraltet</td><td>36 h</td><td>der nächtliche Scan ist nicht gelaufen</td></tr>
+  <tr><td>Trivy-Scan fehlgeschlagen</td><td>–</td><td>Datenbank oder ein Image konnte nicht gescannt werden</td></tr>
 </table>
 <p>
   Benachrichtigungen gehen an die in <code>vault.yml</code> hinterlegte Adresse (<code>email</code>)
@@ -2713,8 +2720,7 @@ systemctl stop ssh-login-alert.timer ; systemctl start ssh-login-alert.timer</co
   </tr>
   <tr>
     <td>Dynamische Blocklists</td>
-    <td>Native nftables Sets (<code>banned4</code> / <code>banned6</code>) mit
-        24h Auto-Expiry. fail2ban schreibt erkannte Angreifer direkt in diese Sets.
+    <td>Native nftables Sets mit Auto-Expiry. fail2ban schreibt erkannte Angreifer direkt in die Sets seines Jails (<code>f2b_&lt;jail&gt;4</code>/<code>6</code>, Ablauf = Bantime des Jails); <code>banned4</code>/<code>banned6</code> (24 h) bleiben für manuelle Sperren.
         Jeder nftables-Reload legt die Tabelle neu an und leert dabei die Sets; ein Handler startet
         fail2ban danach neu, das die aktiven Sperren aus seiner Datenbank wieder einträgt.
         Seit 21.10.2026 hat jedes Jail ein eigenes Set-Paar <code>f2b_&lt;jail&gt;4</code>/<code>6</code>: Eine Entsperrung hebt nur die Sperre dieses Jails auf (mit den gemeinsamen Sets hob die 1-Stunden-Entsperrung des Scanner-Jails 24-Stunden- und 30-Tage-Sperren derselben Adresse mit auf). Der Monit-Check <code>f2b_sets</code> gleicht fail2ban mit den Sets ab; <code>banned4</code>/<code>6</code> bleiben für manuelle Sperren. Prüfen: <code>/usr/local/sbin/monit-check-f2b-sets.sh</code></td>
@@ -2778,9 +2784,9 @@ journalctl -k -f --grep "nftables DROP"
 nft list ruleset
 
 # Blocklists anzeigen
-nft list set inet filter banned4
-nft list set inet filter banned6
-nft list sets inet filter | grep "set f2b_"   # one set pair per fail2ban jail (since 2026-10-21)
+nft list sets inet filter | grep "set f2b_"   # fail2ban: one set pair per jail
+nft list set inet filter f2b_sshd4      # e.g. the SSH jail
+nft list set inet filter banned4       # manual bans only (24 h)
 nft list set inet filter scanban4      # Portscan-Sperren (1 h)
 
 # Portscan-Sperre aufheben (z. B. nach einem Test von der eigenen IP)
