@@ -41,7 +41,9 @@ data:
 
       // --- Previews ---
       'enable_previews' => true,
-      'preview_max_x'   => 4096,
+      // Size: nextcloud_preview_max (defaults/main.yml); quality: tasks/previews.yml
+      'preview_max_x'   => {{ nextcloud_preview_max }},
+      'preview_max_y'   => {{ nextcloud_preview_max }},
       // Decoding a 108-MP phone photo (12032 px wide, e.g. Xiaomi Mi Note 10)
       // needs ~430 MB; the default 256 silently refused those previews (HTTP
       // 404 for the app, found 2026-09-24). PHP memory_limit is 3G.

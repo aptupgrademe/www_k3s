@@ -1,0 +1,25 @@
+---
+# -----------------------------------------------------------------------------
+# Preview JPEG quality
+# -----------------------------------------------------------------------------
+# Since Nextcloud 32 the quality is an app config value ("preview"
+# jpeg_quality, read by OC\Image), not a config.php key - so it cannot live in
+# the custom-config ConfigMap next to preview_max_x/y. Read first, set only
+# when it differs (occ exits 1 while the key is still unset).
+
+- name: Previews | Read the configured JPEG quality
+  ansible.builtin.command: >-
+    k3s kubectl exec deployment/nextcloud --namespace nextcloud --container nextcloud-fpm --
+    runuser -u www-data -- php /var/www/html/occ config:app:get preview jpeg_quality
+  register: nc_preview_quality
+  changed_when: false
+  failed_when: false
+  check_mode: false   # read-only query, also runs in --check
+
+- name: Previews | Set the JPEG quality
+  ansible.builtin.command: >-
+    k3s kubectl exec deployment/nextcloud --namespace nextcloud --container nextcloud-fpm --
+    runuser -u www-data -- php /var/www/html/occ config:app:set preview jpeg_quality
+    --value={{ nextcloud_preview_jpeg_quality }} --type=integer
+  when: (nc_preview_quality.stdout | trim) != (nextcloud_preview_jpeg_quality | string)
+  changed_when: true

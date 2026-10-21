@@ -41,5 +41,7 @@
   ansible.builtin.import_tasks: exporters.yml
 - name: next_k3s_deploy | Apps (enable/disable after the pod is up)
   ansible.builtin.import_tasks: apps.yml
+- name: next_k3s_deploy | Preview JPEG quality (app config, not config.php)
+  ansible.builtin.import_tasks: previews.yml
 - name: next_k3s_deploy | notify_push (High Performance Backend)
   ansible.builtin.import_tasks: notify_push.yml

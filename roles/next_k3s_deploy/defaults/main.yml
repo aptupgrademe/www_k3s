@@ -20,6 +20,16 @@ nextcloud_apps_enabled: []
 # Apps to force DISABLED and keep off across upgrades.
 nextcloud_apps_disabled: []
 
+# --- Previews (custom-config-cm.yml.j2, tasks/previews.yml) ----------------
+# Largest preview edge in px, and the JPEG quality of the generated previews.
+# 2026-10-21: 4096 -> 2048 and 80 -> 70. On the larger host the previews were
+# 67 GB, 59 % of it larger than 2048 px (full-screen views). 2048 is sharp
+# full screen up to WQHD; originals are untouched, downloads stay full size.
+# After lowering either value, remove the old previews once with
+# "occ preview:cleanup" - they regenerate on demand at the new size.
+nextcloud_preview_max: 2048
+nextcloud_preview_jpeg_quality: 70
+
 # --- notify_push / High Performance Backend (see tasks/notify_push.yml) ------
 # WebSocket push instead of ~30s client polling. OFF by default: it adds a
 # Deployment + /push ingress route and needs a live-verified rollout (binary
