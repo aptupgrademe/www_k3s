@@ -12,7 +12,7 @@
     _r_nft_svc:        "{{ _v_nft_svc.stdout | default('') == 'active' }}"
     _r_nft_tables:     "{{ 'inet filter' in (_v_nft_tables.stdout | default('')) }}"
     _r_nft_policy:     "{{ (_v_nft_policy.stdout | default('0') | trim | int) > 0 }}"
-    _r_nft_banned4:    "{{ _v_nft_banned4.rc | default(1) == 0 }}"
+    _r_nft_f2b_sets: "{{ (_v_nft_f2b_sets.stdout | default('0') | trim | int) == (fail2ban_nft_jails | length) * 2 }}"
     _r_f2b_svc:        "{{ _v_f2b_svc.stdout | default('') == 'active' }}"
     _r_f2b_jails:      "{{ (_v_f2b_status.stdout | default('') | regex_search('Number of jail:\\s*(\\d+)', '\\1') | default([], true) | first | default('0') | int) >= verify_f2ban_min_jails }}"
     _r_k3s:            "{{ _v_k3s_svc.stdout | default('') == 'active' }}"
@@ -20,6 +20,7 @@
     _r_redis_svc:      "{{ _v_redis_svc.stdout | default('') == 'active' }}"
     _r_auditd:         "{{ _v_auditd_svc.stdout | default('') == 'active' }}"
     _r_selinux:        "{{ _v_selinux.stdout | default('') == 'Enforcing' }}"
+    _r_pod_selinux: "{{ (_v_pod_selinux.stdout_lines | default(['0']) | first | default('0') | int) > 0 and (_v_pod_selinux.stdout_lines | default([]) | length) == 1 }}"
     # K8s
     _r_nc_pods:        "{{ 'Running' in (_v_nc_pods.stdout | default('')) }}"
     _r_collabora:      "{{ 'Running' in (_v_collabora_pods.stdout | default('')) }}"
@@ -75,9 +76,9 @@
   ansible.builtin.set_fact:
     _pass_count: >-
       {{
-        [_r_nft_svc, _r_nft_tables, _r_nft_policy, _r_nft_banned4,
+        [_r_nft_svc, _r_nft_tables, _r_nft_policy, _r_nft_f2b_sets,
          _r_f2b_svc, _r_f2b_jails, _r_k3s, _r_mariadb_svc, _r_redis_svc,
-         _r_auditd, _r_selinux,
+         _r_auditd, _r_selinux, _r_pod_selinux,
          _r_nc_pods, _r_collabora, _r_ingress, _r_certmgr, _r_noerror,
          _r_https, _r_tls, _r_hsts, _r_server, _r_login, _r_collabora_disco,
          _r_installed, _r_maintenance,
@@ -85,7 +86,7 @@
          _r_occ, _r_bg_mode, _r_redis, _r_mariadb_pod, _r_bbr, _r_richdocuments]
         | select | list | length
       }}
-    _total_count: 33
+    _total_count: 34
 
 
 # =============================================================================
@@ -104,7 +105,7 @@
         {{ _ok if _r_nft_svc | bool else _fail }}  nftables service             {{ 'active' if _r_nft_svc | bool else _r ~ 'INACTIVE' ~ _z }}
         {{ _ok if _r_nft_tables | bool else _fail }}  nftables inet filter         {{ 'loaded' if _r_nft_tables | bool else _r ~ 'NOT LOADED' ~ _z }}
         {{ _ok if _r_nft_policy | bool else _fail }}  nftables policy drop         {{ 'active' if _r_nft_policy | bool else _r ~ 'MISSING – firewall is open!' ~ _z }}
-        {{ _ok if _r_nft_banned4 | bool else _fail }}  nftables banned4 set         {{ 'present' if _r_nft_banned4 | bool else _r ~ 'MISSING – fail2ban bans have no effect!' ~ _z }}
+        {{ _ok if _r_nft_f2b_sets | bool else _fail }}  nftables fail2ban sets       {{ (_v_nft_f2b_sets.stdout | default('0') | trim) ~ '/' ~ (fail2ban_nft_jails | length * 2) if _r_nft_f2b_sets | bool else _r ~ (_v_nft_f2b_sets.stdout | default('0') | trim) ~ '/' ~ (fail2ban_nft_jails | length * 2) ~ ' – some fail2ban bans have no effect!' ~ _z }}
         {{ _ok if _r_f2b_svc | bool else _fail }}  fail2ban service             {{ 'active' if _r_f2b_svc | bool else _r ~ 'INACTIVE' ~ _z }}
         {{ _ok if _r_f2b_jails | bool else _fail }}  fail2ban jails               {{ _d_f2b_jails }}
         {{ _ok if _r_k3s | bool else _fail }}  k3s service                  {{ 'active' if _r_k3s | bool else _r ~ 'INACTIVE' ~ _z }}
@@ -112,6 +113,7 @@
         {{ _ok if _r_redis_svc | bool else _fail }}  Redis (host)                 {{ 'active' if _r_redis_svc | bool else _r ~ 'INACTIVE' ~ _z }}
         {{ _ok if _r_auditd | bool else _fail }}  auditd service               {{ 'active' if _r_auditd | bool else _r ~ 'INACTIVE' ~ _z }}
         {{ _ok if _r_selinux | bool else _fail }}  SELinux                      {{ _v_selinux.stdout | default('?') }}
+        {{ _ok if _r_pod_selinux | bool else _fail }}  Pods confined (container_t)  {{ (_v_pod_selinux.stdout_lines | default(['0']) | first) ~ ' processes' if _r_pod_selinux | bool else _r ~ (_v_pod_selinux.stdout_lines | default(['?']) | reject('equalto', _v_pod_selinux.stdout_lines | default(['?']) | first) | join(', ') | default('no pod processes found', true)) ~ _z }}
 
       {{ _h }}── Kubernetes Workloads ─────────────────────────────────────{{ _z }}
         {{ _ok if _r_nc_pods | bool else _fail }}  nextcloud namespace          {{ _d_nc_pods if _d_nc_pods != '?' else _r ~ 'no pods found' ~ _z }}
@@ -166,10 +168,10 @@
       {{
         [
           ['nftables service', _r_nft_svc], ['nftables inet filter', _r_nft_tables],
-          ['nftables policy drop', _r_nft_policy], ['nftables banned4 set', _r_nft_banned4],
+          ['nftables policy drop', _r_nft_policy], ['nftables fail2ban sets', _r_nft_f2b_sets],
           ['fail2ban service', _r_f2b_svc], ['fail2ban jails', _r_f2b_jails],
           ['k3s service', _r_k3s], ['MariaDB (host)', _r_mariadb_svc], ['Redis (host)', _r_redis_svc],
-          ['auditd service', _r_auditd], ['SELinux enforcing', _r_selinux],
+          ['auditd service', _r_auditd], ['SELinux enforcing', _r_selinux], ['pods confined (container_t)', _r_pod_selinux],
           ['nextcloud namespace pods', _r_nc_pods], ['Collabora pod', _r_collabora],
           ['ingress-nginx pods', _r_ingress], ['cert-manager pods', _r_certmgr],
           ['pods in error state', _r_noerror],

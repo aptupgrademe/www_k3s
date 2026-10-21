@@ -58,11 +58,14 @@
   check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
-# banned4 is the IPv4 set fail2ban adds banned addresses to; rc != 0
-# means the set (and therefore banning) is missing.
-- name: Verify | nftables – banned4 set exists?
-  ansible.builtin.command: nft list set inet filter banned4
-  register: _v_nft_banned4
+# fail2ban writes into one set pair per jail, f2b_<name>4/6 (fail2ban_nft_jails,
+# group_vars). The number of f2b_ sets in our table must be twice the number of
+# jails; fewer means some bans have no effect. (Until 2026-10-21: banned4.)
+- name: Verify | nftables – fail2ban sets present?
+  ansible.builtin.shell: |
+    set -o pipefail
+    nft list sets inet 2>/dev/null | grep -c 'set f2b_'
+  register: _v_nft_f2b_sets
   changed_when: false
   check_mode: false   # read-only query, also runs in --check
   failed_when: false
@@ -98,6 +101,27 @@
 - name: Verify | SELinux – enforcing mode?
   ansible.builtin.command: getenforce
   register: _v_selinux
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false
+
+# Enforcing is not enough: a process can still run in the wrong domain (found
+# twice, see CLAUDE.md). Every process in a pod cgroup must be container_t.
+# Output: the number of pod processes, then one line per process that is not
+# ("<type> <command>"). Reads /proc only.
+- name: Verify | SELinux – every pod process container_t?
+  ansible.builtin.shell: |
+    set -o pipefail
+    n=0; bad=''
+    for d in /proc/[0-9]*; do
+      grep -q kubepods "$d/cgroup" 2>/dev/null || continue
+      t=$(cut -d: -f3 "$d/attr/current" 2>/dev/null | tr -d '\0')
+      [ -n "$t" ] || continue
+      n=$((n + 1))
+      [ "$t" = container_t ] || bad="$bad$t $(tr -d '\0' < "$d/comm")\n"
+    done
+    echo "$n"; printf "%b" "$bad" | sort -u
+  register: _v_pod_selinux
   changed_when: false
   check_mode: false   # read-only query, also runs in --check
   failed_when: false

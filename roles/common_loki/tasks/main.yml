@@ -264,6 +264,27 @@
   no_log: true
   when: not ansible_check_mode
 
+# Dashboard "fail2ban – Bans" (files/fail2ban-bans.json): bans per jail and
+# hour, totals for the time range, the latest ban lines - all from the
+# fail2ban.log lines Alloy ships (job="fail2ban"). Lives here, not in
+# common_grafana, because it needs the Loki datasource (uid loki) from above.
+- name: Loki | Import dashboard fail2ban – Bans
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:3000/api/dashboards/db"
+    method: POST
+    user: "{{ grafana_basic_auth_user }}"
+    password: "{{ grafana_admin_pass }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      dashboard: "{{ lookup('ansible.builtin.file', 'fail2ban-bans.json') | from_json }}"
+      overwrite: true
+      folderId: 0
+    status_code: 200
+  no_log: true
+  changed_when: false
+  when: not ansible_check_mode
+
 # -----------------------------------------------------------------------------
 # Self-test: a marker line through the whole chain journal -> Alloy -> Loki
 # -----------------------------------------------------------------------------

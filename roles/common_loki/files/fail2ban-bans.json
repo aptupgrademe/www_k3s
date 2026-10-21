@@ -1,0 +1,146 @@
+{
+  "uid": "fail2ban-bans",
+  "title": "fail2ban – Bans",
+  "tags": [
+    "fail2ban",
+    "security"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5m",
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Bans pro Jail und Stunde",
+      "description": "Neue Bans aus fail2ban.log (Loki, job=fail2ban). \"Restore Ban\" nach einem Neustart zählt nicht mit.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 16,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "stacking": {
+              "mode": "normal"
+            }
+          },
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "sum"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (jail) (count_over_time({job=\"fail2ban\"} |= \"] Ban \" | regexp \"\\\\[(?P<jail>[^]]+)\\\\] Ban\" [1h]))",
+          "legendFormat": "{{jail}}",
+          "step": "1h"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "bargauge",
+      "title": "Bans im Zeitraum",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 8,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (jail) (count_over_time({job=\"fail2ban\"} |= \"] Ban \" | regexp \"\\\\[(?P<jail>[^]]+)\\\\] Ban\" [$__range]))",
+          "legendFormat": "{{jail}}",
+          "queryType": "instant",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "logs",
+      "title": "Letzte Bans",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 24,
+        "h": 10
+      },
+      "options": {
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{job=\"fail2ban\"} |= \"] Ban \""
+        }
+      ]
+    }
+  ]
+}

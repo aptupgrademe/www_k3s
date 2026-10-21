@@ -300,6 +300,19 @@
               "Ein Container ist in 15 min mehr als zweimal neu gestartet (Crash-Schleife?).",
               "container_restarts",
           ),
+          # PHP-FPM (php-fpm-exporter in the app pod, both stacks). A request
+          # in the listen queue waits for a free worker. Short peaks are
+          # normal (blog once 30 for one minute, the larger Nextcloud 17 single minutes in
+          # 14 days); a queue that stays 5 min never happened up to
+          # 2026-10-21 - then pm.max_children is too small for the load.
+          make_rule(
+              "alert-phpfpm-queue",
+              "PHP-FPM: Anfragen warten",
+              "max(phpfpm_listen_queue)",
+              0, "gt",
+              "Seit 5 min warten Anfragen auf einen freien PHP-FPM-Worker – pm.max_children zu knapp? (Dashboard PHP-FPM)",
+              "phpfpm_listen_queue",
+          ),
           # Trivy (common_trivy). No rule on the findings themselves - the
           # scan mails new ones once; these two say the scan is broken.
           # Hosts without Trivy have no such series -> no data -> OK.
