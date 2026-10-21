@@ -121,6 +121,9 @@ and in the README. This file only points the way and lists the traps.
   edits made in the meantime. DB dump first.
 - Some posts store `\r\n` line endings (the older English originals) – a
   string replacement written with `\n` silently matches nothing; check both.
+- `wp_insert_post()` from `wp eval`/`eval-file` has no current user: pass
+  `post_author` (20 posts/pages had author 0 – empty byline link to `/author/`,
+  404, no author in the schema). Link posts by permalink, not `?p=ID`.
 - Set the featured image **before** publishing (Yoast builds its og:image then).
 - `wp cache flush` empties the object cache only; the page cache needs
   `wp_cache_clear_cache()`.
