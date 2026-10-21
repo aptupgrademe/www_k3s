@@ -71,6 +71,7 @@
     cd /etc/selinux/local/monitoring
     make -f /usr/share/selinux/devel/Makefile homelab_{{ item }}.pp >/dev/null
     semodule -i homelab_{{ item }}.pp
+    rm -rf tmp   # intermediate files of the devel Makefile (semanage_store_t, flagged by restorecon -n)
   loop: "{{ selinux_monitoring_modules }}"
   when: >-
     (sm_te.results | selectattr('item', 'equalto', item) | first).changed

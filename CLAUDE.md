@@ -132,5 +132,7 @@ and in the README. This file only points the way and lists the traps.
   (if Prometheus stops, every rule stays quietly green).
 
 ### CI
+- **No apostrophe in a comment inside a `shell:` block** – ansible-lint fails
+  with `parser-error: failed at splitting arguments` (unbalanced quote).
 - A Lint failure after ~30 s is usually `ansible-galaxy` (cache/download), not
   the code – re-run before changing anything.

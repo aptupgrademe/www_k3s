@@ -81,6 +81,7 @@
     cd /etc/selinux/local/redis
     make -f /usr/share/selinux/devel/Makefile homelab_redis_nnp.pp >/dev/null
     semodule -i homelab_redis_nnp.pp
+    rm -rf tmp   # intermediate files of the devel Makefile (semanage_store_t, flagged by restorecon -n)
   when: redis_te is changed or 'homelab_redis_nnp' not in redis_semodules.stdout_lines
   changed_when: true
 
