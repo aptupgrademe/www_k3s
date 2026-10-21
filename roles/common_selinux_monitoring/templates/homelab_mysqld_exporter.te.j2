@@ -1,6 +1,6 @@
 # Managed by Ansible (common_selinux_monitoring) - local SELinux module.
 # Gives mysqld_exporter its own domain instead of unconfined_service_t.
-policy_module(homelab_mysqld_exporter, 1.0.0)
+policy_module(homelab_mysqld_exporter, 1.1.0)
 
 type homelab_mysqld_exporter_t;
 type homelab_mysqld_exporter_exec_t;
@@ -11,7 +11,28 @@ init_daemon_domain(homelab_mysqld_exporter_t, homelab_mysqld_exporter_exec_t)
 # this the service stays in init_t and cannot read its own data.
 init_nnp_daemon_domain(homelab_mysqld_exporter_t)
 
-# Allow rules from the reviewed AVCs of the learning phase go here.
+# Reviewed 2026-10-21 from two days of learning-phase AVCs on both
+# Nextcloud hosts plus a deliberate restart (the start-only accesses -
+# bind, listen, somaxconn - had already rotated out of audit.log, which
+# the permissive flood filled in ~20 hours). audit2allow was the draft,
+# not the result; the config file (etc_t) needed nothing extra.
+
+# listen on 127.0.0.1:9104 for Prometheus; connect to MariaDB on 3306
+allow homelab_mysqld_exporter_t self:tcp_socket create_stream_socket_perms;
+corenet_tcp_bind_generic_node(homelab_mysqld_exporter_t)
+corenet_tcp_bind_unreserved_ports(homelab_mysqld_exporter_t)
+corenet_tcp_connect_mysqld_port(homelab_mysqld_exporter_t)
+
+# Go runtime and the exporter's own process metrics: /proc/stat,
+# /proc/<pid>/net/netstat, net.core.somaxconn, its cgroup's cpu.max,
+# transparent_hugepage/hpage_pmd_size
+kernel_read_system_state(homelab_mysqld_exporter_t)
+kernel_read_network_state(homelab_mysqld_exporter_t)
+kernel_read_net_sysctls(homelab_mysqld_exporter_t)
+kernel_search_network_sysctl(homelab_mysqld_exporter_t)
+fs_search_cgroup_dirs(homelab_mysqld_exporter_t)
+fs_read_cgroup_files(homelab_mysqld_exporter_t)
+dev_read_sysfs(homelab_mysqld_exporter_t)
 
 {% if selinux_monitoring_permissive | bool %}
 # Learning phase: log denials, do not enforce (selinux_monitoring_permissive)
