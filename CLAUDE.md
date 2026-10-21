@@ -119,6 +119,8 @@ and in the README. This file only points the way and lists the traps.
   direct update stripped backslashes from code examples.
 - Read the live post and its `post_modified` before changing it; never overwrite
   edits made in the meantime. DB dump first.
+- Some posts store `\r\n` line endings (the older English originals) – a
+  string replacement written with `\n` silently matches nothing; check both.
 - Set the featured image **before** publishing (Yoast builds its og:image then).
 - `wp cache flush` empties the object cache only; the page cache needs
   `wp_cache_clear_cache()`.
