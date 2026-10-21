@@ -21,7 +21,7 @@ SRC=${SRC:-/data/backup/nextcloud-data}
 SRC_HOST=; SRC_PATH=$SRC
 case "$SRC" in *::*) SRC_HOST=${SRC%%::*}; SRC_PATH=${SRC#*::} ;; esac
 DST=${DST:-/data/backup/nextcloud-rdiff}
-KEEP=${KEEP:-30D}
+KEEP=${KEEP:-365D}   # 30D bis 2026-10-21; Platte des Backup-PCs 7,3 TB, 4,1 TB frei - nichts unnötig löschen
 INSTANCES=${INSTANCES:-"cvjm sofie"}
 LOGDIR=${LOGDIR:-/data/backup/nextcloud/logs}
 KEEP_LOGS=30

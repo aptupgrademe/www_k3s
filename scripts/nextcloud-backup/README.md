@@ -11,7 +11,7 @@ instance over SSH as root and needs no password: the DB dump uses
     www/    code + config/config.php     (K3s: /srv/nextcloud-www)
     data/   data directory incl. previews
     last-success
-/data/backup/nextcloud-rdiff/      rdiff-backup history of nextcloud-data (30 days)
+/data/backup/nextcloud-rdiff/      rdiff-backup history of nextcloud-data (365 days)
 ```
 
 | File | Tracked | Purpose |

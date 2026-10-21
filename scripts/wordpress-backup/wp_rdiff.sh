@@ -18,7 +18,7 @@ SRC=${SRC:-/data/backup/wordpress-data}
 SRC_HOST=; SRC_PATH=$SRC
 case "$SRC" in *::*) SRC_HOST=${SRC%%::*}; SRC_PATH=${SRC#*::} ;; esac
 DST=${DST:-/data/backup/wordpress-rdiff}
-KEEP=${KEEP:-30D}
+KEEP=${KEEP:-365D}   # 30D bis 2026-10-21; Platte des Backup-PCs 7,3 TB, 4,1 TB frei - nichts unnötig löschen
 INSTANCES=${INSTANCES:-"blog"}
 LOGDIR=${LOGDIR:-/data/backup/wordpress/logs}
 KEEP_LOGS=30

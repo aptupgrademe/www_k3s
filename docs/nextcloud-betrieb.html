@@ -1619,7 +1619,7 @@ k3s kubectl rollout status  deployment/nextcloud -n nextcloud --timeout=300s</co
     <td>rsync</td>
   </tr>
   <tr>
-    <td>Historie (30 Tage)</td>
+    <td>Historie (365 Tage, bis 21.10.2026 30)</td>
     <td>–</td>
     <td><code>/data/backup/nextcloud-rdiff/</code></td>
     <td>rdiff-backup aller Instanzen, nach den Backups</td>
@@ -1670,7 +1670,7 @@ cat /data/backup/nextcloud-data/cvjm/last-success</code></pre>
   <strong>Getrennte Variante (seit Oktober 2026 im Einsatz):</strong> Ein dauerhaft laufendes NAS holt die
   Sicherung selbst (systemd-Timer nachts, <code>DATA_ROOT</code>/<code>LOGDIR</code> überschrieben, Daten im eigenen
   Speicher), der Backup-PC versioniert nur noch diese Kopie mit <code>SRC=root@&lt;nas&gt;::&lt;pfad&gt;</code>
-  (rdiff-backup über SSH, 30 Tage). Mit entfernter Quelle wartet <code>nc_rdiff.sh</code> auf einen laufenden Abruf
+  (rdiff-backup über SSH, 365 Tage). Mit entfernter Quelle wartet <code>nc_rdiff.sh</code> auf einen laufenden Abruf
   auf dem NAS und verweigert eine Quelle ohne <code>last-success</code> oder mit leeren Daten. Bei großen, bereits
   komprimierten Dateien rdiff-backup mit einem <code>--remote-schema</code> ohne <code>ssh -C</code> aufrufen – die
   Kompression kostet dort nur CPU. Details: <code>scripts/nextcloud-backup/README.md</code>.

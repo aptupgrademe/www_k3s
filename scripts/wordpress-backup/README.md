@@ -11,7 +11,7 @@ from the secret file mounted there.
     db/     wordpress_<date>_<time>.sql.gz   (last 14, verified before kept)
     www/    blog_k3s_www_dir (/srv/wordpress-www): core, wp-content, wp-config.php
     last-success
-/data/backup/wordpress-rdiff/      rdiff-backup history of wordpress-data (30 days)
+/data/backup/wordpress-rdiff/      rdiff-backup history of wordpress-data (365 days)
 ```
 
 All of it is created with `umask 077`: `wp-config.php` and the dumps hold

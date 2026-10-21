@@ -1692,7 +1692,7 @@ k3s kubectl get pods -n wordpress</code></pre>
   after every boot: <code>scripts/wordpress-backup/</code>. It rsyncs <code>/srv/wordpress-www</code> (core,
   <code>wp-content</code>, <code>wp-config.php</code>), dumps the database inside the MariaDB pod
   (<code>mariadb-dump --single-transaction</code>, verified before it is kept), rsyncs the changes again, and
-  versions everything with rdiff-backup for 30 days. Monit's <code>wp_backup</code> check alerts when the last
+  versions everything with rdiff-backup for 365 days (30 until 2026-10-21). Monit's <code>wp_backup</code> check alerts when the last
   success is older than three days. Setup, layout and restore steps: <code>scripts/wordpress-backup/README.md</code>. Since October 2026 the pull can also run on an always-on NAS (systemd timers, <code>DATA_ROOT</code>), with the backup PC only versioning the NAS copy via <code>SRC=root@&lt;nas&gt;::&lt;path&gt;</code> – see “Split setup” in the same README.
 </p>
 <div class="callout callout-info">

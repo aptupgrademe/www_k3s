@@ -1605,7 +1605,7 @@ k3s kubectl rollout status  deployment/nextcloud -n nextcloud --timeout=300s</co
     <td>rsync</td>
   </tr>
   <tr>
-    <td>History (30 days)</td>
+    <td>History (365 days, 30 until 2026-10-21)</td>
     <td>–</td>
     <td><code>/data/backup/nextcloud-rdiff/</code></td>
     <td>rdiff-backup of all instances, after the backups</td>
@@ -1656,7 +1656,7 @@ cat /data/backup/nextcloud-data/cvjm/last-success</code></pre>
   <strong>Split setup (in use since October 2026):</strong> an always-on NAS runs the pull itself
   (systemd timers at night, <code>DATA_ROOT</code>/<code>LOGDIR</code> overrides, data in its own storage),
   and the backup PC only versions that copy with <code>SRC=root@&lt;nas&gt;::&lt;path&gt;</code>
-  (rdiff-backup over SSH, 30 days). With a remote source, <code>nc_rdiff.sh</code> waits for a running pull on
+  (rdiff-backup over SSH, 365 days). With a remote source, <code>nc_rdiff.sh</code> waits for a running pull on
   the NAS and refuses a source without <code>last-success</code> or with empty data. For large, already
   compressed files, call rdiff-backup with a <code>--remote-schema</code> without <code>ssh -C</code>: compression
   only burns CPU there. Details: <code>scripts/nextcloud-backup/README.md</code>.
