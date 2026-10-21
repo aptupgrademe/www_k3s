@@ -133,6 +133,7 @@
 # the first post thumbnail loading="lazy", and CLS 0.15 because the header title
 # jumps when the theme's web fonts swap in. Preloading the three fonts and
 # loading the first thumbnail eagerly with high priority fixes both.
+# 2026-10-21: the logo (75 px on screen) was fetched as the 913 px file and lazily.
 # 2026-10-08: phones/tablets now show only the post list on the front page
 # (custom CSS above); the LCP there moved to the first list image, which was
 # still lazy (LCP 3.4 s) - the plugin now prioritises that one on the front page.
@@ -170,6 +171,12 @@
          *   (normal priority, so on a phone the hidden copy does not compete).
          *   Banner images are rendered before the main loop starts, which is
          *   how in_the_loop() tells the two apart.
+         * - The site logo is shown at most 75 px wide (custom CSS), but its
+         *   sizes attribute claimed 913 px, so browsers fetched the 913 px
+         *   file (64 KB) instead of the 300 px one (16 KB) - and the theme's
+         *   loading="lazy" delayed it although it sits at the top of every
+         *   page (found 2026-10-21). sizes="75px" lets the browser pick the
+         *   smallest file that is sharp at its pixel density, eager loads it.
          * - The theme echoes post images through wp_kses_post(), whose img
          *   whitelist lacks fetchpriority, so the attribute was silently
          *   dropped (seen 2026-10-08) - allow it.
@@ -180,6 +187,14 @@
                 printf("<link rel=\"preload\" href=\"%s\" as=\"font\" type=\"font/woff2\" crossorigin>\n", esc_url($base . $font));
             }
         }, 1);
+
+        add_filter('wp_get_attachment_image_attributes', function ($attr) {
+            if (!empty($attr['class']) && strpos($attr['class'], 'custom-logo') !== false) {
+                $attr['sizes'] = '75px';
+                $attr['loading'] = 'eager';
+            }
+            return $attr;
+        }, 20);
 
         add_filter('wp_get_attachment_image_attributes', function ($attr, $attachment, $size) {
             static $done = false;

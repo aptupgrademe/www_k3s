@@ -13,7 +13,11 @@
 #     then 1024 px
 #   - EXIF orientation is applied first (phone photos), the remaining EXIF
 #     data (GPS, camera) is dropped with the re-encode
-# WordPress then builds the sub-sizes from that file, and CompressX its
+# WordPress then builds the sub-sizes from that file - since 2026-10-21 with
+# WebP quality 75 instead of WordPress's default 86: the 590/768 px card
+# images on the front page were 70-130 KB; 75 makes them ~20 % smaller at an
+# SSIM of 0.957 vs 0.971 (measured on a featured image). Existing sub-sizes
+# change only after "wp media regenerate". CompressX its
 # AVIF/WebP companions for the <picture> tags - automatically only since
 # 2026-10-21 (task at the end of this file). Until then CompressX's
 # auto-optimization was off and every new featured image had to be optimized
@@ -46,7 +50,14 @@
          * ~300 KB and show the first image of the page instead. GIF, SVG and ICO
          * are left alone. Runs before WordPress builds the sub-sizes, so they and
          * CompressX's AVIF/WebP companions are made from the small file.
+         * Sub-sizes (thumbnails, 300-1024 px) are saved with WebP quality 75
+         * instead of the default; the original keeps its own quality (an
+         * explicit set_quality() does not run this filter).
          */
+        add_filter('wp_editor_set_quality', function ($quality, $mime_type) {
+            return $mime_type === 'image/webp' ? 75 : $quality;
+        }, 10, 2);
+
         add_filter('wp_handle_upload', function ($upload, $context) {
             $max_side = 1536;
             $max_bytes = 280 * 1024;
