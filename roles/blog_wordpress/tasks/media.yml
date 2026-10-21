@@ -14,7 +14,10 @@
 #   - EXIF orientation is applied first (phone photos), the remaining EXIF
 #     data (GPS, camera) is dropped with the re-encode
 # WordPress then builds the sub-sizes from that file, and CompressX its
-# AVIF/WebP companions for the <picture> tags, both as before.
+# AVIF/WebP companions for the <picture> tags - automatically only since
+# 2026-10-21 (task at the end of this file). Until then CompressX's
+# auto-optimization was off and every new featured image had to be optimized
+# by hand in the CompressX screen.
 
 - name: WordPress | Deploy upload images mu-plugin (one format, WebP below 280 KB)
   ansible.builtin.command:
@@ -110,3 +113,27 @@
   register: wp_mu_upload_images
   changed_when: "'CHANGED' in wp_mu_upload_images.stdout"
   notify: Restart wordpress deployment (OPcache picks up changed PHP files)
+
+
+# CompressX's own "optimize new uploads" switch (CompressX_Auto_Optimization:
+# add_attachment + wp_update_attachment_metadata), stored as the option
+# compressx_auto_optimize. It runs after the mu-plugin above, so the
+# companions are made from the already reduced WebP. Read first, set only
+# when it is not on.
+- name: WordPress | CompressX - read the auto-optimization switch
+  ansible.builtin.command: >-
+    k3s kubectl exec deployment/wordpress --namespace wordpress --container wordpress-fpm --
+    su -s /bin/sh www-data -c
+    "php /usr/local/lib/wp-cli/wp-cli.phar --path=/var/www/html option get compressx_auto_optimize"
+  register: wp_cx_auto
+  changed_when: false
+  failed_when: false   # unset option -> exit 1
+  check_mode: false    # read-only query, also runs in --check
+
+- name: WordPress | CompressX - optimize new uploads automatically
+  ansible.builtin.command: >-
+    k3s kubectl exec deployment/wordpress --namespace wordpress --container wordpress-fpm --
+    su -s /bin/sh www-data -c
+    "php /usr/local/lib/wp-cli/wp-cli.phar --path=/var/www/html option update compressx_auto_optimize 1"
+  when: (wp_cx_auto.stdout | trim) != '1'
+  changed_when: true
