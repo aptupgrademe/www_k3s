@@ -47,10 +47,10 @@ blog_wp_cli_sha512:         "be928f6b8ca1e8dfb9d2f4b75a13aa4aee0896f8a9a0a1c45cd
 
 # --- Host packages and binaries (outside K3s) ----------------------------------
 node_exporter_version:         "1.12.1"   # github.com/prometheus/node_exporter/releases
-prometheus_version:            "3.15.0"   # github.com/prometheus/prometheus/releases
+prometheus_version:            "3.15.1"   # github.com/prometheus/prometheus/releases
 mysqld_exporter_version:       "0.20.0"   # host MariaDB of the Nextcloud servers
-loki_version:                  "3.7.8"    # rpm.grafana.com (common_loki); github.com/grafana/loki/releases
-alloy_version:                 "1.20.1"   # rpm.grafana.com (common_loki); github.com/grafana/alloy/releases
+loki_version:                  "3.7.9"    # rpm.grafana.com (common_loki); github.com/grafana/loki/releases
+alloy_version:                 "1.21.1"   # rpm.grafana.com (common_loki); github.com/grafana/alloy/releases
 trivy_version:                 "0.75.0"   # github.com/aquasecurity/trivy/releases (common_trivy) - see notes
 trivy_sha256:                  "c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f"   # trivy_<v>_Linux-64bit.tar.gz, from trivy_<v>_checksums.txt
 nextcloud_mariadb_repo_version: "10.11"   # MariaDB Community repo series on the Nextcloud hosts
@@ -92,6 +92,12 @@ nextcloud_mariadb_repo_version: "10.11"   # MariaDB Community repo series on the
 #   plugin's own download hook is not needed). The SHA-256 is computed from
 #   diff-<version>-linux-amd64.tgz - update both together.
 #   2026-10-14 added at 3.15.15 (supports Helm v4.3).
+#
+# loki_version / alloy_version (rpm.grafana.com, common_loki)
+#   2026-10-22 loki 3.7.8 -> 3.7.9 (dependency updates, ingester WAL ordering
+#   fix); alloy 1.20.1 -> 1.21.1 (Go 1.27.3). The 1.21 breaking changes touch
+#   kafka/otelcol components and loki.write with wal { enabled = true } -
+#   none of them are used in config.alloy.j2.
 #
 # trivy_version
 #   2026-10-19 0.75.0 (0.76.0 was 5 days old). Pinned AND checksummed on
@@ -192,6 +198,9 @@ nextcloud_mariadb_repo_version: "10.11"   # MariaDB Community repo series on the
 #   sits next to the .phar): github.com/wp-cli/wp-cli/releases
 #
 # prometheus_version
+#   2026-10-22 3.15.0 -> 3.15.1: security release - built with Go 1.27.3
+#   (net/http, net/textproto, crypto/tls, html/template), golang.org/x/net
+#   HTTP/2 fixes, distrusted eMudhra/Comodo AAA roots in the images.
 #   2026-10-13 3.14.0 -> 3.15.0 (bugfixes, e.g. TSDB no longer drops samples
 #   when head GC removes a series mid-append). Deprecates --log.level and
 #   --enable-feature=xor2-encoding - neither is used here.
