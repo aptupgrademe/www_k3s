@@ -464,7 +464,7 @@ and Nextcloud need the same thing with different values, <code>stack</code> sele
   <tr><td><code>common_clamav</code></td><td><code>clamav_profiles[stack]</code></td><td>scan directory, excludes, skip media, time</td></tr>
   <tr><td><code>common_selinux</code></td><td><code>selinux_profiles[stack]</code></td><td>HostPath directories with owner and mode</td></tr>
   <tr><td><code>common_verify</code></td><td>imported via <code>import_role … tasks_from</code></td><td>17 shared checks; the application-specific ones stay in <code>blog_verify</code> / <code>nextcloud_verify</code></td></tr>
-  <tr><td><code>common_image_refresh</code></td><td><code>image_refresh_namespace</code></td><td>which Deployments have a rebuilt image (for the update playbooks)</td></tr>
+  <tr><td><code>common_image_refresh</code></td><td><code>image_refresh_namespace</code></td><td>which Deployments have a rebuilt image (for the update playbooks); at the end <code>tasks/prune.yml</code> removes unused images</td></tr>
 </table>
 
 <h3>Role catalogue</h3>

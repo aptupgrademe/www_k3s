@@ -207,6 +207,15 @@
           delay: 10
           until: home.status == 200
 
+        # ---------------------------------------------------------------------
+        # Clean-up: drop images no container uses any more (old tags, old
+        # builds of a rebuilt tag) - only after the checks above passed.
+        # ---------------------------------------------------------------------
+        - name: Update | Remove unused container images
+          ansible.builtin.include_role:
+            name: common_image_refresh
+            tasks_from: prune.yml
+
       rescue:
         - name: Rescue | Pods and recent events in the namespace
           ansible.builtin.shell: |

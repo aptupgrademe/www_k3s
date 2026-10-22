@@ -1,0 +1,22 @@
+---
+# common_image_refresh, part 2: remove images no container uses any more.
+# Called by blog-update.yml and nextcloud-update.yml at the very end, after
+# the health checks passed - the old build is only dropped once the new one
+# runs. Old version tags and old builds of the same tag otherwise pile up:
+# 2026-10-22 the blog had 65 unused images, root went from 40 to 22 GB.
+#
+# files/prune-images.py keeps the pod sandbox image (pause), busybox (init
+# containers) and the cert-manager acmesolver of the running version (only
+# runs during a certificate renewal). Skipped in --check: removing images
+# changes the host (the script's --dry-run shows what would go).
+- name: Image prune | Remove images no container uses
+  ansible.builtin.script:
+    cmd: prune-images.py
+    executable: python3
+  register: _image_prune
+  changed_when: _image_prune.stdout is search('PRUNED [1-9]')
+
+- name: Image prune | Summary
+  ansible.builtin.debug:
+    msg: "{{ _image_prune.stdout_lines | select('search', '^(PRUNED|SKIP)') | list }}"
+  when: _image_prune is not skipped

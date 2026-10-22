@@ -190,6 +190,15 @@
             fail_msg: "Nextcloud is not healthy after the update: {{ nc_status_after.stdout }}"
             quiet: true
 
+        # ---------------------------------------------------------------------
+        # Clean-up: drop images no container uses any more (old tags, old
+        # builds of a rebuilt tag) - only after the checks above passed.
+        # ---------------------------------------------------------------------
+        - name: Update | Remove unused container images
+          ansible.builtin.include_role:
+            name: common_image_refresh
+            tasks_from: prune.yml
+
       rescue:
         # ---------------------------------------------------------------------
         # Something failed above. Collect what is needed to decide by hand,

@@ -404,7 +404,7 @@ ansible-vault encrypt inventory/host_vars/<host>/vault.yml
 | `common_selinux` | SELinux enforcing + `container_file_t` for the stack's HostPath dirs (`selinux_target`); the pods run as `container_t` since `common_k3s` sets `selinux: true` with the `k3s-selinux` policy (2026-10-19) |
 | `common_selinux_monitoring` | Own SELinux domains (`homelab_*` modules) for Prometheus, node_exporter, mysqld_exporter and Grafana – permissive learning phase from 2026-10-19, enforcing on the blog since 2026-10-20 and on both Nextcloud hosts since 2026-10-21 |
 | `common_verify` | Smoke checks shared by `blog_verify` and `nextcloud_verify` (17, incl. every pod process `container_t` and all per-jail fail2ban sets present) |
-| `common_image_refresh` | Update playbooks: which Deployments run an outdated build of their tag |
+| `common_image_refresh` | Update playbooks: which Deployments run an outdated build of their tag; at the end (`tasks/prune.yml`) remove images no container uses |
 
 > **Alerting:** Monit is the main mail path. Prometheus evaluates the rules in
 > `alert.rules.yml`, but no Alertmanager is deployed, so a firing rule is only
