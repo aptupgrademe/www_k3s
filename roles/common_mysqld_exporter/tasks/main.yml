@@ -109,6 +109,9 @@
   notify: restart mysqld_exporter
 
 
+# --no-collect.slave_status: there is no replication here, and the monitoring
+# user lacks SLAVE MONITOR - the scraper logged an access-denied ERROR on
+# every scrape (~5,800 journal lines a day per host, found 2026-10-22).
 # After=mariadb.service: at boot, start after the database so the first
 # scrapes do not all fail. (After= only orders the start; it does not make
 # the exporter depend on MariaDB running.)
@@ -130,7 +133,8 @@
       User=mysqld_exporter
       ExecStart=/usr/local/bin/mysqld_exporter \
         --config.my-cnf=/etc/mysqld_exporter.cnf \
-        --web.listen-address=127.0.0.1:9104
+        --web.listen-address=127.0.0.1:9104 \
+        --no-collect.slave_status
       Restart=on-failure
       RestartSec=5s
 

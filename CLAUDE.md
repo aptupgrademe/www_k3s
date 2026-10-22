@@ -66,6 +66,13 @@ and in the README. This file only points the way and lists the traps.
   mode to catch start-only accesses (bind, config reads) – `audit.log` rotates
   fast while a permissive domain floods it.
 - `.fc` paths must use `/var/run/…`, not `/run/…` (`file_contexts.subs_dist`).
+- **`dontaudit` rules hide denials** – also in the permissive learning phase,
+  which then allows them silently. node_exporter could not read
+  `/proc/1/mountinfo` after the switch to enforcing (no AVC, just
+  `permission denied` in its own log) and the disk metrics were gone for two
+  days. After enforcing: check the service's own log and
+  `node_scrape_collector_success`; `semodule -DB` shows hidden denials
+  (`semodule -B` restores the rules).
 
 ### systemd and SSH
 - **SSH sessions are sandboxed** (no writes to kernel tunables, no namespaces):

@@ -1340,7 +1340,7 @@ k3s kubectl logs -n nextcloud deployment/nextcloud -c nextcloud-fpm -f | grep -i
 
 <h3>Grafana Alerting</h3>
 <p>
-  Grafana ist mit 12 vorkonfigurierten Alert-Rules (dazu die Log-Alarme aus <code>common_loki</code>) und einem E-Mail-Kontaktpunkt eingerichtet
+  Grafana ist mit 13 vorkonfigurierten Alert-Rules (dazu die Log-Alarme aus <code>common_loki</code>) und einem E-Mail-Kontaktpunkt eingerichtet
   (konfiguriert durch <code>common_grafana</code>, SMTP-Credentials aus <code>common_msmtp</code>):
 </p>
 <table>
@@ -1350,6 +1350,7 @@ k3s kubectl logs -n nextcloud deployment/nextcloud -c nextcloud-fpm -f | grep -i
   <tr><td>Arbeitsspeicher &gt; 90 %</td><td>90 %</td><td>RAM-Auslastung des Hosts</td></tr>
   <tr><td>CPU-Last &gt; 85 %</td><td>85 %</td><td>CPU-Auslastung (5-Minuten-Schnitt)</td></tr>
   <tr><td>Node Exporter nicht erreichbar</td><td>–</td><td>Node Exporter antwortet nicht mehr</td></tr>
+  <tr><td>node_exporter-Collector fehlgeschlagen</td><td>–</td><td>ein Collector liefert keine Messwerte (sonst bleiben Alarme darauf stumm, seit 22.10.2026)</td></tr>
   <tr><td>Container-Speicher &gt; 90 % vom Limit</td><td>90 %</td><td>ein Container nahe an seinem Speicherlimit (OOM-Kill droht)</td></tr>
   <tr><td>Container-CPU gedrosselt &gt; 50 %</td><td>50 %</td><td>ein Container wird in mehr als der Hälfte der Perioden gebremst</td></tr>
   <tr><td>Container OOM-Kill</td><td>&gt; 0</td><td>ein Container wurde wegen Speichermangel beendet (15 min)</td></tr>

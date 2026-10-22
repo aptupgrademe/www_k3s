@@ -263,6 +263,18 @@
               "Node Exporter antwortet nicht – Server möglicherweise down!",
               "node_up",
           ),
+          # A failing collector means its metrics are simply absent, and every
+          # rule built on them sees "no data" (= OK). 2026-10-20..22 the
+          # filesystem collector failed under SELinux (dontaudit, no AVC) and
+          # the two disk rules above were blind for two days.
+          make_rule(
+              "alert-node-collector",
+              "node_exporter-Collector fehlgeschlagen",
+              "min(node_scrape_collector_success) or vector(1)",
+              1, "lt",
+              "Ein node_exporter-Collector schlägt fehl (journalctl -u node_exporter) – seine Messwerte fehlen, Alarme darauf bleiben stumm.",
+              "node_collector_ok",
+          ),
           # Container rules (common_kube_metrics). max() turns the per-
           # container series into one value; the dashboard
           # "Container-Ressourcen" shows which container it was.
