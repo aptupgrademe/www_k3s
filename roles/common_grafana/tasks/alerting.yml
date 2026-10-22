@@ -267,10 +267,14 @@
           # rule built on them sees "no data" (= OK). 2026-10-20..22 the
           # filesystem collector failed under SELinux (dontaudit, no AVC) and
           # the two disk rules above were blind for two days.
+          # Only the collectors the dashboards and rules use: on these VMs
+          # many others (nfs, zfs, nvme, infiniband, pressure - PSI is off in
+          # the EL9 kernel, ...) always report 0 because the hardware or
+          # feature does not exist.
           make_rule(
               "alert-node-collector",
               "node_exporter-Collector fehlgeschlagen",
-              "min(node_scrape_collector_success) or vector(1)",
+              'min(node_scrape_collector_success{collector=~"cpu|diskstats|filesystem|loadavg|meminfo|netdev|textfile"}) or vector(1)',
               1, "lt",
               "Ein node_exporter-Collector schlägt fehl (journalctl -u node_exporter) – seine Messwerte fehlen, Alarme darauf bleiben stumm.",
               "node_collector_ok",
