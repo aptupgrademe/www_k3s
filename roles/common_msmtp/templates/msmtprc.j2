@@ -7,6 +7,13 @@ auth           on
 tls            on
 tls_trust_file /etc/ssl/certs/ca-bundle.crt
 logfile        /var/log/msmtp.log
+# Always send as the configured address. crond hands its job mails over
+# with envelope-from "root"; the Nextcloud hosts' relay rejected that
+# (501 "envelope from address root not accepted") - the nightly rkhunter
+# warning mail never arrived there (found 2026-10-22). The blog's relay
+# accepted it, so the same setting just makes both stacks behave alike.
+allow_from_override off
+set_from_header     on
 
 account        default
 host           {{ msmtp_host }}

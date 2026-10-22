@@ -18,6 +18,10 @@
 #   environment: sets environment variables for one task only - the way the
 #                Python script gets its credentials.
 
+# password in triple quotes: grafana.ini treats "#" and ";" as the start of
+# a comment, so a password containing one was cut off there - every alert
+# mail on that host failed with 535 "Authentication credentials invalid"
+# (17 times in two days, found 2026-10-22). Grafana's documented quoting.
 # The msmtp_* values are the same mail relay common_msmtp uses for the
 # host's own mails, so Grafana needs no separate mail account.
 - name: Grafana | Configure SMTP section
@@ -29,7 +33,7 @@
       enabled      = true
       host         = {{ msmtp_host }}:{{ msmtp_port }}
       user         = {{ msmtp_user }}
-      password     = {{ msmtp_password }}
+      password     = """{{ msmtp_password }}"""
       from_address = {{ msmtp_from }}
       from_name    = Grafana Homelab
   notify: restart grafana
