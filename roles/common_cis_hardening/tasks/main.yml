@@ -161,6 +161,9 @@
 # unlike every other notification in this codebase, never reached an inbox).
 # Same explicit-address pattern as rkhunter_mail in common_rkhunter.
 #
+# --workers=$(nproc): one hashing thread per vCPU (AIDE 0.19, see
+# common_aide_refresh), nice -n 10 like there.
+#
 # Silent on a clean run, mails only when AIDE actually finds a difference
 # (non-zero exit) - same "OUT=$(...); [ $? -ne 0 ] && mail ..." shape already
 # used by the needs-restarting reboot-check cron jobs elsewhere on this host.
@@ -169,7 +172,7 @@
     name: "AIDE integrity check"
     special_time: daily
     job: >-
-      OUT=$(/usr/sbin/aide --check 2>&1);
+      OUT=$(nice -n 10 /usr/sbin/aide --check --workers=$(nproc) 2>&1);
       [ $? -ne 0 ] && echo "$OUT" | /usr/bin/mail -s "[$(hostname -f)] AIDE found file integrity changes" {{ aide_mail }}
     user: root
 
@@ -198,7 +201,7 @@
     hour: "4"
     minute: "0"
     job: >-
-      /usr/sbin/aide --update >/dev/null 2>&1;
+      nice -n 10 /usr/sbin/aide --update --workers=$(nproc) >/dev/null 2>&1;
       [ -f /var/lib/aide/aide.db.new.gz ] && mv /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz
     user: root
 

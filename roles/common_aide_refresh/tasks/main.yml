@@ -43,6 +43,10 @@
 # package upgrade alone touches watched files (one scan: ~30 s, up to ~3 min
 # measured on the blog).
 #
+# --workers: AIDE 0.19 hashes with several threads; with the default of one
+# the scan took 38 s (blog, 4 cores) to 1 min 32 s (8 cores) in 2026-10.
+# One worker per vCPU, at Nice=10 so the sites stay responsive meanwhile.
+#
 # The exit code is a bitmask of what differed: 1 added, 2 removed, 4 changed
 # (so 1-7 = differences found and recorded - normal right after a playbook
 # run that changed something, not a security finding), 0 = identical,
@@ -52,7 +56,9 @@
 # task treated rc != 0 as a failure and aborted the play before the next task
 # could activate the new database (verified live 2026-08-26).
 - name: AIDE refresh | Compare with the baseline and write the new database (one scan)
-  ansible.builtin.command: systemd-run --wait --pipe --quiet --collect -- aide --update
+  ansible.builtin.command: >-
+    systemd-run --wait --pipe --quiet --collect -p Nice=10 --
+    aide --update --workers={{ ansible_facts['processor_vcpus'] | default(1) }}
   register: aide_update
   changed_when: false   # the change is the activation below
   failed_when: false
