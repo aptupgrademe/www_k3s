@@ -280,9 +280,12 @@ spec:
           requests:
             memory: "16Mi"
             cpu: "10m"
+          # cpu 200m (was 50m): at 50m the exporter was CFS-throttled in up to
+          # 69 % of its periods during a scrape - the "Container-CPU gedrosselt"
+          # alert and its occasional i/o timeouts (2026-10-22). It idles at ~1m.
           limits:
             memory: "64Mi"
-            cpu: "50m"
+            cpu: "200m"
 
       # -------------------------------------------------------------------
       # Container 3: Nginx sidecar
