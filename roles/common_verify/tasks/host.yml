@@ -2,7 +2,8 @@
 # =============================================================================
 # common_verify: host checks (nftables, fail2ban, K3s, auditd, SELinux, TCP BBR)
 # Shared by blog_verify and nextcloud_verify (imported from their checks.yml).
-# Read-only: every check registers its result (_v_*) with failed_when: false;
+# Read-only except the fail2ban effect test: every check registers its
+# result (_v_*) with failed_when: false;
 # the calling role turns them into the report and the final assert.
 # =============================================================================
 #
@@ -68,6 +69,25 @@
   register: _v_nft_f2b_sets
   changed_when: false
   check_mode: false   # read-only query, also runs in --check
+  failed_when: false
+
+# Effect test instead of "configured and running" (2026-10-26): every filter
+# against a canned line in today's log format, then per jail a ban of a
+# TEST-NET address must land in that jail's own set pair and an unban must
+# remove it, and an unban in one jail must not free an address another jail
+# still bans. Each of these broke once without any check noticing (IPv6 bans,
+# shared set, a filter that never matched). Not read-only: the test addresses
+# (192.0.2.x, 2001:db8::x - never routed) are banned for a second and lifted
+# again. Run from stdin, /tmp is noexec.
+- name: Verify | fail2ban – ban chain effect test
+  ansible.builtin.command:
+    cmd: >-
+      bash -s --
+      {% for j, s in fail2ban_nft_jails.items() %}{{ j }}={{ s }} {% endfor %}
+    stdin: "{{ lookup('ansible.builtin.file', 'f2b-effect-test.sh') }}"
+  register: _v_f2b_effect
+  changed_when: false
+  check_mode: false   # bans only TEST-NET addresses and lifts them again
   failed_when: false
 
 - name: Verify | fail2ban – service active?

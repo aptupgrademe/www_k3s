@@ -28,6 +28,7 @@
     _r_nft_tables:  "{{ 'inet filter' in (_v_nft_tables.stdout | default('')) }}"
     _r_nft_policy:  "{{ (_v_nft_policy.stdout | default('0') | trim | int) > 0 }}"
     _r_nft_f2b_sets: "{{ (_v_nft_f2b_sets.stdout | default('0') | trim | int) == (fail2ban_nft_jails | length) * 2 }}"
+    _r_f2b_effect:  "{{ (_v_f2b_effect.stdout_lines | default([]) | last | default('')) == 'RESULT 0' }}"
     _r_f2b_svc:     "{{ _v_f2b_svc.stdout | default('') == 'active' }}"
     _r_f2b_jails:   "{{ (_v_f2b_status.stdout | default('') | regex_search('Number of jail:\\s*(\\d+)', '\\1') | default([], true) | first | default('0') | int) >= verify_f2ban_min_jails }}"
     _r_k3s:         "{{ _v_k3s_svc.stdout | default('') == 'active' }}"
@@ -78,7 +79,7 @@
   ansible.builtin.set_fact:
     _pass_count: >-
       {{
-        [_r_nft_svc, _r_nft_tables, _r_nft_policy, _r_nft_f2b_sets,
+        [_r_nft_svc, _r_nft_tables, _r_nft_policy, _r_nft_f2b_sets, _r_f2b_effect,
          _r_f2b_svc, _r_f2b_jails, _r_k3s, _r_auditd, _r_selinux, _r_pod_selinux,
          _r_wp_pods, _r_ingress, _r_certmgr, _r_noerror,
          _r_https, _r_tls, _r_hsts, _r_server, _r_no_xpb, _r_wp_login,
@@ -86,7 +87,7 @@
          _r_bbr, _r_opcache, _r_mariadb]
         | select | list | length
       }}
-    _total_count: 27
+    _total_count: 28
 
 
 # =============================================================================
@@ -106,6 +107,7 @@
         {{ _ok if _r_nft_tables | bool else _fail }}  nftables inet filter         {{ 'loaded' if _r_nft_tables | bool else _r ~ 'NOT LOADED' ~ _z }}
         {{ _ok if _r_nft_policy | bool else _fail }}  nftables policy drop         {{ 'active' if _r_nft_policy | bool else _r ~ 'MISSING – firewall is open!' ~ _z }}
         {{ _ok if _r_nft_f2b_sets | bool else _fail }}  nftables fail2ban sets       {{ (_v_nft_f2b_sets.stdout | default('0') | trim) ~ '/' ~ (fail2ban_nft_jails | length * 2) if _r_nft_f2b_sets | bool else _r ~ (_v_nft_f2b_sets.stdout | default('0') | trim) ~ '/' ~ (fail2ban_nft_jails | length * 2) ~ ' – some fail2ban bans have no effect!' ~ _z }}
+        {{ _ok if _r_f2b_effect | bool else _fail }}  fail2ban ban chain (test)    {{ 'filters, sets, unban, cross-jail ok' if _r_f2b_effect | bool else _r ~ (_v_f2b_effect.stdout_lines | default([]) | select('match', 'FAIL') | join('; ') | default('no result', true)) ~ _z }}
         {{ _ok if _r_f2b_svc | bool else _fail }}  fail2ban service             {{ 'active' if _r_f2b_svc | bool else _r ~ 'INACTIVE' ~ _z }}
         {{ _ok if _r_f2b_jails | bool else _fail }}  fail2ban jails               {{ _d_f2b_jails }}
         {{ _ok if _r_k3s | bool else _fail }}  k3s service                  {{ 'active' if _r_k3s | bool else _r ~ 'INACTIVE' ~ _z }}
@@ -161,7 +163,7 @@
       {{
         [
           ['nftables service', _r_nft_svc], ['nftables inet filter', _r_nft_tables],
-          ['nftables policy drop', _r_nft_policy], ['nftables fail2ban sets', _r_nft_f2b_sets],
+          ['nftables policy drop', _r_nft_policy], ['nftables fail2ban sets', _r_nft_f2b_sets], ['fail2ban ban chain (test)', _r_f2b_effect],
           ['fail2ban service', _r_f2b_svc], ['fail2ban jails', _r_f2b_jails],
           ['k3s service', _r_k3s], ['auditd service', _r_auditd], ['SELinux', _r_selinux], ['pods confined (container_t)', _r_pod_selinux],
           ['wordpress namespace pods', _r_wp_pods], ['ingress-nginx pods', _r_ingress],
@@ -210,6 +212,7 @@
       - _r_nft_svc | bool
       - _r_nft_tables | bool
       - _r_nft_policy | bool
+      - _r_f2b_effect | bool
       - _r_k3s | bool
       - _r_wp_pods | bool
       - _r_ingress | bool

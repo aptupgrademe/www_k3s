@@ -27,14 +27,18 @@ metadata:
     nginx.org/mergeable-ingress-type: "master"
     nginx.org/ssl-redirect: "false"
     # HTTPS redirect with /.well-known/ exception for ACME HTTP-01 challenges.
-    # Rate-limit /login via a custom location block (exact match takes priority
-    # over the minion's catch-all location /).
+    # Rate-limit the login via custom location blocks (exact match takes
+    # priority over the minion's catch-all location /). Both spellings: without
+    # htaccess.RewriteBase Nextcloud's own login form posts to /index.php/login,
+    # which "location = /login" alone never saw (found 2026-10-26 - every real
+    # login bypassed the rate limit and the nc_login fail2ban jail).
     nginx.org/server-snippets: |
       set $redirect_https 0;
       if ($scheme = http)                       { set $redirect_https 1; }
       if ($request_uri ~ "^/.well-known/")      { set $redirect_https 0; }
       if ($redirect_https = 1)                  { return 301 https://$host$request_uri; }
-      location = /login {
+{% for _login in ['/login', '/index.php/login'] %}
+      location = {{ _login }} {
         # Own location (rate limit) = the minion's location-snippets do not apply
         # here, so the login page went out without HSTS (found 2026-09-30).
         add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
@@ -45,6 +49,7 @@ metadata:
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
       }
+{% endfor %}
 spec:
   ingressClassName: nginx
   tls:
