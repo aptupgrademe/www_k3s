@@ -209,9 +209,12 @@ spec:
           requests:
             memory: "32Mi"
             cpu: "25m"
+          # 200m since 2026-10-26 (was 100m): throttled in 20 % of its CPU
+          # periods, scrapes occasionally hit the 10 s timeout. Same value as
+          # the php-fpm-exporter.
           limits:
             memory: "128Mi"
-            cpu: "100m"
+            cpu: "200m"
 
       volumes:
       - name: mariadb-data

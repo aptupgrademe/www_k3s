@@ -125,9 +125,11 @@ spec:
               requests:
                 memory: "64Mi"
                 cpu: "25m"
+              # 500m since 2026-10-26 (was 250m): a WP-Cron run bootstraps all
+              # of WordPress and was throttled in 31 % of its CPU periods.
               limits:
                 memory: "128Mi"
-                cpu: "250m"
+                cpu: "500m"
           volumes:
           - name: wordpress-www
             hostPath:
