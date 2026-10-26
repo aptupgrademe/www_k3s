@@ -1337,7 +1337,7 @@ k3s kubectl logs -n nextcloud deployment/nextcloud -c nextcloud-fpm -f | grep -i
 
 <h3>Grafana Alerting</h3>
 <p>
-  Grafana is set up with 13 pre-configured alert rules (plus the log alerts from <code>common_loki</code>) and an email contact point
+  Grafana is set up with 15 pre-configured alert rules (plus the log alerts from <code>common_loki</code>) and an email contact point
   (configured by <code>common_grafana</code>, SMTP credentials from <code>common_msmtp</code>):
 </p>
 <table>
@@ -1353,6 +1353,8 @@ k3s kubectl logs -n nextcloud deployment/nextcloud -c nextcloud-fpm -f | grep -i
   <tr><td>Container OOM-Kill</td><td>&gt; 0</td><td>a container was killed for lack of memory (15 min)</td></tr>
   <tr><td>Container startet wiederholt neu</td><td>&gt; 2</td><td>more than two restarts in 15 min (crash loop)</td></tr>
   <tr><td>PHP-FPM: Anfragen warten</td><td>&gt; 0</td><td>the listen queue stays non-empty for 5 min – pm.max_children too small (since 2026-10-21)</td></tr>
+  <tr><td>PHP-FPM: alle Worker belegt</td><td>&gt; 0</td><td><code>pm.max_children</code> was reached (since 2026-10-26)</td></tr>
+  <tr><td>PHP-FPM: über 80 % der Worker belegt</td><td>80 %</td><td>early warning on rising load, 5 min (since 2026-10-26)</td></tr>
   <tr><td>Trivy-Scan veraltet</td><td>36 h</td><td>the nightly scan did not run</td></tr>
   <tr><td>Trivy-Scan fehlgeschlagen</td><td>–</td><td>the database or an image could not be scanned</td></tr>
 </table>

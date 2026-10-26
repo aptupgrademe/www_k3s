@@ -71,7 +71,6 @@ blog_admin_email: "{{ email }}"
 # --- Plugins ---
 blog_wordpress_plugins:
   - classic-editor
-  - limit-login-attempts-reloaded
 
 # --- Paths ---
 blog_k3s_www_dir: /srv/wordpress-www

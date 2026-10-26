@@ -263,11 +263,11 @@ data:
     request_terminate_timeout = 300s
 
     ; --- Pool tuning ---
-    ; Sized for a 4-core node with wordpress-fpm cpu limit=2000m, memory limit=1Gi.
-    ; max_children is capped by memory, not CPU: 12 workers at the ~55-70 MB
-    ; RSS typical for this plugin set plus the 128 MB shared OPcache segment
-    ; fits inside 1Gi with headroom. The previous 16/768Mi pairing could not
-    ; have reached its own max_children without risking an OOM kill.
+    ; Sized for a 4-core node with wordpress-fpm cpu limit=2000m, memory limit=1536Mi.
+    ; max_children is capped by memory, not CPU: 12 workers at the ~90-130 MB
+    ; measured 2026-10-26 plus the 128 MB shared OPcache segment need
+    ; ~1.2-1.5 GB - hence the 1536Mi container limit (1Gi was sized for
+    ; 55-70 MB per worker and would have OOM-killed a full pool).
     pm.max_children      = 12
     pm.start_servers     = 4
     pm.min_spare_servers = 2

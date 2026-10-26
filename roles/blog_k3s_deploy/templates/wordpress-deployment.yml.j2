@@ -203,13 +203,13 @@ spec:
             # Node has 4 cores; give FPM room to run pm.max_children workers
             # truly in parallel instead of throttling them to <1 core.
             #
-            # Memory sized against the pool: pm.max_children=12 at the ~55-70 MB
-            # per-worker RSS typical for this plugin set is ~800 MB, plus the
-            # 128 MB shared OPcache segment and the master process. At the
-            # previous 768Mi the pool could not actually reach max_children
-            # under load without risking an OOM kill, so the limit followed
-            # the pool rather than the other way round (node has 7.6 GB).
-            memory: "1Gi"
+            # Memory sized against the pool: pm.max_children=12 workers plus the
+            # 128 MB shared OPcache segment and the master process. Measured
+            # 2026-10-26 with the current plugin set: ~90-130 MB per worker, so
+            # a full pool needs ~1.2-1.5 GB - the former 1Gi (sized for 55-70 MB
+            # per worker) would have OOM-killed the container before reaching
+            # max_children. The limit follows the pool (node has 7.6 GB).
+            memory: "1536Mi"
             cpu: "2000m"
         # Startup gate: holds liveness AND readiness off until FPM actually
         # listens on 9000, so a slow boot (e.g. DB not ready yet, or a

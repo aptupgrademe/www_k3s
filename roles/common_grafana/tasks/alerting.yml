@@ -333,6 +333,29 @@
               "Seit 5 min warten Anfragen auf einen freien PHP-FPM-Worker – pm.max_children zu knapp? (Dashboard PHP-FPM)",
               "phpfpm_listen_queue",
           ),
+          # Early warnings before the queue above fills (2026-10-26).
+          # phpfpm_max_children_reached counts how often FPM wanted another
+          # worker but was at pm.max_children (per pod, resets on restart -
+          # increase() handles that). The 80 % rule needs pm.max_children
+          # itself, which the exporter does not export: Nextcloud takes
+          # nextcloud_fpm_max_children (fpm-pool-cm.yml.j2), the blog the fixed
+          # 12 in blog_k3s_deploy/templates/nginx-cm.yml.j2 - keep in sync.
+          make_rule(
+              "alert-phpfpm-max-children",
+              "PHP-FPM: alle Worker belegt",
+              "max(increase(phpfpm_max_children_reached[15m])) or vector(0)",
+              0, "gt",
+              "PHP-FPM hat pm.max_children erreicht ({{ (nextcloud_fpm_max_children | default(12)) if stack == 'nextcloud' else 12 }} Worker) – neue Anfragen warten (Dashboard PHP-FPM).",
+              "phpfpm_max_children_reached",
+          ),
+          make_rule(
+              "alert-phpfpm-busy",
+              "PHP-FPM: über 80 % der Worker belegt",
+              "max(phpfpm_active_processes) / {{ (nextcloud_fpm_max_children | default(12)) if stack == 'nextcloud' else 12 }} * 100",
+              80, "gt",
+              "Seit 5 min sind über 80 % der {{ (nextcloud_fpm_max_children | default(12)) if stack == 'nextcloud' else 12 }} PHP-FPM-Worker belegt – Last steigt (Meeting? Dashboard PHP-FPM).",
+              "phpfpm_busy_pct",
+          ),
           # Trivy (common_trivy). No rule on the findings themselves - the
           # scan mails new ones once; these two say the scan is broken.
           # Hosts without Trivy have no such series -> no data -> OK.

@@ -41,11 +41,14 @@ blog_wordpress_plugins:
   # is the backup, a move to a new server is blog.yml + restore; its .wpress files
   # in the web root were only protected by .htaccess (nginx blocks them, 403)
   - classic-editor
-  - limit-login-attempts-reloaded
 
 # Bundled plugins this site does not use. Deactivating leaves the PHP on disk
 # and reachable over HTTP, so the role deletes these outright.
 blog_wordpress_remove_plugins:
+  # limit-login-attempts-reloaded removed 2026-10-26: wp-login.php is reachable only from
+  # the country list (nginx geo) and fail2ban's wp_login jail bans in the kernel - the
+  # plugin only duplicated that inside PHP
+  - limit-login-attempts-reloaded
   - akismet
   - hello
 
