@@ -28,6 +28,16 @@ check process fail2ban with pidfile /run/fail2ban/fail2ban.pid
 check program f2b_sets with path "/usr/local/sbin/monit-check-f2b-sets.sh"
     if status != 0 for 2 cycles then alert
 
+# --- Mail relay: a message msmtp could not deliver (since 2026-10-26) ---
+# Cron, rkhunter, AIDE and logwatch mail through msmtp; a rejected envelope
+# sender went unnoticed for weeks because nothing reads msmtp.log. Monit
+# reads only the lines added since the last cycle and mails through its own
+# SMTP connection, so the alert gets out even when msmtp's does not.
+# (POSIX regex, no lookahead: every sysexits code except EX_OK.)
+check file msmtp_log with path /var/log/msmtp.log
+    ignore content != "exitcode="
+    if content = "exitcode=EX_(USAGE|DATAERR|NOINPUT|NOUSER|NOHOST|UNAVAILABLE|SOFTWARE|OSERR|OSFILE|CANTCREAT|IOERR|TEMPFAIL|PROTOCOL|NOPERM|CONFIG)" then alert
+
 # --- Other critical services: alert on state change (no auto-restart) ---
 {% for svc in monit_present_services %}
 check program svc_{{ svc | replace('-', '_') }} with path "/usr/local/sbin/monit-check-service.sh {{ svc }}"

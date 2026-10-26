@@ -89,9 +89,10 @@
     (_gf_contacts.json | default([]) | selectattr('name', 'equalto', 'email-admin') | list | length) == 0
   no_log: true
 
-# PUT replaces the whole policy tree with this one route on every run:
-# alerts are grouped per alert name + instance, the first mail goes out
-# after 30 s, repeats at most every 4 h while the alert keeps firing.
+# PUT replaces the whole policy tree on every run: alerts are grouped per
+# alert name + instance, the first mail goes out after 30 s, repeats at most
+# every 4 h while the alert keeps firing. One child route: the always-firing
+# heartbeat rule (label heartbeat=weekly) repeats only once a week.
 - name: Grafana | Set default notification policy to email-admin
   ansible.builtin.uri:
     url: "http://127.0.0.1:3000/api/v1/provisioning/policies"
@@ -106,6 +107,10 @@
       group_wait: "30s"
       group_interval: "5m"
       repeat_interval: "4h"
+      routes:
+        - receiver: "email-admin"
+          object_matchers: [["heartbeat", "=", "weekly"]]
+          repeat_interval: "168h"
     status_code: [200, 202]
   no_log: true
 
@@ -166,7 +171,7 @@
       # Datasource UID holen
       ds_uid = api(f"/api/datasources/name/{DS_NAME}")["uid"]
 
-      def make_rule(uid, title, expr, threshold, threshold_op, summary, threshold_label):
+      def make_rule(uid, title, expr, threshold, threshold_op, summary, threshold_label, labels=None):
           # expr must NOT contain a PromQL threshold filter (no "> N" at end);
           # the threshold belongs in the evaluator of query B.
           # "condition" names the refId that decides the alert. Without it
@@ -186,7 +191,7 @@
               "annotations": {
                   "summary": summary,
               },
-              "labels": {"severity": "warning"},
+              "labels": labels or {"severity": "warning"},
               "data": [
                   {
                       "refId": "A",
@@ -355,6 +360,20 @@
               80, "gt",
               "Seit 5 min sind über 80 % der {{ (nextcloud_fpm_max_children | default(12)) if stack == 'nextcloud' else 12 }} PHP-FPM-Worker belegt – Last steigt (Meeting? Dashboard PHP-FPM).",
               "phpfpm_busy_pct",
+          ),
+          # Dead man's switch for the mail path (2026-10-26): fires always,
+          # the heartbeat route repeats it once a week - so a Monday without
+          # this mail from every host means Grafana's mail path is broken
+          # (SMTP password, relay, Grafana itself). The first mail after the
+          # rule is created doubles as the test mail of a fresh deployment.
+          make_rule(
+              "alert-heartbeat",
+              "Lebenszeichen: Mailweg Grafana",
+              "vector(1)",
+              0, "gt",
+              "Diese Mail kommt absichtlich einmal pro Woche von jedem Host. Bleibt sie aus, ist der Mailweg von Grafana gestört.",
+              "heartbeat",
+              {"severity": "info", "heartbeat": "weekly"},
           ),
           # Trivy (common_trivy). No rule on the findings themselves - the
           # scan mails new ones once; these two say the scan is broken.

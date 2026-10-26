@@ -153,3 +153,18 @@
   changed_when: false
   check_mode: false   # read-only query, also runs in --check
   failed_when: false
+
+# Data presence (2026-10-26): every scrape target up, the key metrics have a
+# series, no Grafana alert rule in health error/nodata. Read-only HTTP
+# queries against Prometheus and Grafana on the host itself.
+- name: Verify | Monitoring – key metrics present, alert rules healthy?
+  ansible.builtin.command:
+    cmd: python3 -
+    stdin: "{{ lookup('ansible.builtin.file', 'data-presence.py') }}"
+  environment:
+    GF_USER: "{{ grafana_basic_auth_user }}"
+    GF_PASS: "{{ grafana_admin_pass }}"
+  register: _v_data_presence
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false
