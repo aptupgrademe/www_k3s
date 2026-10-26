@@ -1066,7 +1066,8 @@ ansible-playbook blog.yml --limit www.apt-upgrade.me --tags blog_wordpress --ask
   <strong>Config changes restart the pod once (checksum annotation)</strong>
   nginx, PHP and FPM configs are ConfigMaps mounted with <code>subPath</code>, and subPath mounts never update inside a
   running pod. The pod template therefore carries <code>checksum/config</code>, a SHA-256 of the rendered ConfigMap
-  template. Change a config and the next playbook run rolls the WordPress pod once (Recreate, about a minute);
+  template. Change a config and the next playbook run rolls the WordPress pod once (since 2026-10-26 as a rolling
+  update without downtime);
   unchanged config leaves the pod alone.
 </div>
 </section>

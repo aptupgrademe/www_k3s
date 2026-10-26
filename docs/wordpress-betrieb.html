@@ -1072,7 +1072,7 @@ ansible-playbook blog.yml --limit www.apt-upgrade.me --tags blog_wordpress --ask
   nginx-, PHP- und FPM-Konfiguration sind ConfigMaps, die per <code>subPath</code> eingehängt sind – und subPath-Mounts
   werden im laufenden Pod nie aktualisiert. Das Pod-Template trägt deshalb <code>checksum/config</code>, einen SHA-256
   der gerenderten ConfigMap-Vorlage. Ändert sich die Konfiguration, startet der nächste Playbook-Lauf den WordPress-Pod
-  einmal neu (Recreate, etwa eine Minute); unveränderte Konfiguration lässt den Pod in Ruhe.
+  einmal neu (seit 26.10.2026 als Rolling Update ohne Ausfall); unveränderte Konfiguration lässt den Pod in Ruhe.
 </div>
 </section>
 

@@ -330,9 +330,10 @@
 <div class="callout callout-info">
   <strong>Design Decision: Single-Node</strong>
   The server runs as a single Kubernetes node. There is no high availability.
-  Updates and restarts cause a brief downtime (typically: 30–60 seconds).
-  The <code>Recreate</code> strategy in the deployment ensures that only
-  one pod accesses the HostPath volumes at a time.
+  Since 2026-10-26 the deployment rolls with <code>RollingUpdate</code> as long as the image stays the same
+  (config change, rebuild of the same tag): the new pod is ready before the old one stops – no downtime.
+  When the image changes it uses <code>Recreate</code> (30–60 seconds of downtime), because the entrypoint then
+  copies new code into <code>/var/www/html</code> and runs <code>occ upgrade</code>; no old pod may serve from it meanwhile.
 </div>
 </section>
 
@@ -979,8 +980,8 @@ k3s kubectl exec -n nextcloud deployment/nextcloud -c nextcloud-fpm -- \
   <code>custom.config.php</code>, the FPM pool and the nginx config are ConfigMaps mounted with <code>subPath</code>,
   and subPath mounts are copied once at container start and never updated. Until 2026-09-24 a changed ConfigMap only
   took effect at the next accidental restart. The pod template now carries <code>checksum/config</code>, a SHA-256 of
-  the three rendered templates: change one and the next playbook run rolls the Nextcloud pod (Recreate, about a
-  minute of downtime). Unchanged config leaves the pod alone. To check what the pod really uses, read the file inside
+  the three rendered templates: change one and the next playbook run rolls the Nextcloud pod (since 2026-10-26 as a
+  rolling update without downtime). Unchanged config leaves the pod alone. To check what the pod really uses, read the file inside
   the container, not the ConfigMap.
 </div>
 </section>
@@ -1070,7 +1071,7 @@ k3s kubectl exec -n nextcloud deployment/nextcloud -c nextcloud-fpm -- \
 ... occ config:system:get trusted_domains</code></pre>
 
 <h3>Restart Pod</h3>
-<pre><code># Nextcloud (rolls gracefully due to Recreate strategy)
+<pre><code># Nextcloud (rolling update: the new pod gets ready, then the old one stops)
 k3s kubectl rollout restart deployment/nextcloud -n nextcloud
 k3s kubectl rollout status  deployment/nextcloud -n nextcloud --timeout=300s
 

@@ -330,9 +330,10 @@
 <div class="callout callout-info">
   <strong>Design-Entscheidung: Single-Node</strong>
   Der Server läuft als einzelner Kubernetes-Node. Es gibt keine Hochverfügbarkeit.
-  Updates und Neustarts verursachen eine kurze Ausfallzeit (typisch: 30–60 Sekunden).
-  Die <code>Recreate</code>-Strategie im Deployment stellt sicher, dass immer nur
-  ein Pod auf die HostPath-Volumes zugreift.
+  Seit 26.10.2026 rollt das Deployment per <code>RollingUpdate</code>, solange das Image gleich bleibt
+  (Konfigurationsänderung, Neuaufbau desselben Tags): Der neue Pod ist bereit, bevor der alte stoppt – kein Ausfall.
+  Wechselt das Image, gilt <code>Recreate</code> (30–60 Sekunden Ausfall), weil der Entrypoint dann neuen Code nach
+  <code>/var/www/html</code> kopiert und <code>occ upgrade</code> ausführt; währenddessen darf kein alter Pod daraus liefern.
 </div>
 </section>
 
@@ -982,7 +983,7 @@ k3s kubectl exec -n nextcloud deployment/nextcloud -c nextcloud-fpm -- \
   eingehängt sind – subPath-Mounts werden einmal beim Container-Start kopiert und danach nie aktualisiert. Bis
   2026-09-24 wirkte eine geänderte ConfigMap erst beim nächsten zufälligen Neustart. Das Pod-Template trägt jetzt
   <code>checksum/config</code>, einen SHA-256 der drei gerenderten Vorlagen: Ändert sich eine, startet der nächste
-  Playbook-Lauf den Nextcloud-Pod neu (Recreate, etwa eine Minute Ausfall). Unveränderte Konfiguration lässt den Pod in
+  Playbook-Lauf den Nextcloud-Pod neu (seit 26.10.2026 als Rolling Update ohne Ausfall). Unveränderte Konfiguration lässt den Pod in
   Ruhe. Was der Pod wirklich nutzt, zeigt die Datei im Container, nicht die ConfigMap.
 </div>
 </section>
@@ -1072,7 +1073,7 @@ k3s kubectl exec -n nextcloud deployment/nextcloud -c nextcloud-fpm -- \
 ... occ config:system:get trusted_domains</code></pre>
 
 <h3>Pod neustarten</h3>
-<pre><code># Nextcloud (rollt graceful durch wegen Recreate-Strategie)
+<pre><code># Nextcloud (Rolling Update: neuer Pod erst bereit, dann stoppt der alte)
 k3s kubectl rollout restart deployment/nextcloud -n nextcloud
 k3s kubectl rollout status  deployment/nextcloud -n nextcloud --timeout=300s
 
