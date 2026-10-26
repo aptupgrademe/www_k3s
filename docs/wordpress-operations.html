@@ -2051,7 +2051,7 @@ rm -f ~/.ansible/cp/*</code></pre>
   </tr>
   <tr>
     <td>PHP-FPM Pool</td>
-    <td>max_children=12, start_servers=4, min/max_spare=2/8, max_requests=500 (worker recycling to prevent memory leaks). Sized by memory rather than CPU: 12 workers plus the shared 128&nbsp;MB OPcache segment fit inside the wordpress-fpm container's 1Gi limit.</td>
+    <td>max_children=12, start_servers=4, min/max_spare=2/8, max_requests=500 (worker recycling to prevent memory leaks). Sized by memory rather than CPU: 12 workers plus the shared 128&nbsp;MB OPcache segment need about 0.5&nbsp;GB (PSS ~20–26&nbsp;MB per worker, measured 2026-10-26); the wordpress-fpm container's 1536Mi limit leaves room for uploads with image processing (<code>memory_limit</code> 512M per request).</td>
     <td><code>blog_k3s_deploy</code> → ConfigMap <code>wordpress-fpm-pool-config</code></td>
   </tr>
   <tr>
