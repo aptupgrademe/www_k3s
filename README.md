@@ -438,7 +438,7 @@ ingress_nginx_chart_version: "2.8.0"
 cert_manager_chart_version:  "1.21.2"
 
 # Container images
-blog_image_wordpress: "wordpress:7.1.3-php8.4-fpm"
+blog_image_wordpress: "wordpress:7.1.3-php8.5-fpm"
 nextcloud_image_fpm:  "nextcloud:34.0.5-fpm"
 
 ```

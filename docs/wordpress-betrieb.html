@@ -305,7 +305,7 @@
 <div class="card-grid">
   <div class="card">
     <div class="label">WordPress</div>
-    <div class="value">7.1.3 Kern (Unterversionen per nächtlichem Autoupdate) &middot; Image wordpress:7.1.3-php8.4-fpm</div>
+    <div class="value">7.1.3 Kern (Unterversionen per nächtlichem Autoupdate) &middot; Image wordpress:7.1.3-php8.5-fpm</div>
   </div>
   <div class="card">
     <div class="label">Betriebssystem</div>
@@ -366,7 +366,7 @@
 <span class="c-pod">│  fastcgi       │ :9000                  │</span>
 <span class="c-pod">│  ┌─────────────▼─────────────────────┐  │</span>
 <span class="c-pod">│  │  wordpress-fpm  PHP-FPM 8.3       │  │</span>
-<span class="c-pod">│  │  wordpress:7.1.3-php8.4-fpm              │  │</span>
+<span class="c-pod">│  │  wordpress:7.1.3-php8.5-fpm              │  │</span>
 <span class="c-pod">│  └───────────────────────────────────┘  │</span>
 <span class="c-pod">└──────────────────────────────────────────┘</span>
         │
@@ -423,7 +423,7 @@
 <h3>WordPress-Pod im Detail</h3>
 <div class="card">
   <h4>Container 1: <code>wordpress-fpm</code></h4>
-  <p>Das offizielle <code>wordpress:7.1.3-php8.4-fpm</code>-Image. Führt PHP-FPM auf Port 9000 aus.
+  <p>Das offizielle <code>wordpress:7.1.3-php8.5-fpm</code>-Image. Führt PHP-FPM auf Port 9000 aus.
   Beim ersten Start installiert der Docker-Entrypoint WordPress automatisch anhand
   der Umgebungsvariablen (DB-Host, DB-Name, DB-User, DB-Passwort).
   WordPress-Dateien werden in <code>/var/www/html</code> auf dem gemeinsamen
@@ -841,7 +841,7 @@ k3s kubectl get secret wordpress-secrets -n wordpress \
 </p>
 
 <pre><code># inventory/group_vars/all/versions.yml
-blog_image_wordpress: "wordpress:7.1.3-php8.4-fpm"   # WordPress PHP-FPM
+blog_image_wordpress: "wordpress:7.1.3-php8.5-fpm"   # WordPress PHP-FPM
 blog_image_mariadb:   "mariadb:10.11.19"    # MariaDB (10.11 LTS)
 blog_image_nginx:     "nginx:1.30.6-alpine" # nginx Sidecar (1.30 stable)</code></pre>
 
@@ -861,9 +861,9 @@ blog_image_nginx:     "nginx:1.30.6-alpine" # nginx Sidecar (1.30 stable)</code>
 <table>
   <tr><th>Tag-Format</th><th>Bedeutung</th><th>Beispiel</th></tr>
   <tr>
-    <td><code>7.1.3-php8.4-fpm</code></td>
+    <td><code>7.1.3-php8.5-fpm</code></td>
     <td>Exakter WordPress-Patch-Release; wird manuell in Ansible hochgesetzt</td>
-    <td><code>wordpress:7.1.3-php8.4-fpm</code></td>
+    <td><code>wordpress:7.1.3-php8.5-fpm</code></td>
   </tr>
   <tr>
     <td><code>10.11.19</code></td>
@@ -889,10 +889,10 @@ blog_image_nginx:     "nginx:1.30.6-alpine" # nginx Sidecar (1.30 stable)</code>
 
 <div class="callout callout-warn">
   <strong>Rebuild ohne Tag-Änderung</strong>
-  Wenn Docker Hub <code>wordpress:7.1.3-php8.4-fpm</code> unter demselben Tag neu baut
+  Wenn Docker Hub <code>wordpress:7.1.3-php8.5-fpm</code> unter demselben Tag neu baut
   (z.B. ein Base-Image-Security-Patch), passiert auf dem Server <em>nichts automatisch</em>.
   Der Tag ist lokal gecacht. Refresh erzwingen:
-  <pre style="margin-top:8px"><code>crictl pull docker.io/library/wordpress:7.1.3-php8.4-fpm
+  <pre style="margin-top:8px"><code>crictl pull docker.io/library/wordpress:7.1.3-php8.5-fpm
 k3s kubectl rollout restart deployment/wordpress -n wordpress</code></pre>
 </div>
 </section>
@@ -1681,7 +1681,7 @@ k3s kubectl get pods -n wordpress</code></pre>
 
 <ol class="steps">
   <li>Tag in <code>inventory/group_vars/all/versions.yml</code> ändern:
-    <pre><code>blog_image_wordpress: "wordpress:7.1.3-php8.4-fpm"</code></pre>
+    <pre><code>blog_image_wordpress: "wordpress:7.1.3-php8.5-fpm"</code></pre>
   </li>
   <li>Playbook ausführen – K3s zieht das neue Image und rollt den Pod durch:
     <pre><code>ansible-playbook blog.yml --limit www.apt-upgrade.me --ask-vault-pass</code></pre>

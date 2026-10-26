@@ -35,7 +35,7 @@ nextcloud_image_fpm_exporter: "hipages/php-fpm_exporter:2.2.0"
 nextcloud_image_busybox:      "busybox:1"                    # init containers, floating on purpose
 
 # --- WordPress containers -------------------------------------------------------
-blog_image_wordpress:       "wordpress:7.1.3-php8.4-fpm"
+blog_image_wordpress:       "wordpress:7.1.3-php8.5-fpm"
 blog_image_nginx:           "nginx:1.30.6-alpine"            # keep equal to nextcloud_image_nginx
 blog_image_mariadb:         "mariadb:10.11.19"               # 10.11 LTS (until Feb 2028)
 blog_image_redis:           "redis:7.4.11-alpine"            # 7.4 = last Redis 7 line
@@ -179,6 +179,10 @@ nextcloud_mariadb_repo_version: "10.11"   # MariaDB Community repo series on the
 #   2026-10-11 26.04.3.1.1 -> 26.04.5.1.1 (patch within 26.04).
 #
 # blog_image_wordpress
+#   2026-10-26 php8.4 -> php8.5 (same WordPress 7.1.3): both Nextclouds already
+#   run 8.5. All plugins, mu-plugins and the theme linted with php:8.5-cli -
+#   no errors, only deprecations (non-canonical (double) casts in
+#   easy-table-of-contents, "case ...;" in the theme customizer).
 #   2026-10-11 7.1.1 -> 7.1.3 (core already 7.1.3 via the nightly minor
 #   updates; the image catches up PHP/OS layers).
 #   2026-09-20 7.1.0 -> 7.1.1 (maintenance + security, 11 security fixes;

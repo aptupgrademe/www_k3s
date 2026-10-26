@@ -96,7 +96,7 @@
 
   packageRules: [
     // Keep the image variant: nextcloud:34.0.4-fpm stays -fpm, nginx stays
-    // -alpine, wordpress stays -php8.4-fpm (Renovate's docker versioning
+    // -alpine, wordpress stays -php8.5-fpm (Renovate's docker versioning
     // treats the suffix as compatibility marker already - stated explicitly).
     {
       matchDatasources: ["docker"],
