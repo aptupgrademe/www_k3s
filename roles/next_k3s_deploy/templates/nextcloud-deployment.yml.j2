@@ -12,9 +12,21 @@ metadata:
     app: nextcloud
 spec:
   replicas: 1
-  # Recreate ensures only one pod accesses the RWO HostPath volumes at a time.
+  # Rolling update when the image stays the same (config change, image
+  # refresh of the same tag): the new pod gets ready before the old one stops,
+  # no outage. Recreate when the image changes: the entrypoint then copies the
+  # new code into /var/www/html and runs occ upgrade - no old pod may serve
+  # from that directory meanwhile (tasks/nextcloud.yml sets the variable and
+  # switches back to RollingUpdate after such a rollout). Since 2026-10-26.
   strategy:
+{% if _nc_strategy_rolling | default(false) | bool %}
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+{% else %}
     type: Recreate
+{% endif %}
   selector:
     matchLabels:
       app: nextcloud

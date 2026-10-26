@@ -18,9 +18,16 @@ metadata:
     app: wordpress
 spec:
   replicas: 1
-  # Recreate ensures only one pod accesses the RWO HostPath volume at a time.
+  # Rolling update (since 2026-10-26, was Recreate): the new pod starts, gets
+  # ready, then the old one stops - a config change or image refresh no longer
+  # takes the blog offline. Two pods on the same hostPath are fine on one
+  # node: the official image copies WordPress into /var/www/html only when it
+  # is empty, so a new pod never rewrites the files the old one serves.
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: wordpress

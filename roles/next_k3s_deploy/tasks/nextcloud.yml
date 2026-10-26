@@ -18,6 +18,23 @@
 # template is rendered on the controller, parsed into objects and applied via
 # the API; "changed" only when a live object really differs.
 
+# Update strategy (template comment): rolling only when the running pod
+# already has the target image. A first install or an image change uses
+# Recreate.
+- name: Nextcloud | Image of the running Deployment
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ k3s_kubeconfig }}"
+    kind: Deployment
+    namespace: nextcloud
+    name: nextcloud
+  register: nc_deploy_info
+
+- name: Nextcloud | Rolling update possible (image unchanged)?
+  ansible.builtin.set_fact:
+    nc_rolling_ok: >-
+      {{ nextcloud_image_fpm in (nc_deploy_info.resources | map(attribute='spec.template.spec.containers')
+         | flatten | map(attribute='image') | list) }}
+
 - name: Nextcloud | Apply Deployment + Service
   kubernetes.core.k8s:
     kubeconfig: "{{ k3s_kubeconfig }}"
@@ -33,6 +50,7 @@
     label: "{{ (item.kind ~ '/' ~ item.metadata.name) if item is mapping else ((item | length) ~ ' objects') }}"
   vars:
     k8s_objects: "{{ lookup('ansible.builtin.template', 'nextcloud-deployment.yml.j2') | ansible.builtin.from_yaml_all | select | list }}"
+    _nc_strategy_rolling: "{{ nc_rolling_ok }}"
   register: nc_apply
   no_log: true
 
@@ -43,3 +61,21 @@
     --timeout=300s
   changed_when: false
   when: nc_apply.changed
+
+# After a Recreate rollout (new image) the Deployment goes back to
+# RollingUpdate, so the next run - and the drift check - finds the strategy
+# the template renders then. Changes no pod: the strategy is not part of the
+# pod template.
+- name: Nextcloud | Back to RollingUpdate after a Recreate rollout
+  kubernetes.core.k8s:
+    kubeconfig: "{{ k3s_kubeconfig }}"
+    state: present
+    apply: true
+    definition: "{{ k8s_objects }}"
+  vars:
+    k8s_objects: "{{ lookup('ansible.builtin.template', 'nextcloud-deployment.yml.j2') | ansible.builtin.from_yaml_all | select | list }}"
+    _nc_strategy_rolling: true
+  when:
+    - nc_apply.changed
+    - not (nc_rolling_ok | bool)
+  no_log: true
