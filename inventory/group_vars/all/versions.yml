@@ -24,13 +24,13 @@ helm_version:                "v4.3.1"         # github.com/helm/helm/releases
 helm_diff_version:           "3.15.15"        # github.com/databus23/helm-diff/releases + checksum below
 helm_diff_sha256:            "504e99410611daa70702362e1b10dc74929df8a912cb3f6b5d21d1ee9d0cb7d9"
 ingress_nginx_chart_version: "2.8.0"          # F5 nginx-ingress chart, helm.nginx.com/stable index.yaml
-cert_manager_chart_version:  "1.21.2"         # charts.jetstack.io index.yaml (listed there as v1.21.2)
+cert_manager_chart_version:  "1.21.3"         # charts.jetstack.io index.yaml (listed there as v1.21.3)
 kube_state_metrics_image:    "registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.20.0"  # github.com/kubernetes/kube-state-metrics/releases
 
 # --- Nextcloud containers -------------------------------------------------------
 nextcloud_image_fpm:          "nextcloud:34.0.5-fpm"         # majors one at a time (34 -> 35)
 nextcloud_image_nginx:        "nginx:1.30.6-alpine"          # nginx stable branch, see notes
-nextcloud_image_collabora:    "collabora/code:26.04.5.1.1"
+nextcloud_image_collabora:    "collabora/code:26.04.5.2.1"
 nextcloud_image_fpm_exporter: "hipages/php-fpm_exporter:2.2.0"
 nextcloud_image_busybox:      "busybox:1"                    # init containers, floating on purpose
 
@@ -39,7 +39,7 @@ blog_image_wordpress:       "wordpress:7.1.3-php8.4-fpm"
 blog_image_nginx:           "nginx:1.30.6-alpine"            # keep equal to nextcloud_image_nginx
 blog_image_mariadb:         "mariadb:10.11.19"               # 10.11 LTS (until Feb 2028)
 blog_image_redis:           "redis:7.4.11-alpine"            # 7.4 = last Redis 7 line
-blog_image_mysqld_exporter: "prom/mysqld-exporter:v0.20.0"   # keep equal to mysqld_exporter_version
+blog_image_mysqld_exporter: "prom/mysqld-exporter:v0.21.0"   # keep equal to mysqld_exporter_version
 blog_image_fpm_exporter:    "hipages/php-fpm_exporter:2.2.0"
 blog_image_busybox:         "busybox:1"                      # init containers, floating on purpose
 blog_wp_cli_version:        "2.12.0"                         # + checksum below, update both together
@@ -48,9 +48,9 @@ blog_wp_cli_sha512:         "be928f6b8ca1e8dfb9d2f4b75a13aa4aee0896f8a9a0a1c45cd
 # --- Host packages and binaries (outside K3s) ----------------------------------
 node_exporter_version:         "1.12.1"   # github.com/prometheus/node_exporter/releases
 prometheus_version:            "3.15.1"   # github.com/prometheus/prometheus/releases
-mysqld_exporter_version:       "0.20.0"   # host MariaDB of the Nextcloud servers
+mysqld_exporter_version:       "0.21.0"   # host MariaDB of the Nextcloud servers
 loki_version:                  "3.7.9"    # rpm.grafana.com (common_loki); github.com/grafana/loki/releases
-alloy_version:                 "1.21.1"   # rpm.grafana.com (common_loki); github.com/grafana/alloy/releases
+alloy_version:                 "1.21.2"   # rpm.grafana.com (common_loki); github.com/grafana/alloy/releases
 trivy_version:                 "0.75.0"   # github.com/aquasecurity/trivy/releases (common_trivy) - see notes
 trivy_sha256:                  "c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f"   # trivy_<v>_Linux-64bit.tar.gz, from trivy_<v>_checksums.txt
 nextcloud_mariadb_repo_version: "10.11"   # MariaDB Community repo series on the Nextcloud hosts
@@ -94,10 +94,17 @@ nextcloud_mariadb_repo_version: "10.11"   # MariaDB Community repo series on the
 #   2026-10-14 added at 3.15.15 (supports Helm v4.3).
 #
 # loki_version / alloy_version (rpm.grafana.com, common_loki)
+#   2026-10-26 alloy 1.21.1 -> 1.21.2 (bug fix: config value typed as secret).
 #   2026-10-22 loki 3.7.8 -> 3.7.9 (dependency updates, ingester WAL ordering
 #   fix); alloy 1.20.1 -> 1.21.1 (Go 1.27.3). The 1.21 breaking changes touch
 #   kafka/otelcol components and loki.write with wal { enabled = true } -
 #   none of them are used in config.alloy.j2.
+#
+# mysqld_exporter_version / blog_image_mysqld_exporter (move together)
+#   2026-10-26 0.20.0 -> 0.21.0: some mysql_global_status_* metrics are now
+#   counters/gauges instead of untyped (dashboards use rate(), unaffected);
+#   a literal "$" in a config-file password must now be written "$$" - none
+#   of our exporter passwords contains one (checked on all three hosts).
 #
 # trivy_version
 #   2026-10-19 0.75.0 (0.76.0 was 5 days old). Pinned AND checksummed on
@@ -127,6 +134,9 @@ nextcloud_mariadb_repo_version: "10.11"   # MariaDB Community repo series on the
 #   artifacthub.io/packages/helm/nginx-stable/nginx-ingress
 #
 # cert_manager_chart_version
+#   2026-10-26 1.21.2 -> 1.21.3: Go 1.26.10 (CVE-2026-111943, crypto/x509 rejects
+#   chains through the compromised eMudhra intermediates), eMudhra root removed
+#   from the images, ACME ARI renewal-loop fix. "All users should upgrade."
 #   Taken from charts.jetstack.io index.yaml, not GitHub (same reason as the
 #   nginx-ingress note). The index lists versions with a "v" prefix; helm
 #   --version accepts them without it.
@@ -165,6 +175,7 @@ nextcloud_mariadb_repo_version: "10.11"   # MariaDB Community repo series on the
 #   2026-09-18 1.30.4 -> 1.30.5 (both stacks).
 #
 # nextcloud_image_collabora
+#   2026-10-26 26.04.5.1.1 -> 26.04.5.2.1 (patch release).
 #   2026-10-11 26.04.3.1.1 -> 26.04.5.1.1 (patch within 26.04).
 #
 # blog_image_wordpress
