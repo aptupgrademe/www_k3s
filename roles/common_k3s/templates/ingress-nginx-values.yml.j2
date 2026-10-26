@@ -24,6 +24,14 @@ controller:
 
   config:
     entries:
+      # --- Access log: the default combined format plus two fields ---
+      # Content-Type and request length (headers + body) at the END of the
+      # line, so every parser that reads from the start keeps working
+      # (fail2ban filters, visitor stats, attack-watch). Without them a
+      # multipart probe like the PHP RCE of 2026-10-21 could not be told from
+      # a normal POST (2026-10-22: 568 POSTs from one address, only "likely").
+      log-format: '$remote_addr - $remote_user [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent" "$http_x_forwarded_for" "$content_type" $request_length'
+
       # --- Hide nginx version from Server header ---
       server-tokens: "false"
 
