@@ -106,7 +106,12 @@
       RestrictRealtime=yes
       LockPersonality=yes
       CapabilityBoundingSet=
-      RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+      # AF_NETLINK (since 2026-10-26): dskit lists the network interfaces
+      # through a netlink socket even with instance_addr set; without it Loki
+      # logged "error getting network interfaces ... address family not
+      # supported" a few times an hour. Netlink without CAP_NET_ADMIN (the
+      # bounding set above is empty) can only read, not change the network.
+      RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
       SystemCallArchitectures=native
   notify: restart loki
   ignore_errors: "{{ ansible_check_mode }}"   # first --check: directory not there yet
