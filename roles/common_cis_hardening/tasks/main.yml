@@ -173,7 +173,8 @@
     special_time: daily
     job: >-
       OUT=$(nice -n 10 /usr/sbin/aide --check --workers=$(nproc) 2>&1);
-      [ $? -ne 0 ] && echo "$OUT" | /usr/bin/mail -s "[$(hostname -f)] AIDE found file integrity changes" {{ aide_mail }}
+      [ $? -ne 0 ] && echo "$OUT" | /usr/bin/mail -s "[$(hostname -f)] AIDE found file integrity changes" {{ aide_mail }};
+      /usr/local/sbin/heartbeat-mark aide_check 108000
     user: root
 
 # common_aide_refresh (end of playbook) only re-baselines when an Ansible
@@ -203,7 +204,16 @@
     job: >-
       nice -n 10 /usr/sbin/aide --update --workers=$(nproc) >/dev/null 2>&1;
       [ -f /var/lib/aide/aide.db.new.gz ] && mv /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz
+      && /usr/local/sbin/heartbeat-mark aide_update 108000
     user: root
+
+# A hand-made /etc/cron.d/aide-check from August 2026 (not in any role, not
+# in git) ran a second, single-threaded AIDE check every day at 05:00 on the
+# blog - found 2026-10-26. The managed jobs above are the only AIDE runs.
+- name: CIS | Remove the stray hand-made AIDE cron file
+  ansible.builtin.file:
+    path: /etc/cron.d/aide-check
+    state: absent
 
 # -----------------------------------------------------------------------------
 # Kernel modules: blacklist legacy/unused filesystem drivers

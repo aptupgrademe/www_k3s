@@ -1,5 +1,12 @@
 ---
 # node_exporter_version is pinned in inventory/group_vars/all/versions.yml
 # (one place for all versions - no second, stale default here).
-#
-# No role defaults: the only setting, the version, is a pin in versions.yml.
+
+# systemd services of periodic jobs that report a heartbeat (tasks/main.yml).
+# max_age: about twice the interval, so one late run is not an alert.
+heartbeat_units:
+  - {unit: ssh-login-alert.service,           task: ssh_login_alert,   max_age: 900,    stack: all}
+  - {unit: fail2ban-ingress-logwatch.service, task: f2b_logwatch,      max_age: 900,    stack: all}
+  - {unit: ssh-geo-update.service,            task: ssh_geo_update,    max_age: 691200, stack: all}
+  - {unit: dnf-automatic-install.service,     task: dnf_automatic,     max_age: 108000, stack: all}
+  - {unit: visitor-stats-daily.service,       task: visitor_stats,     max_age: 108000, stack: wordpress}

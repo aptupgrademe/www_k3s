@@ -135,7 +135,7 @@
     name: "restart services after updates"
     hour: "3"
     minute: "45"
-    job: "/usr/local/sbin/restart-updated-services {{ dnf_automatic_reboot_mail }}"
+    job: "/usr/local/sbin/restart-updated-services {{ dnf_automatic_reboot_mail }}; /usr/local/sbin/heartbeat-mark restart_services 108000"
     user: root
 
 # -----------------------------------------------------------------------------

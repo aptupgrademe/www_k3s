@@ -361,6 +361,18 @@
               "Seit 5 min sind über 80 % der {{ (nextcloud_fpm_max_children | default(12)) if stack == 'nextcloud' else 12 }} PHP-FPM-Worker belegt – Last steigt (Meeting? Dashboard PHP-FPM).",
               "phpfpm_busy_pct",
           ),
+          # Heartbeats of the periodic jobs (heartbeat-mark, common_node_exporter):
+          # a task older than its own max age has stopped running or fails.
+          # Which one: job_heartbeat_timestamp_seconds in Explore, or the
+          # verify report ("monitoring data present").
+          make_rule(
+              "alert-job-heartbeat",
+              "Regelmäßiger Job meldet sich nicht",
+              "max(time() - job_heartbeat_timestamp_seconds - job_heartbeat_max_age_seconds)",
+              0, "gt",
+              "Ein regelmäßiger Job (AIDE, rkhunter, ClamAV, auditd-Notifier, SSH-Login-Alarm …) hat sich länger nicht gemeldet als erlaubt – läuft nicht mehr oder schlägt fehl (Explore: job_heartbeat_timestamp_seconds).",
+              "heartbeat_overdue_s",
+          ),
           # Dead man's switch for the mail path (2026-10-26): fires always,
           # the heartbeat route repeats it once a week - so a Monday without
           # this mail from every host means Grafana's mail path is broken

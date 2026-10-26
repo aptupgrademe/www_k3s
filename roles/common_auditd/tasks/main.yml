@@ -76,4 +76,6 @@
     name: "auditd critical-key notifier"
     minute: "*/10"
     user: root
-    job: "/usr/local/sbin/auditd-notify.sh"
+    # heartbeat-mark (common_node_exporter): this notifier was silent for six
+    # weeks once without anything noticing
+    job: "/usr/local/sbin/auditd-notify.sh && /usr/local/sbin/heartbeat-mark auditd_notify 1800"

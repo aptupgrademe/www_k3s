@@ -93,7 +93,8 @@
     name: "rkhunter daily scan"
     hour: "3"
     minute: "15"
-    job: "/usr/bin/rkhunter --check --cronjob --report-warnings-only --nocolors 2>&1"
+    # heartbeat-mark (common_node_exporter) after the scan, whatever its exit code
+    job: "/usr/bin/rkhunter --check --cronjob --report-warnings-only --nocolors 2>&1; /usr/local/sbin/heartbeat-mark rkhunter 108000"
     user: root
 
 # The EPEL package ships its own /etc/cron.daily/rkhunter, so every host ran

@@ -1340,7 +1340,7 @@ k3s kubectl logs -n nextcloud deployment/nextcloud -c nextcloud-fpm -f | grep -i
 
 <h3>Grafana Alerting</h3>
 <p>
-  Grafana ist mit 16 vorkonfigurierten Alert-Rules (dazu die Log-Alarme aus <code>common_loki</code>) und einem E-Mail-Kontaktpunkt eingerichtet
+  Grafana ist mit 17 vorkonfigurierten Alert-Rules (dazu die Log-Alarme aus <code>common_loki</code>) und einem E-Mail-Kontaktpunkt eingerichtet
   (konfiguriert durch <code>common_grafana</code>, SMTP-Credentials aus <code>common_msmtp</code>):
 </p>
 <table>
@@ -1358,6 +1358,7 @@ k3s kubectl logs -n nextcloud deployment/nextcloud -c nextcloud-fpm -f | grep -i
   <tr><td>PHP-FPM: Anfragen warten</td><td>&gt; 0</td><td>die Listen-Queue bleibt 5 min nicht leer – pm.max_children zu knapp (seit 21.10.2026)</td></tr>
   <tr><td>PHP-FPM: alle Worker belegt</td><td>&gt; 0</td><td><code>pm.max_children</code> wurde erreicht (seit 26.10.2026)</td></tr>
   <tr><td>PHP-FPM: über 80 % der Worker belegt</td><td>80 %</td><td>Frühwarnung bei steigender Last, 5 min (seit 26.10.2026)</td></tr>
+  <tr><td>Regelmäßiger Job meldet sich nicht</td><td>max. Alter je Job</td><td>AIDE, rkhunter, ClamAV, auditd-Notifier, SSH-Login-Alarm, Geo-Liste, dnf-automatic u. a. schreiben nach jedem erfolgreichen Lauf einen Zeitstempel (<code>heartbeat-mark</code>); fehlt er länger als erlaubt, läuft der Job nicht mehr (seit 26.10.2026)</td></tr>
   <tr><td>Lebenszeichen: Mailweg Grafana</td><td>immer</td><td>feuert absichtlich, Mail einmal pro Woche je Host; fehlt sie am Montag, ist der Mailweg von Grafana gestört (seit 26.10.2026)</td></tr>
   <tr><td>Trivy-Scan veraltet</td><td>36 h</td><td>der nächtliche Scan ist nicht gelaufen</td></tr>
   <tr><td>Trivy-Scan fehlgeschlagen</td><td>–</td><td>Datenbank oder ein Image konnte nicht gescannt werden</td></tr>

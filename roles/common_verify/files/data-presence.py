@@ -3,7 +3,8 @@
 "Configured and running" missed two silent gaps: node_exporter lost its disk
 metrics for two days (a hidden SELinux denial) and alert rules without a
 condition never fired. This asks the two places that would show them:
-  1. Prometheus: every scrape target up, and each key metric has a series
+  1. Prometheus: every scrape target up, each key metric has a series,
+     no periodic job's heartbeat overdue
   2. Grafana: no alert rule in health "error" or "nodata"
 Output: one line per finding, last line "RESULT <failures>".
 Grafana login from the environment (GF_USER, GF_PASS).
@@ -44,6 +45,10 @@ try:
         if not prom(q):
             print(f'FAIL no data: {what} ({q})')
             fails += 1
+    # heartbeats of the periodic jobs (heartbeat-mark): name the overdue ones
+    for r in prom('time() - job_heartbeat_timestamp_seconds - job_heartbeat_max_age_seconds > 0'):
+        print(f"FAIL job heartbeat overdue: {r['metric'].get('task', '?')} by {int(float(r['value'][1]))} s")
+        fails += 1
 except Exception as e:
     print(f'FAIL Prometheus query: {e.__class__.__name__}')
     fails += 1

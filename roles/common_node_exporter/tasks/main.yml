@@ -131,6 +131,58 @@
     group: root
     mode: "0755"
 
+# Heartbeats of the periodic jobs (2026-10-26). Each job calls
+# "heartbeat-mark <task> <max age in s>" when it has finished; the file it
+# writes here becomes job_heartbeat_timestamp_seconds{task=...} and
+# job_heartbeat_max_age_seconds, and the Grafana rule "Regelmäßiger Job
+# meldet sich nicht" fires when a task is older than its own max age. Found
+# the hard way: the auditd notifier was silent for six weeks and nothing
+# noticed. Cron jobs append it to their command line (common_cis_hardening,
+# common_rkhunter, common_clamav, common_auditd, common_dnf_automatic);
+# systemd timers get it as ExecStartPost below (runs only after a successful
+# ExecStart). Label "task", not "job": Prometheus owns "job".
+- name: Node Exporter | Heartbeat helper for periodic jobs
+  ansible.builtin.copy:
+    dest: /usr/local/sbin/heartbeat-mark
+    owner: root
+    group: root
+    mode: "0755"
+    content: |
+      #!/bin/sh
+      # heartbeat-mark <task> <max_age_seconds> - managed by Ansible (common_node_exporter)
+      # Written atomically (tmp + mv) so node_exporter never reads half a file.
+      case "$1" in ''|*[!a-z0-9_]*) echo "usage: heartbeat-mark <task> <max_age_s>" >&2; exit 2 ;; esac
+      d=/var/lib/node_exporter/textfile
+      t=$(mktemp "$d/.heartbeat_$1.XXXXXX") || exit 1
+      printf 'job_heartbeat_timestamp_seconds{task="%s"} %s\njob_heartbeat_max_age_seconds{task="%s"} %s\n' \
+        "$1" "$(date +%s)" "$1" "${2:-90000}" > "$t" && chmod 0644 "$t" && mv -f "$t" "$d/heartbeat_$1.prom"
+
+- name: Node Exporter | Drop-in directories of the systemd timer jobs
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item.unit }}.d"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: "{{ heartbeat_units | selectattr('stack', 'in', ['all', stack]) | list }}"
+  loop_control:
+    label: "{{ item.unit }}"
+
+- name: Node Exporter | Heartbeat drop-ins for the systemd timer jobs
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.unit }}.d/heartbeat.conf"
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (common_node_exporter): heartbeat after a successful run
+      [Service]
+      ExecStartPost=/usr/local/sbin/heartbeat-mark {{ item.task }} {{ item.max_age }}
+  loop: "{{ heartbeat_units | selectattr('stack', 'in', ['all', stack]) | list }}"
+  loop_control:
+    label: "{{ item.unit }}"
+  notify: reload systemd
+
 - name: Node Exporter | Ensure node_exporter.service.d drop-in directory exists
   ansible.builtin.file:
     path: /etc/systemd/system/node_exporter.service.d
