@@ -69,6 +69,27 @@
         .site-title a, .site-title a:hover { color: #ffffff !important; }
         .site-description { color: #ffffff !important; }
 
+        /* Dark Mode: Inhaltsverzeichnis (Easy Table of Contents) bringt eine
+           feste helle Box mit (#f9f9f9) - im Dark Mode war sie hell und der
+           Titel weiss auf weiss. Dunkelgrau, etwas heller als der Inhalt. */
+        body.aft-dark-mode #ez-toc-container {
+            background: #2b2b2b !important;
+            border-color: #444444 !important;
+            box-shadow: none !important;
+        }
+        body.aft-dark-mode #ez-toc-container .ez-toc-title { color: #eeeeee !important; }
+        body.aft-dark-mode #ez-toc-container a,
+        body.aft-dark-mode #ez-toc-container a:visited,
+        body.aft-dark-mode #ez-toc-container li { color: #d0d0d0 !important; }
+        body.aft-dark-mode #ez-toc-container a:hover { color: #6ea8ff !important; }
+        body.aft-dark-mode #ez-toc-container .ez-toc-btn,
+        body.aft-dark-mode #ez-toc-container .ez-toc-js-icon-con {
+            background: transparent !important;
+            border-color: #555555 !important;
+        }
+        body.aft-dark-mode #ez-toc-container .ez-toc-icon-toggle-span svg,
+        body.aft-dark-mode #ez-toc-container .ez-toc-js-icon-con svg { color: #d0d0d0 !important; fill: #d0d0d0 !important; }
+
         /* Smartphone + Tablet (bis 1024px, dort stapelt das Theme alles
            untereinander): Startseite zeigt nur die letzten Beiträge
            (posts_per_page = 5) mit Seitennavigation, Suche und Kategorien.
