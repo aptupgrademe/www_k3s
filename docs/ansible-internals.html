@@ -621,7 +621,7 @@ The bundled K3s components nobody needs here (Traefik, ServiceLB, local-storage)
 
 <div class="rolle">
 <p><strong><code>common_loki</code></strong> (both)</p>
-<p><strong>What:</strong> Loki stores logs (single binary, filesystem, 14 days), Grafana Alloy collects them: the systemd journal, every pod log under <code>/var/log/pods</code>, <code>audit.log</code> and <code>fail2ban.log</code>. Grafana gets a Loki datasource and four log alerts (blocked AVC, fail2ban error, kernel OOM, no logs arriving).
+<p><strong>What:</strong> Loki stores logs (single binary, filesystem, 14 days), Grafana Alloy collects them: the systemd journal, every pod log under <code>/var/log/pods</code>, <code>audit.log</code> and <code>fail2ban.log</code>. Grafana gets a Loki datasource and five log alerts (blocked AVC, fail2ban error, kernel OOM, no logs arriving, error budget: more than 100 error/warning lines per service and hour).
 <strong>Why:</strong> Metrics say <em>that</em> something happened, logs say <em>what</em> – and an AVC denial or a failed ban is only visible in a log.</p>
 <p class="wie"><strong>How:</strong> pinned packages from the Grafana repo (<code>loki_version</code>, <code>alloy_version</code>) → Loki config validated with <code>-verify-config</code>, Alloy config with <code>alloy fmt</code> → systemd drop-ins (read-only system; Alloy gets only <code>CAP_DAC_READ_SEARCH</code> to read root-owned logs, no root) → wait for <code>/ready</code> → datasource and rules via the Grafana API → self-test: a <code>logger</code> marker must show up in Loki. Alloy parses the timestamps of <code>audit.log</code> and <code>fail2ban.log</code>; without that the first start stamped the whole backlog "now" and the alerts fired on hours-old lines.</p>
 </div>

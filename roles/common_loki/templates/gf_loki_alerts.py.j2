@@ -93,6 +93,34 @@ rules = [
         0, "gt",
         "Der Kernel hat einen Prozess wegen Speichermangel beendet – {job=\"journal\", transport=\"kernel\"} |~ \"(?i)out of memory\".",
     ),
+    # Error budget (2026-10-26): error/warning lines per systemd unit or
+    # container and hour. Measured 23-26 Oct after the exporter fixes: at most
+    # 38/h, during rollouts. The noisy exporters before (mysqld_exporter,
+    # node_exporter's hidden SELinux denial) wrote 240/h for days without any
+    # alert. Allow-list = known harmless lines, each for a reason:
+    #   buffered to a temporary file    nginx spools large bodies to disk - normal
+    #   Endpoints is deprecated         kube-state-metrics, upstream deprecation
+    #   Operation cannot be fulfilled   Kubernetes optimistic-locking retry
+    #   use of closed network connection, failed to read memory|cpu,
+    #   DeleteContainer returned error  kubelet races while a pod goes away
+    #   access forbidden by rule        our own nginx deny rules hit by scanners
+    #   differs from the latest version Nextcloud entrypoint about old *.config.php
+    #   plugin process exited, Server closed, context canceled   restarts
+    #   error getting network interfaces  Loki without AF_NETLINK (sandbox)
+    #   ] INF , No write access to path Collabora info lines that say "denied"
+    # SSH session scopes are left out (an admin's own command output).
+    make_rule(
+        "alert-log-error-budget",
+        "Fehler-Budget überschritten (Logs)",
+        'max(sum by (unit, container) (count_over_time({job=~"journal|pods", unit!~"session-.+"}'
+        ' |~ `(?i)(\\berror\\b|\\bfatal\\b|\\bwarn(ing)?\\b|\\bfailed\\b|\\bdenied\\b|level=(error|warn))`'
+        ' !~ `buffered to a temporary file|Endpoints is deprecated|Operation cannot be fulfilled|use of closed network connection'
+        '|failed to read (memory|cpu)|DeleteContainer returned error|access forbidden by rule|differs from the latest version of this image'
+        '|plugin process exited|Server closed|context canceled|error getting network interfaces|\\] INF |No write access to path`'
+        ' [1h])))',
+        100, "gt",
+        "Ein Dienst oder Container hat in der letzten Stunde über 100 Fehler-/Warnzeilen geschrieben (normal: höchstens ~40) – Explore: sum by (unit, container) (count_over_time({job=~\"journal|pods\"} |~ \"(?i)error|warn|failed\" [1h])).",
+    ),
     make_rule(
         "alert-log-pipeline",
         "Keine Logs mehr in Loki",
