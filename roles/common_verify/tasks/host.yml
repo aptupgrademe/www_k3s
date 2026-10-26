@@ -146,6 +146,21 @@
   check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
+# Every host daemon in its own domain (verify_daemon_domains, defaults).
+# Output: one line per daemon that runs in another domain or not at all.
+- name: Verify | SELinux – host daemons in their own domain?
+  ansible.builtin.shell: |
+    set -o pipefail
+    {% for d in verify_daemon_domains | selectattr('stack', 'in', ['all', stack]) %}
+    t=$(ps -C {{ d.comm }} -o label= 2>/dev/null | cut -d: -f3 | sort -u | tr '\n' ' ')
+    [ "$t" = "{{ d.domain }} " ] || echo "{{ d.comm }}: ${t:-not running} (expected {{ d.domain }})"
+    {% endfor %}
+    true
+  register: _v_daemon_domains
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false
+
 # Set by common_sysctl; "bbr" expected. -n prints only the value.
 - name: Verify | Performance – TCP BBR active?
   ansible.builtin.command: sysctl -n net.ipv4.tcp_congestion_control

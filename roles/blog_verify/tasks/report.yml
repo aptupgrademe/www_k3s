@@ -35,6 +35,7 @@
     _r_k3s:         "{{ _v_k3s_svc.stdout | default('') == 'active' }}"
     _r_auditd:      "{{ _v_auditd_svc.stdout | default('') == 'active' }}"
     _r_selinux:     "{{ _v_selinux.stdout | default('') == 'Enforcing' }}"
+    _r_daemon_dom:  "{{ (_v_daemon_domains.stdout | default('?') | trim) == '' }}"
     _r_pod_selinux: "{{ (_v_pod_selinux.stdout_lines | default(['0']) | first | default('0') | int) > 0 and (_v_pod_selinux.stdout_lines | default([]) | length) == 1 }}"
     # K8s
     _r_wp_pods:     "{{ 'Running' in (_v_wp_pods.stdout | default('')) }}"
@@ -81,14 +82,14 @@
     _pass_count: >-
       {{
         [_r_nft_svc, _r_nft_tables, _r_nft_policy, _r_nft_f2b_sets, _r_f2b_effect, _r_data,
-         _r_f2b_svc, _r_f2b_jails, _r_k3s, _r_auditd, _r_selinux, _r_pod_selinux,
+         _r_f2b_svc, _r_f2b_jails, _r_k3s, _r_auditd, _r_selinux, _r_pod_selinux, _r_daemon_dom,
          _r_wp_pods, _r_ingress, _r_certmgr, _r_noerror,
          _r_https, _r_tls, _r_hsts, _r_server, _r_no_xpb, _r_wp_login,
          _r_xmlrpc, _r_env, _r_readme, _r_restapi,
          _r_bbr, _r_opcache, _r_mariadb]
         | select | list | length
       }}
-    _total_count: 29
+    _total_count: 30
 
 
 # =============================================================================
@@ -116,6 +117,7 @@
         {{ _ok if _r_auditd | bool else _fail }}  auditd service               {{ 'active' if _r_auditd | bool else _r ~ 'INACTIVE' ~ _z }}
         {{ _ok if _r_selinux | bool else _fail }}  SELinux                      {{ _v_selinux.stdout | default('?') }}
         {{ _ok if _r_pod_selinux | bool else _fail }}  Pods confined (container_t)  {{ (_v_pod_selinux.stdout_lines | default(['0']) | first) ~ ' processes' if _r_pod_selinux | bool else _r ~ (_v_pod_selinux.stdout_lines | default(['?']) | reject('equalto', _v_pod_selinux.stdout_lines | default(['?']) | first) | join(', ') | default('no pod processes found', true)) ~ _z }}
+        {{ _ok if _r_daemon_dom | bool else _fail }}  host daemons own domain      {{ 'all in their domain' if _r_daemon_dom | bool else _r ~ (_v_daemon_domains.stdout_lines | default(['no result']) | join('; ')) ~ _z }}
 
       {{ _h }}── Kubernetes Workloads ─────────────────────────────────────{{ _z }}
         {{ _ok if _r_wp_pods | bool else _fail }}  wordpress namespace          {{ _d_wp_pods if _d_wp_pods != '?' else _r ~ 'no pods found' ~ _z }}
@@ -167,7 +169,7 @@
           ['nftables service', _r_nft_svc], ['nftables inet filter', _r_nft_tables],
           ['nftables policy drop', _r_nft_policy], ['nftables fail2ban sets', _r_nft_f2b_sets], ['fail2ban ban chain (test)', _r_f2b_effect], ['monitoring data present', _r_data],
           ['fail2ban service', _r_f2b_svc], ['fail2ban jails', _r_f2b_jails],
-          ['k3s service', _r_k3s], ['auditd service', _r_auditd], ['SELinux', _r_selinux], ['pods confined (container_t)', _r_pod_selinux],
+          ['k3s service', _r_k3s], ['auditd service', _r_auditd], ['SELinux', _r_selinux], ['pods confined (container_t)', _r_pod_selinux], ['host daemons own domain', _r_daemon_dom],
           ['wordpress namespace pods', _r_wp_pods], ['ingress-nginx pods', _r_ingress],
           ['cert-manager pods', _r_certmgr], ['pods in error state', _r_noerror],
           ['HTTPS connectivity', _r_https], ['TLS certificate', _r_tls],
