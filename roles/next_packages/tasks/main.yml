@@ -173,6 +173,27 @@
 # -----------------------------------------------------------------------------
 # STEP 6: Install required packages
 # -----------------------------------------------------------------------------
+# Redis from the AppStream module stream nextcloud_redis_stream (versions.yml)
+# instead of EL9's default 6.2 (2026-10-26; the blog pod already runs 7.4).
+# "module switch-to" enables the stream AND swaps an installed package in one
+# step; try-restart then starts the new binary (Redis keeps no data here -
+# save "" - so a restart only empties Nextcloud's cache and file locks for a
+# moment). redis.conf is ours (next_redis), the package leaves an .rpmnew.
+- name: Packages | Enabled Redis module stream
+  ansible.builtin.command: dnf -q module list --enabled redis
+  register: redis_module_enabled
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false  # rc 1 = no stream enabled yet (EL9 default 6)
+
+- name: Packages | Switch Redis to the module stream {{ nextcloud_redis_stream }}
+  ansible.builtin.shell: |
+    set -o pipefail
+    dnf -y module switch-to "redis:{{ nextcloud_redis_stream }}"
+    systemctl try-restart redis
+  when: redis_module_enabled.stdout is not search('(?m)^redis\\s+' ~ nextcloud_redis_stream ~ '\\s+\\S*\\s*\\[e\\]')
+  changed_when: true
+
 - name: Packages | Install packages for the web stack
   ansible.builtin.dnf:
     name:

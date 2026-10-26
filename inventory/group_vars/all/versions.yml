@@ -34,6 +34,8 @@ nextcloud_image_collabora:    "collabora/code:26.04.5.2.1"
 nextcloud_image_fpm_exporter: "hipages/php-fpm_exporter:2.2.0"
 nextcloud_image_busybox:      "busybox:1"                    # init containers, floating on purpose
 
+nextcloud_redis_stream:       "7"                            # AppStream module stream (EL9 default: 6 = 6.2)
+
 # --- WordPress containers -------------------------------------------------------
 blog_image_wordpress:       "wordpress:7.1.3-php8.5-fpm"
 blog_image_nginx:           "nginx:1.30.6-alpine"            # keep equal to nextcloud_image_nginx
