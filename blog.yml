@@ -99,7 +99,7 @@
     # the pods.
     - { role: common_node_exporter, tags: [common_node_exporter] }  # Node Exporter (metrics, port 9100)
     - { role: common_prometheus,    tags: [common_prometheus] }     # Prometheus (scrapes node:9100 + K3s NodePorts, port 9090)
-    - { role: common_grafana,       tags: [common_grafana] }        # Grafana (dashboards 1860/7362/4912 + Container-Ressourcen, port 3000)
+    - { role: common_grafana,       tags: [common_grafana] }        # Grafana (dashboards 1860/7362/25545 + Container-Ressourcen, port 3000)
     - { role: common_loki,          tags: [common_loki] }          # Loki + Alloy: journal, pod logs, audit/fail2ban log (14 days, local only) + log alerts
     - { role: common_fail2ban,      tags: [common_fail2ban] }       # Fail2Ban: SSH + nginx + WordPress login protection
     - { role: common_msmtp,         tags: [common_msmtp] }          # msmtp sendmail relay (rkhunter, cron, dnf-automatic)

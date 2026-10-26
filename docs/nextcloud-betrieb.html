@@ -1135,7 +1135,7 @@ redis-cli FLUSHALL</code></pre>
     <div class="label">Grafana</div>
     <div class="value"><code>https://nextcloud.*/grafana/</code></div>
     <p style="margin-top:8px;font-size:13px;color:var(--muted)">
-      Dashboards: Node Exporter Full (1860), MySQL Overview (7362), PHP-FPM (4912), Container-Ressourcen (eigenes, seit 19.10.2026), fail2ban – Bans (Loki, seit 21.10.2026)<br>
+      Dashboards: Node Exporter Full (1860), MySQL Overview (7362), PHP-FPM (25545), Container-Ressourcen (eigenes, seit 19.10.2026), fail2ban – Bans (Loki, seit 21.10.2026)<br>
       Login: Grafana-Admin-Passwort aus vault.yml
     </p>
   </div>
@@ -1274,7 +1274,7 @@ k3s kubectl logs -n nextcloud deployment/nextcloud -c nextcloud-fpm -f | grep -i
   </tr>
 </table>
 
-<h4>PHP-FPM (ID 4912) – PHP-Prozesspool</h4>
+<h4>PHP-FPM (ID 25545) – PHP-Prozesspool</h4>
 <p>Zeigt wie gut PHP-FPM die eingehenden Nextcloud-Anfragen verarbeitet (K3s-Pod, NodePort 30254).</p>
 <table>
   <tr><th>Panel</th><th>Was man abliest</th></tr>

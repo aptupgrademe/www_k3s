@@ -19,7 +19,7 @@ data:
     ; keeps one harmless "ERROR: failed to ptrace(ATTACH)" line (checked
     ; 2026-10-02). Accepted on purpose: allowing SYS_PTRACE would weaken the
     ; container, and request_slowlog_timeout = 0 would also zero the
-    ; slow-request counter of the php-fpm exporter (Grafana dashboard 4912).
+    ; slow-request counter of the php-fpm exporter (Grafana dashboard PHP-FPM, 25545).
     request_slowlog_trace_depth = 0
 
     ; --- Hard limit per request ---

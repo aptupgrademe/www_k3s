@@ -205,21 +205,32 @@
 
 
     # -----------------------------------------------------------------------------
-    # Dashboard 4912 – PHP-FPM (php-fpm_exporter)
+    # Dashboard 25545 – PHP-FPM (php-fpm_exporter on a plain host)
     # -----------------------------------------------------------------------------
-    - name: Grafana | Download dashboard 4912 from Grafana.com
+    # Replaced 4912 on 2026-10-26: 4912 was built for hipages' own cluster and
+    # filters every query on labels we do not have (app, hip_new,
+    # kubernetes_namespace, pod_name, container_name="fpm") - every panel
+    # showed N/A. 25545 uses the same exporter metrics with job/instance only;
+    # all of its queries return data here. Pinned to revision 1 (single
+    # author), imported under the old uid so the broken dashboard is replaced.
+    - name: Grafana | Download dashboard 25545 from Grafana.com
       ansible.builtin.get_url:
-        url: "https://grafana.com/api/dashboards/4912/revisions/latest/download"
-        dest: /tmp/grafana-dashboard-4912.json
+        url: "https://grafana.com/api/dashboards/25545/revisions/1/download"
+        dest: /tmp/grafana-dashboard-25545.json
         mode: "0644"
         force: false
 
-    - name: Grafana | Read dashboard JSON 4912 from remote host
-      ansible.builtin.slurp:
-        src: /tmp/grafana-dashboard-4912.json
-      register: dashboard_4912_raw
+    - name: Grafana | Remove the old dashboard 4912 download
+      ansible.builtin.file:
+        path: /tmp/grafana-dashboard-4912.json
+        state: absent
 
-    - name: Grafana | Import dashboard 4912 via Grafana API
+    - name: Grafana | Read dashboard JSON 25545 from remote host
+      ansible.builtin.slurp:
+        src: /tmp/grafana-dashboard-25545.json
+      register: dashboard_25545_raw
+
+    - name: Grafana | Import dashboard 25545 via Grafana API
       ansible.builtin.uri:
         url: "http://127.0.0.1:3000/api/dashboards/import"
         method: POST
@@ -228,7 +239,9 @@
         force_basic_auth: true
         body_format: json
         body:
-          dashboard: "{{ dashboard_4912_raw.content | b64decode | from_json | combine({'uid': 'f67a223d-b1b6-4f5a-8c5d-233a7a8aeb98'}) }}"
+          dashboard: >-
+            {{ dashboard_25545_raw.content | b64decode | from_json
+               | combine({'uid': 'f67a223d-b1b6-4f5a-8c5d-233a7a8aeb98', 'title': 'PHP-FPM', 'id': none}) }}
           overwrite: true
           inputs:
             - name: "DS_PROMETHEUS"
