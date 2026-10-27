@@ -100,6 +100,14 @@ metadata:
     nginx.org/client-max-body-size: "2g"
     nginx.org/proxy-read-timeout: "300s"
     nginx.org/proxy-send-timeout: "300s"
+    # Large downloads: by default the ingress buffers a response into a temp
+    # file of at most 1 GB, then stops reading from the pod until the client
+    # catches up. The pod nginx gives up after send_timeout (60 s) without
+    # progress and closes - the client gets ~1.08 GB and a broken download
+    # ("upstream prematurely closed", found 2026-10-27 with a 13 GB zip; the
+    # 1 GB bursts also tripped the CPU throttling alert). 0 = no temp file,
+    # the ingress streams at the client's pace with its memory buffers only.
+    nginx.org/proxy-max-temp-file-size: "0"
     nginx.org/path-regex: "case_sensitive"
 spec:
   ingressClassName: nginx
