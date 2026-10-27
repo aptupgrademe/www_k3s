@@ -53,3 +53,34 @@
     'php /usr/local/lib/wp-cli/wp-cli.phar --path=/var/www/html config set DISABLE_WP_CRON true --raw'
   when: wp_cron_setting.stdout | trim != 'true'
   changed_when: true
+
+
+# -----------------------------------------------------------------------------
+# Yoast llms.txt off
+# Yoast writes llms.txt into the web root from WP-Cron - and the wp-cron
+# CronJob mounts the web root read-only on purpose, so the file was never
+# written and Site Health warned about missing filesystem permissions
+# (2026-10-27). The file has no SEO value; keeping the cron sandbox matters more.
+# Read first, write only when the option is still on.
+# -----------------------------------------------------------------------------
+- name: WordPress | Read the Yoast llms.txt setting
+  ansible.builtin.command: >
+    k3s kubectl exec deployment/wordpress
+    --namespace wordpress
+    --container wordpress-fpm --
+    su -s /bin/sh www-data -c
+    'php /usr/local/lib/wp-cli/wp-cli.phar --path=/var/www/html option pluck wpseo enable_llms_txt --format=json'
+  register: wp_yoast_llms
+  changed_when: false
+  check_mode: false   # read-only query, also runs in --check
+  failed_when: false  # rc 1 = Yoast not installed yet or key missing
+
+- name: WordPress | Turn off Yoast llms.txt
+  ansible.builtin.command: >
+    k3s kubectl exec deployment/wordpress
+    --namespace wordpress
+    --container wordpress-fpm --
+    su -s /bin/sh www-data -c
+    'php /usr/local/lib/wp-cli/wp-cli.phar --path=/var/www/html option patch update wpseo enable_llms_txt false --format=json'
+  when: wp_yoast_llms.rc == 0 and wp_yoast_llms.stdout | trim == 'true'
+  changed_when: true
