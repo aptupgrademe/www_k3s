@@ -1,5 +1,12 @@
 # Homelab Ansible – Nextcloud & WordPress
 
+> **Archived.** This repository is no longer maintained and stays available for reference.
+> It was split into:
+> - [`nextcloud_k3s`](https://github.com/aptupgrademe/nextcloud_k3s): the Nextcloud hosts, still on K3s
+> - [`www_hugo`](https://github.com/aptupgrademe/www_hugo): the blog, now a static Hugo site on AlmaLinux 10 without Kubernetes
+>
+> The last state before the split carries the tag `final-before-split`.
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Ansible](https://img.shields.io/badge/Ansible-2.15+-red.svg)](https://www.ansible.com/)
 [![K3s](https://img.shields.io/badge/K3s-latest-blue.svg)](https://k3s.io/)
